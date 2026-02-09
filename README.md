@@ -39,3 +39,6 @@ uv run main.py --host 127.0.0.1 --port 9000
 - `string | number | integer | boolean | enum | array(items=primitive|file)`
 - ファイルは `format=binary` の `string` として扱い、内部的には `file_id` を保持します。
 - 配列はプリミティブ/ファイルのみ（入れ子のobjectは非対応）
+
+## ライセンス
+- MIT OR Apache-2.0
