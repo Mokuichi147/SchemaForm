@@ -15,12 +15,10 @@
 uv sync --locked
 
 # 起動
-uv run python main.py
+uv run main.py
 
-# Typerで指定する場合
-uv run python main.py --host 127.0.0.1 --port 9000
-uv run python main.py run --host 127.0.0.1 --port 9000
-uv run python main.py --host 127.0.0.1 --port 9000 run
+# host/port を指定する場合
+uv run main.py --host 127.0.0.1 --port 9000
 ```
 
 依存関係を更新したい場合は `uv lock` を実行してください。
