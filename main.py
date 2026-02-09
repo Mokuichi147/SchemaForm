@@ -792,6 +792,25 @@ def normalize_number(value: Any, is_int: bool) -> Any:
         return None
 
 
+def ensure_aware(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def parse_query_datetime(value: Any) -> datetime | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError:
+            return None
+    return None
+
+
 def collect_file_ids(
     submissions: list[dict[str, Any]], fields: list[dict[str, Any]]
 ) -> set[str]:
@@ -839,6 +858,8 @@ def apply_filters(
     query_params: dict[str, Any],
 ) -> list[dict[str, Any]]:
     q = str(query_params.get("q", "")).strip().lower()
+    from_dt = parse_query_datetime(query_params.get("submitted_from"))
+    to_dt = parse_query_datetime(query_params.get("submitted_to"))
 
     def matches_free_text(data: dict[str, Any]) -> bool:
         if not q:
@@ -848,6 +869,14 @@ def apply_filters(
 
     filtered: list[dict[str, Any]] = []
     for submission in submissions:
+        created_at = submission.get("created_at")
+        if created_at and (from_dt or to_dt):
+            created_value = ensure_aware(created_at) if isinstance(created_at, datetime) else None
+            if created_value is not None:
+                if from_dt and created_value < ensure_aware(from_dt):
+                    continue
+                if to_dt and created_value > ensure_aware(to_dt):
+                    continue
         data = submission.get("data_json", {})
         if not matches_free_text(data):
             continue
