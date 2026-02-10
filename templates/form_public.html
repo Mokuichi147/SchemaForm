@@ -64,7 +64,7 @@
         {% endif %}
       {% else %}
         {% if field.type == "enum" %}
-        <select name="{{ field.key }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if inactive %}disabled{% endif %}>
+        <select name="{{ field.key }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if field.required %}required{% endif %} {% if inactive %}disabled{% endif %}>
           <option value="">選択してください</option>
           {% for option in field.enum %}
           <option value="{{ option }}">{{ option }}</option>
@@ -72,17 +72,17 @@
         </select>
         {% elif field.type == "boolean" %}
         <div class="mt-2 flex items-center gap-2">
-          <input type="checkbox" name="{{ field.key }}" value="true" class="h-4 w-4" {% if inactive %}disabled{% endif %} />
+          <input type="checkbox" name="{{ field.key }}" value="true" class="h-4 w-4" {% if field.required %}required{% endif %} {% if inactive %}disabled{% endif %} />
           <span class="text-sm text-slate-700">はい</span>
         </div>
         {% elif field.type == "file" %}
-        <input type="file" name="{{ field.key }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-2" {% if inactive %}disabled{% endif %} />
+        <input type="file" name="{{ field.key }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-2" {% if field.required %}required{% endif %} {% if inactive %}disabled{% endif %} />
         {% elif field.type in ["number", "integer"] %}
-        <input type="number" name="{{ field.key }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if inactive %}disabled{% endif %} />
+        <input type="number" name="{{ field.key }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if field.required %}required{% endif %} {% if inactive %}disabled{% endif %} />
         {% elif field.multiline %}
-        <textarea name="{{ field.key }}" placeholder="{{ field.placeholder }}" rows="4" class="mt-2 w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if inactive %}disabled{% endif %}></textarea>
+        <textarea name="{{ field.key }}" placeholder="{{ field.placeholder }}" rows="4" class="mt-2 w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if field.required %}required{% endif %} {% if inactive %}disabled{% endif %}></textarea>
         {% else %}
-        <input type="{{ field_input_type(field) }}" name="{{ field.key }}" placeholder="{{ field.placeholder }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if picker %}data-picker="{{ picker }}"{% endif %} {% if inactive %}disabled{% endif %} />
+        <input type="{{ field_input_type(field) }}" name="{{ field.key }}" placeholder="{{ field.placeholder }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if picker %}data-picker="{{ picker }}"{% endif %} {% if field.required %}required{% endif %} {% if inactive %}disabled{% endif %} />
         {% endif %}
       {% endif %}
     </div>

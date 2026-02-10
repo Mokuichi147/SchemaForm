@@ -1299,6 +1299,8 @@ async def submit_form(request: Request, public_id: str) -> HTMLResponse:
             else:
                 submission[key] = str(raw_value) if raw_value is not None else None
 
+    submission = {k: v for k, v in submission.items() if v is not None and v != ""}
+
     validator = Draft7Validator(form["schema_json"])
     errors = sorted(validator.iter_errors(submission), key=lambda err: list(err.path))
     if errors:
