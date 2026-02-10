@@ -28,13 +28,13 @@
         </td>
         <td class="px-4 py-3">
           {% if form.status == "active" %}
-          <span class="rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-800">公開中</span>
+          <span class="whitespace-nowrap rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-800">公開中</span>
           {% else %}
-          <span class="rounded-full bg-slate-200 px-2 py-1 text-xs text-slate-700">停止中</span>
+          <span class="whitespace-nowrap rounded-full bg-slate-200 px-2 py-1 text-xs text-slate-700">停止中</span>
           {% endif %}
         </td>
         <td class="px-4 py-3">
-          <a href="/f/{{ form.public_id }}" class="text-slate-700 hover:underline">/f/{{ form.public_id }}</a>
+          <a href="/f/{{ form.public_id }}" class="text-slate-700 hover:underline">{{ form.public_id }}</a>
         </td>
         <td class="px-4 py-3 text-slate-600">
           <time class="js-local-dt" data-iso="{{ iso_dt(form.updated_at) }}">{{ format_dt(form.updated_at) }}</time>
