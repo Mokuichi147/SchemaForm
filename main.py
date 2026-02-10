@@ -703,6 +703,7 @@ def parse_fields_json(fields_json: str) -> tuple[list[dict[str, Any]], list[str]
                 "format": str(raw.get("format", "")).strip(),
                 "is_array": is_array,
                 "items_type": items_type,
+                "multiline": bool(raw.get("multiline")),
             }
         )
 
@@ -741,6 +742,8 @@ def build_property(field: dict[str, Any]) -> dict[str, Any]:
         prop["description"] = field["description"]
     if field.get("placeholder"):
         prop["x-placeholder"] = field["placeholder"]
+    if field.get("multiline"):
+        prop["x-multiline"] = True
 
     return prop
 
@@ -823,6 +826,7 @@ def fields_from_schema(schema: dict[str, Any], field_order: list[str]) -> list[d
                 "format": target.get("format", "") if field_type == "string" else "",
                 "is_array": is_array,
                 "items_type": field_type if is_array else "",
+                "multiline": prop.get("x-multiline", False),
             }
         )
     return fields

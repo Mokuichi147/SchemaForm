@@ -95,13 +95,17 @@
           <input type="checkbox" data-field="is_array" />
           配列
         </label>
+        <label class="flex items-center gap-2" data-role="multiline">
+          <input type="checkbox" data-field="multiline" />
+          複数行
+        </label>
       </div>
     </div>
 
     <div class="mt-3 grid gap-3 md:grid-cols-3">
       <div data-role="description">
         <label class="text-xs text-slate-500">説明</label>
-        <input data-field="description" class="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm" />
+        <textarea data-field="description" rows="2" class="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm"></textarea>
       </div>
       <div data-role="placeholder">
         <label class="text-xs text-slate-500">プレースホルダ</label>
@@ -189,6 +193,7 @@
     format: "",
     is_array: false,
     items_type: "",
+    multiline: false,
   };
 
   function normalizeField(raw) {
@@ -229,6 +234,8 @@
     if (!el) return;
     if (el.type === "checkbox") {
       el.checked = Boolean(value);
+    } else if (el.tagName === "TEXTAREA") {
+      el.value = value ?? "";
     } else {
       el.value = value ?? "";
     }
@@ -240,21 +247,50 @@
     }
   }
 
+  function applyMultiline(row) {
+    const multiline = row.querySelector('[data-field="multiline"]').checked;
+    const container = row.querySelector('[data-role="placeholder"]');
+    if (!container) return;
+    const current = container.querySelector('[data-field="placeholder"]');
+    if (!current) return;
+    const wantTag = multiline ? "TEXTAREA" : "INPUT";
+    if (current.tagName === wantTag) return;
+    const value = current.value;
+    let next;
+    if (multiline) {
+      next = document.createElement("textarea");
+      next.rows = 2;
+    } else {
+      next = document.createElement("input");
+      next.type = "text";
+    }
+    next.dataset.field = "placeholder";
+    next.className = current.className;
+    next.value = value;
+    current.replaceWith(next);
+    next.addEventListener("change", () => updateFieldsJson());
+    next.addEventListener("input", () => updateFieldsJson());
+  }
+
   function applyVisibility(row) {
     const type = row.querySelector('[data-field="type"]').value;
     const isArray = row.querySelector('[data-field="is_array"]').checked;
     const showEnum = type === "enum";
     const showMinMax = type === "number" || type === "integer";
     const showFormat = type === "string";
+    const showMultiline = type === "string";
     row.querySelector('[data-role="enum"]').classList.toggle("hidden", !showEnum);
     row.querySelector('[data-role="minmax"]').classList.toggle("hidden", !showMinMax);
     row.querySelector('[data-role="format"]').classList.toggle("hidden", !showFormat);
     row.querySelector('[data-role="placeholder"]').classList.toggle("hidden", !showFormat);
+    row.querySelector('[data-role="multiline"]').classList.toggle("hidden", !showMultiline);
 
     if (isArray && type === "file") {
       row.querySelector('[data-role="format"]').classList.add("hidden");
       row.querySelector('[data-role="placeholder"]').classList.add("hidden");
     }
+
+    applyMultiline(row);
   }
 
   function readRow(row) {
@@ -280,6 +316,7 @@
       format: get("format").value,
       is_array: isArray,
       items_type: isArray ? type : "",
+      multiline: get("multiline").checked,
     };
   }
 
@@ -290,7 +327,7 @@
   }
 
   function attachRowEvents(row) {
-    row.querySelectorAll("input, select").forEach((input) => {
+    row.querySelectorAll("input, select, textarea").forEach((input) => {
       input.addEventListener("change", () => {
         applyVisibility(row);
         updateFieldsJson();
@@ -320,6 +357,7 @@
     setValue(row, "max", normalized.max ?? "");
     setValue(row, "format", normalized.format ?? "");
     setValue(row, "is_array", normalized.is_array);
+    setValue(row, "multiline", normalized.multiline);
 
     attachRowEvents(row);
     fieldList.appendChild(row);

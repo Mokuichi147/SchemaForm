@@ -52,6 +52,8 @@
                 </select>
                 {% elif field.type in ["number", "integer"] %}
                 <input type="number" name="{{ field.key }}" class="w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if inactive %}disabled{% endif %} />
+                {% elif field.multiline %}
+                <textarea name="{{ field.key }}" placeholder="{{ field.placeholder }}" rows="3" class="w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if inactive %}disabled{% endif %}></textarea>
                 {% else %}
                 <input type="text" name="{{ field.key }}" placeholder="{{ field.placeholder }}" class="w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if picker %}data-picker="{{ picker }}"{% endif %} {% if inactive %}disabled{% endif %} />
                 {% endif %}
@@ -77,6 +79,8 @@
         <input type="file" name="{{ field.key }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-2" {% if inactive %}disabled{% endif %} />
         {% elif field.type in ["number", "integer"] %}
         <input type="number" name="{{ field.key }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if inactive %}disabled{% endif %} />
+        {% elif field.multiline %}
+        <textarea name="{{ field.key }}" placeholder="{{ field.placeholder }}" rows="4" class="mt-2 w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if inactive %}disabled{% endif %}></textarea>
         {% else %}
         <input type="{{ field_input_type(field) }}" name="{{ field.key }}" placeholder="{{ field.placeholder }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if picker %}data-picker="{{ picker }}"{% endif %} {% if inactive %}disabled{% endif %} />
         {% endif %}
