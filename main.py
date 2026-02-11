@@ -25,8 +25,67 @@ from sqlalchemy import Column, DateTime, Integer, String, Text, create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from tinydb import Query, TinyDB
 
-ALLOWED_TYPES = {"string", "number", "integer", "boolean", "enum", "file", "datetime", "date", "time"}
+ALLOWED_TYPES = {"string", "number", "integer", "boolean", "enum", "file", "datetime", "date", "time", "group"}
 KEY_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
+
+
+def flatten_fields(
+    fields: list[dict[str, Any]],
+    prefix: str = "",
+    label_prefix: str = "",
+) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for field in fields:
+        key = f"{prefix}{field['key']}" if prefix else field["key"]
+        label = f"{label_prefix}{field.get('label') or field['key']}" if label_prefix else (field.get("label") or field["key"])
+        if field.get("type") == "group":
+            if field.get("is_array"):
+                result.append({**field, "flat_key": key, "flat_label": label})
+            else:
+                children = field.get("children") or []
+                result.extend(flatten_fields(children, prefix=key + ".", label_prefix=label + "."))
+        else:
+            result.append({**field, "flat_key": key, "flat_label": label})
+    return result
+
+
+def get_nested_value(data: dict[str, Any], dotted_key: str) -> Any:
+    parts = dotted_key.split(".")
+    current: Any = data
+    for part in parts:
+        if isinstance(current, dict):
+            current = current.get(part)
+        else:
+            return None
+    return current
+
+
+def set_nested_value(data: dict[str, Any], dotted_key: str, value: Any) -> None:
+    parts = dotted_key.split(".")
+    current = data
+    for part in parts[:-1]:
+        if part not in current or not isinstance(current[part], dict):
+            current[part] = {}
+        current = current[part]
+    current[parts[-1]] = value
+
+
+def clean_empty_recursive(data: Any) -> Any:
+    if isinstance(data, dict):
+        cleaned = {}
+        for k, v in data.items():
+            result = clean_empty_recursive(v)
+            if result is not None and result != "":
+                cleaned[k] = result
+        return cleaned if cleaned else None
+    if isinstance(data, list):
+        cleaned_list = []
+        for item in data:
+            result = clean_empty_recursive(item)
+            if result is not None and result != "":
+                cleaned_list.append(result)
+        return cleaned_list if cleaned_list else None
+    return data
 
 
 class Settings:
@@ -656,64 +715,78 @@ def parse_fields_json(fields_json: str) -> tuple[list[dict[str, Any]], list[str]
     except orjson.JSONDecodeError:
         return [], ["フィールド定義の解析に失敗しました"]
 
-    fields: list[dict[str, Any]] = []
     seen_keys: set[str] = set()
 
-    for index, raw in enumerate(raw_fields, start=1):
-        key = str(raw.get("key", "")).strip()
-        label = str(raw.get("label", "")).strip()
+    def _parse_recursive(raw_list: list, prefix: str = "") -> list[dict[str, Any]]:
+        fields: list[dict[str, Any]] = []
+        for index, raw in enumerate(raw_list, start=1):
+            loc = f"{prefix}{index}行目" if prefix else f"{index}行目"
+            key = str(raw.get("key", "")).strip()
+            label = str(raw.get("label", "")).strip()
 
-        if not label:
-            errors.append(f"{index}行目: ラベルは必須です")
+            if not label:
+                errors.append(f"{loc}: ラベルは必須です")
 
-        if not key:
-            key = generate_field_key(seen_keys)
-        if not KEY_PATTERN.match(key):
-            errors.append(f"{index}行目: キーは英字で始まり英数字/アンダースコアのみです")
-        if key in seen_keys:
-            errors.append(f"{index}行目: キーが重複しています ({key})")
-        else:
-            seen_keys.add(key)
+            if not key:
+                key = generate_field_key(seen_keys)
+            if not KEY_PATTERN.match(key):
+                errors.append(f"{loc}: キーは英字で始まり英数字/アンダースコアのみです")
+            if key in seen_keys:
+                errors.append(f"{loc}: キーが重複しています ({key})")
+            else:
+                seen_keys.add(key)
 
-        field_type = str(raw.get("type", "")).strip()
-        is_array = bool(raw.get("is_array"))
-        items_type = str(raw.get("items_type", "")).strip() if is_array else ""
+            field_type = str(raw.get("type", "")).strip()
+            is_array = bool(raw.get("is_array"))
+            items_type = str(raw.get("items_type", "")).strip() if is_array else ""
 
-        if field_type not in ALLOWED_TYPES:
-            errors.append(f"{index}行目: 種類が不正です ({field_type})")
-        if is_array and items_type not in ALLOWED_TYPES:
-            errors.append(f"{index}行目: 配列の要素型が不正です ({items_type})")
+            if field_type not in ALLOWED_TYPES:
+                errors.append(f"{loc}: 種類が不正です ({field_type})")
 
-        enum_values = [
-            value.strip()
-            for value in (raw.get("enum") or [])
-            if isinstance(value, str) and value.strip()
-        ]
-        if (field_type == "enum" or items_type == "enum") and not enum_values:
-            errors.append(f"{index}行目: enumは値を指定してください")
+            children: list[dict[str, Any]] = []
+            if field_type == "group":
+                raw_children = raw.get("children") or []
+                children = _parse_recursive(raw_children, prefix=f"{loc}.")
+                if not children and not errors:
+                    errors.append(f"{loc}: グループには子フィールドが必要です")
+            else:
+                if is_array and items_type not in ALLOWED_TYPES:
+                    errors.append(f"{loc}: 配列の要素型が不正です ({items_type})")
 
-        min_raw = str(raw.get("min", "")).strip()
-        max_raw = str(raw.get("max", "")).strip()
-        min_value = float(min_raw) if min_raw else None
-        max_value = float(max_raw) if max_raw else None
+            enum_values = [
+                value.strip()
+                for value in (raw.get("enum") or [])
+                if isinstance(value, str) and value.strip()
+            ]
+            if (field_type == "enum" or items_type == "enum") and not enum_values:
+                errors.append(f"{loc}: enumは値を指定してください")
 
-        fields.append(
-            {
-                "key": key,
-                "label": label,
-                "type": field_type,
-                "required": bool(raw.get("required")),
-                "description": str(raw.get("description", "")).strip(),
-                "placeholder": str(raw.get("placeholder", "")).strip(),
-                "enum": enum_values,
-                "min": min_value,
-                "max": max_value,
-                "format": str(raw.get("format", "")).strip(),
-                "is_array": is_array,
-                "items_type": items_type,
-                "multiline": bool(raw.get("multiline")),
-            }
-        )
+            min_raw = str(raw.get("min", "")).strip()
+            max_raw = str(raw.get("max", "")).strip()
+            min_value = float(min_raw) if min_raw else None
+            max_value = float(max_raw) if max_raw else None
+
+            fields.append(
+                {
+                    "key": key,
+                    "label": label,
+                    "type": field_type,
+                    "required": bool(raw.get("required")),
+                    "description": str(raw.get("description", "")).strip(),
+                    "placeholder": str(raw.get("placeholder", "")).strip(),
+                    "enum": enum_values,
+                    "min": min_value,
+                    "max": max_value,
+                    "format": str(raw.get("format", "")).strip(),
+                    "is_array": is_array,
+                    "items_type": items_type,
+                    "multiline": bool(raw.get("multiline")),
+                    "children": children,
+                }
+            )
+        return fields
+
+    fields = _parse_recursive(raw_fields)
 
     if not fields:
         errors.append("最低1つのフィールドが必要です")
@@ -743,9 +816,24 @@ def build_property(field: dict[str, Any]) -> dict[str, Any]:
             payload["format"] = field["format"]
         return payload
 
-    if field["is_array"]:
+    if field["type"] == "group":
+        children = field.get("children") or []
+        child_schema, child_order = schema_from_fields(children)
+        obj: dict[str, Any] = {
+            "type": "object",
+            "properties": child_schema.get("properties", {}),
+            "x-field-type": "group",
+            "x-field-order": child_order,
+        }
+        if child_schema.get("required"):
+            obj["required"] = child_schema["required"]
+        if field.get("is_array"):
+            prop: dict[str, Any] = {"type": "array", "items": obj}
+        else:
+            prop = obj
+    elif field["is_array"]:
         item_type = field.get("items_type") or "string"
-        prop: dict[str, Any] = {"type": "array", "items": build_item(item_type)}
+        prop = {"type": "array", "items": build_item(item_type)}
     else:
         prop = build_item(field["type"])
 
@@ -816,6 +904,34 @@ def fields_from_schema(schema: dict[str, Any], field_order: list[str]) -> list[d
         is_array = prop.get("type") == "array"
         target = prop.get("items", {}) if is_array else prop
 
+        is_group = (
+            target.get("x-field-type") == "group"
+            or (target.get("type") == "object" and "properties" in target)
+        )
+
+        if is_group:
+            child_order = target.get("x-field-order", list(target.get("properties", {}).keys()))
+            children = fields_from_schema(target, child_order)
+            fields.append(
+                {
+                    "key": key,
+                    "label": prop.get("title", ""),
+                    "type": "group",
+                    "required": key in schema.get("required", []),
+                    "description": prop.get("description", ""),
+                    "placeholder": "",
+                    "enum": [],
+                    "min": None,
+                    "max": None,
+                    "format": "",
+                    "is_array": is_array,
+                    "items_type": "",
+                    "multiline": False,
+                    "children": children,
+                }
+            )
+            continue
+
         field_type = target.get("type", "string")
         if target.get("format") == "datetime-local":
             field_type = "datetime"
@@ -843,6 +959,7 @@ def fields_from_schema(schema: dict[str, Any], field_order: list[str]) -> list[d
                 "is_array": is_array,
                 "items_type": field_type if is_array else "",
                 "multiline": prop.get("x-multiline", False),
+                "children": [],
             }
         )
     return fields
@@ -884,11 +1001,12 @@ def collect_file_ids(
     submissions: list[dict[str, Any]], fields: list[dict[str, Any]]
 ) -> set[str]:
     ids: set[str] = set()
-    file_keys = {field["key"] for field in fields if field["type"] == "file"}
+    flat = flatten_fields(fields)
+    file_keys = {f["flat_key"] for f in flat if f["type"] == "file"}
     for submission in submissions:
         data = submission.get("data_json", {})
         for key in file_keys:
-            value = data.get(key)
+            value = get_nested_value(data, key)
             if isinstance(value, list):
                 for item in value:
                     if isinstance(item, str):
@@ -929,6 +1047,7 @@ def apply_filters(
     q = str(query_params.get("q", "")).strip().lower()
     from_dt = parse_query_datetime(query_params.get("submitted_from"))
     to_dt = parse_query_datetime(query_params.get("submitted_to"))
+    flat_fields = flatten_fields(fields)
 
     def matches_free_text(data: dict[str, Any]) -> bool:
         if not q:
@@ -950,14 +1069,18 @@ def apply_filters(
         if not matches_free_text(data):
             continue
         ok = True
-        for field in fields:
-            key = field["key"]
-            value = data.get(key)
+        for field in flat_fields:
+            flat_key = field["flat_key"]
+            param_key = f"f_{flat_key.replace('.', '__')}"
+            value = get_nested_value(data, flat_key)
             field_type = field["type"]
-            is_array = field["is_array"]
+            is_array = field.get("is_array", False)
+
+            if field_type == "group":
+                continue
 
             if is_array:
-                filter_value = str(query_params.get(f"f_{key}", "")).strip()
+                filter_value = str(query_params.get(param_key, "")).strip()
                 if not filter_value:
                     continue
                 items = value or []
@@ -972,7 +1095,7 @@ def apply_filters(
                 continue
 
             if field_type in {"string", "enum", "file", "datetime", "date", "time"}:
-                filter_value = str(query_params.get(f"f_{key}", "")).strip()
+                filter_value = str(query_params.get(param_key, "")).strip()
                 if not filter_value:
                     continue
                 if field_type == "enum":
@@ -984,19 +1107,20 @@ def apply_filters(
                         ok = False
                         break
             elif field_type in {"number", "integer"}:
-                min_val = query_params.get(f"f_{key}_min")
-                max_val = query_params.get(f"f_{key}_max")
-                if value is None:
-                    ok = False
-                    break
-                if min_val not in (None, "") and value < float(min_val):
-                    ok = False
-                    break
-                if max_val not in (None, "") and value > float(max_val):
-                    ok = False
-                    break
+                min_val = query_params.get(f"{param_key}_min")
+                max_val = query_params.get(f"{param_key}_max")
+                if min_val not in (None, "") or max_val not in (None, ""):
+                    if value is None:
+                        ok = False
+                        break
+                    if min_val not in (None, "") and value < float(min_val):
+                        ok = False
+                        break
+                    if max_val not in (None, "") and value > float(max_val):
+                        ok = False
+                        break
             elif field_type == "boolean":
-                filter_value = str(query_params.get(f"f_{key}", "")).strip().lower()
+                filter_value = str(query_params.get(param_key, "")).strip().lower()
                 if not filter_value:
                     continue
                 expected = filter_value in {"1", "true", "on", "yes"}
@@ -1028,34 +1152,25 @@ def csv_headers_and_rows(
     submissions: list[dict[str, Any]],
     file_names: dict[str, str],
 ) -> tuple[list[str], list[list[str]]]:
+    flat = flatten_fields(fields)
     max_lengths: dict[str, int] = {}
-    header_counts: dict[str, int] = {}
-    field_headers: dict[str, str] = {}
 
-    for field in fields:
-        key = field["key"]
-        base = str(field.get("label") or "").strip() or key
-        count = header_counts.get(base, 0) + 1
-        header_counts[base] = count
-        header = base if count == 1 else f"{base}_{count}"
-        field_headers[key] = header
-
-    for field in fields:
-        if field["is_array"]:
-            key = field["key"]
+    for field in flat:
+        if field.get("is_array"):
+            fk = field["flat_key"]
             max_len = 1
             for submission in submissions:
-                value = submission.get("data_json", {}).get(key)
+                value = get_nested_value(submission.get("data_json", {}), fk)
                 if isinstance(value, list):
                     max_len = max(max_len, len(value))
-            max_lengths[key] = max_len
+            max_lengths[fk] = max_len
 
     headers: list[str] = []
-    for field in fields:
-        key = field["key"]
-        base = field_headers.get(key, key)
-        if field["is_array"]:
-            for idx in range(max_lengths.get(key, 1)):
+    for field in flat:
+        fk = field["flat_key"]
+        base = field["flat_label"]
+        if field.get("is_array"):
+            for idx in range(max_lengths.get(fk, 1)):
                 headers.append(f"{base}_{idx}")
         else:
             headers.append(base)
@@ -1064,17 +1179,20 @@ def csv_headers_and_rows(
     for submission in submissions:
         data = submission.get("data_json", {})
         row: list[str] = []
-        for field in fields:
-            key = field["key"]
-            value = data.get(key)
-            if field["is_array"]:
+        for field in flat:
+            fk = field["flat_key"]
+            value = get_nested_value(data, fk)
+            is_file = field["type"] == "file"
+            if field.get("type") == "group" and field.get("is_array"):
+                row.append(dumps_json(value) if value else "")
+            elif field.get("is_array"):
                 items = value if isinstance(value, list) else []
-                max_len = max_lengths.get(key, 1)
+                max_len = max_lengths.get(fk, 1)
                 for idx in range(max_len):
                     item = items[idx] if idx < len(items) else None
-                    row.append(value_to_text(item, file_names, field["type"] == "file"))
+                    row.append(value_to_text(item, file_names, is_file))
             else:
-                row.append(value_to_text(value, file_names, field["type"] == "file"))
+                row.append(value_to_text(value, file_names, is_file))
         rows.append(row)
 
     return headers, rows
@@ -1256,50 +1374,80 @@ async def submit_form(request: Request, public_id: str) -> HTMLResponse:
     fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
     submission: dict[str, Any] = {}
 
-    for field in fields:
-        key = field["key"]
-        field_type = field["type"]
-        is_array = field["is_array"]
-        if is_array:
-            if field_type == "file":
-                uploads = form_data.getlist(key)
-                file_ids: list[str] = []
-                for upload in uploads:
-                    if upload and getattr(upload, "filename", ""):
-                        file_ids.append(await save_upload(upload, form["id"]))
-                submission[key] = file_ids
-                continue
+    async def collect_fields(
+        field_list: list[dict[str, Any]], target: dict[str, Any], prefix: str
+    ) -> None:
+        for field in field_list:
+            key = field["key"]
+            form_key = f"{prefix}{key}" if prefix else key
+            field_type = field["type"]
+            is_array = field.get("is_array", False)
 
-            values = [value for value in form_data.getlist(key) if value not in (None, "")]
-            if field_type in {"number", "integer"}:
-                parsed = [
-                    normalize_number(value, field_type == "integer")
-                    for value in values
-                    if normalize_number(value, field_type == "integer") is not None
-                ]
-                submission[key] = parsed
-            elif field_type == "boolean":
-                submission[key] = [parse_bool(value) for value in values]
-            else:
-                submission[key] = values
-        else:
-            if field_type == "file":
-                upload = form_data.get(key)
-                if upload and getattr(upload, "filename", ""):
-                    submission[key] = await save_upload(upload, form["id"])
+            if field_type == "group":
+                children = field.get("children") or []
+                if is_array:
+                    indices: set[int] = set()
+                    form_prefix = f"{form_key}."
+                    for k in form_data:
+                        if k.startswith(form_prefix):
+                            rest = k[len(form_prefix):]
+                            parts = rest.split(".", 1)
+                            if parts[0].isdigit():
+                                indices.add(int(parts[0]))
+                    items: list[dict[str, Any]] = []
+                    for idx in sorted(indices):
+                        item: dict[str, Any] = {}
+                        await collect_fields(children, item, f"{form_key}.{idx}.")
+                        if item:
+                            items.append(item)
+                    target[key] = items
                 else:
-                    submission[key] = None
+                    group_data: dict[str, Any] = {}
+                    await collect_fields(children, group_data, f"{form_key}.")
+                    target[key] = group_data
                 continue
 
-            raw_value = form_data.get(key)
-            if field_type in {"number", "integer"}:
-                submission[key] = normalize_number(raw_value, field_type == "integer")
-            elif field_type == "boolean":
-                submission[key] = parse_bool(raw_value)
-            else:
-                submission[key] = str(raw_value) if raw_value is not None else None
+            if is_array:
+                if field_type == "file":
+                    uploads = form_data.getlist(form_key)
+                    file_ids: list[str] = []
+                    for upload in uploads:
+                        if upload and getattr(upload, "filename", ""):
+                            file_ids.append(await save_upload(upload, form["id"]))
+                    target[key] = file_ids
+                    continue
 
-    submission = {k: v for k, v in submission.items() if v is not None and v != ""}
+                values = [v for v in form_data.getlist(form_key) if v not in (None, "")]
+                if field_type in {"number", "integer"}:
+                    parsed = [
+                        normalize_number(v, field_type == "integer")
+                        for v in values
+                        if normalize_number(v, field_type == "integer") is not None
+                    ]
+                    target[key] = parsed
+                elif field_type == "boolean":
+                    target[key] = [parse_bool(v) for v in values]
+                else:
+                    target[key] = values
+            else:
+                if field_type == "file":
+                    upload = form_data.get(form_key)
+                    if upload and getattr(upload, "filename", ""):
+                        target[key] = await save_upload(upload, form["id"])
+                    else:
+                        target[key] = None
+                    continue
+
+                raw_value = form_data.get(form_key)
+                if field_type in {"number", "integer"}:
+                    target[key] = normalize_number(raw_value, field_type == "integer")
+                elif field_type == "boolean":
+                    target[key] = parse_bool(raw_value)
+                else:
+                    target[key] = str(raw_value) if raw_value is not None else None
+
+    await collect_fields(fields, submission, "")
+    submission = clean_empty_recursive(submission) or {}
 
     validator = Draft7Validator(form["schema_json"])
     errors = sorted(validator.iter_errors(submission), key=lambda err: list(err.path))
@@ -1349,6 +1497,8 @@ async def list_submissions(request: Request, form_id: str, _: Any = Depends(admi
     end = start + page_size
     page_items = filtered[start:end]
 
+    flat_fields = flatten_fields(fields)
+
     file_ids = collect_file_ids(page_items, fields)
     file_names = resolve_file_names(STORAGE.files, file_ids)
 
@@ -1356,10 +1506,15 @@ async def list_submissions(request: Request, form_id: str, _: Any = Depends(admi
     for item in page_items:
         row_values = []
         data = item.get("data_json", {})
-        for field in fields:
-            row_values.append(
-                value_to_text(data.get(field["key"]), file_names, field["type"] == "file")
-            )
+        for ff in flat_fields:
+            fk = ff["flat_key"]
+            value = get_nested_value(data, fk)
+            if ff.get("type") == "group" and ff.get("is_array"):
+                row_values.append(dumps_json(value) if value else "")
+            else:
+                row_values.append(
+                    value_to_text(value, file_names, ff["type"] == "file")
+                )
         display_rows.append(
             {
                 "id": item["id"],
@@ -1376,6 +1531,7 @@ async def list_submissions(request: Request, form_id: str, _: Any = Depends(admi
             "request": request,
             "form": form,
             "fields": fields,
+            "flat_fields": flat_fields,
             "rows": display_rows,
             "page": page,
             "page_size": page_size,

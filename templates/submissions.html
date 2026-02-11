@@ -40,40 +40,43 @@
   </div>
 
   <div class="mt-4 grid gap-3 md:grid-cols-3">
-    {% for field in fields %}
+    {% for field in flat_fields %}
+    {% set param_key = 'f_' ~ field.flat_key | replace('.', '__') %}
     <div class="rounded border border-slate-100 bg-slate-50 p-3">
-      <div class="text-xs font-semibold text-slate-500">{{ field.label or field.key }}</div>
-      {% if field.is_array %}
+      <div class="text-xs font-semibold text-slate-500">{{ field.flat_label }}</div>
+      {% if field.type == 'group' and field.is_array %}
+        <input name="{{ param_key }}" value="{{ query.get(param_key, '') }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-1 text-sm" placeholder="含む値" />
+      {% elif field.is_array %}
         {% if field.type == 'enum' %}
-        <select name="f_{{ field.key }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-1 text-sm">
+        <select name="{{ param_key }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-1 text-sm">
           <option value="">指定なし</option>
           {% for option in field.enum %}
-          <option value="{{ option }}" {% if query.get('f_' ~ field.key) == option %}selected{% endif %}>{{ option }}</option>
+          <option value="{{ option }}" {% if query.get(param_key) == option %}selected{% endif %}>{{ option }}</option>
           {% endfor %}
         </select>
         {% else %}
-        <input name="f_{{ field.key }}" value="{{ query.get('f_' ~ field.key, '') }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-1 text-sm" placeholder="含む値" />
+        <input name="{{ param_key }}" value="{{ query.get(param_key, '') }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-1 text-sm" placeholder="含む値" />
         {% endif %}
       {% elif field.type in ['number', 'integer'] %}
         <div class="mt-2 grid grid-cols-2 gap-2">
-          <input name="f_{{ field.key }}_min" value="{{ query.get('f_' ~ field.key ~ '_min', '') }}" class="w-full rounded border border-slate-300 px-2 py-1 text-sm" placeholder="min" />
-          <input name="f_{{ field.key }}_max" value="{{ query.get('f_' ~ field.key ~ '_max', '') }}" class="w-full rounded border border-slate-300 px-2 py-1 text-sm" placeholder="max" />
+          <input name="{{ param_key }}_min" value="{{ query.get(param_key ~ '_min', '') }}" class="w-full rounded border border-slate-300 px-2 py-1 text-sm" placeholder="min" />
+          <input name="{{ param_key }}_max" value="{{ query.get(param_key ~ '_max', '') }}" class="w-full rounded border border-slate-300 px-2 py-1 text-sm" placeholder="max" />
         </div>
       {% elif field.type == 'boolean' %}
-        <select name="f_{{ field.key }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-1 text-sm">
-          <option value="" {% if query.get('f_' ~ field.key, '') == '' %}selected{% endif %}>指定なし</option>
-          <option value="true" {% if query.get('f_' ~ field.key) == 'true' %}selected{% endif %}>true</option>
-          <option value="false" {% if query.get('f_' ~ field.key) == 'false' %}selected{% endif %}>false</option>
+        <select name="{{ param_key }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-1 text-sm">
+          <option value="" {% if query.get(param_key, '') == '' %}selected{% endif %}>指定なし</option>
+          <option value="true" {% if query.get(param_key) == 'true' %}selected{% endif %}>true</option>
+          <option value="false" {% if query.get(param_key) == 'false' %}selected{% endif %}>false</option>
         </select>
       {% elif field.type == 'enum' %}
-        <select name="f_{{ field.key }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-1 text-sm">
+        <select name="{{ param_key }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-1 text-sm">
           <option value="">指定なし</option>
           {% for option in field.enum %}
-          <option value="{{ option }}" {% if query.get('f_' ~ field.key) == option %}selected{% endif %}>{{ option }}</option>
+          <option value="{{ option }}" {% if query.get(param_key) == option %}selected{% endif %}>{{ option }}</option>
           {% endfor %}
         </select>
       {% else %}
-        <input name="f_{{ field.key }}" value="{{ query.get('f_' ~ field.key, '') }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-1 text-sm" placeholder="含む値" />
+        <input name="{{ param_key }}" value="{{ query.get(param_key, '') }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-1 text-sm" placeholder="含む値" />
       {% endif %}
     </div>
     {% endfor %}
@@ -90,8 +93,8 @@
     <thead class="bg-slate-100 text-left">
       <tr>
         <th class="px-4 py-3">送信日時</th>
-        {% for field in fields %}
-        <th class="px-4 py-3">{{ field.label or field.key }}</th>
+        {% for field in flat_fields %}
+        <th class="px-4 py-3">{{ field.flat_label }}</th>
         {% endfor %}
         <th class="px-4 py-3">操作</th>
       </tr>
@@ -113,7 +116,7 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="{{ fields | length + 2 }}" class="px-4 py-6 text-center text-slate-500">該当データがありません。</td>
+        <td colspan="{{ flat_fields | length + 2 }}" class="px-4 py-6 text-center text-slate-500">該当データがありません。</td>
       </tr>
       {% endfor %}
     </tbody>

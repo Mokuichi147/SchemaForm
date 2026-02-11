@@ -137,6 +137,16 @@
         </div>
       </div>
     </div>
+
+    <div data-role="group-children" class="mt-3 hidden">
+      <div class="ml-4 rounded border border-slate-200 bg-white p-4">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold text-slate-500">子フィールド</span>
+          <button type="button" data-action="add-child" class="rounded border border-slate-300 px-2 py-1 text-xs">子フィールド追加</button>
+        </div>
+        <div class="children-list mt-2 space-y-3"></div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -154,6 +164,7 @@
       <button type="button" class="type-option rounded border border-slate-300 px-3 py-2 text-sm" data-type="boolean">真偽</button>
       <button type="button" class="type-option rounded border border-slate-300 px-3 py-2 text-sm" data-type="enum">選択肢</button>
       <button type="button" class="type-option rounded border border-slate-300 px-3 py-2 text-sm" data-type="file">ファイル</button>
+      <button type="button" class="type-option rounded border border-slate-300 px-3 py-2 text-sm" data-type="group">グループ</button>
     </div>
     <div class="mt-4 flex justify-end">
       <button type="button" id="close-type-modal" class="rounded border border-slate-300 px-3 py-2 text-sm">キャンセル</button>
@@ -181,6 +192,7 @@
     boolean: "真偽",
     enum: "選択肢",
     file: "ファイル",
+    group: "グループ",
   };
 
   const defaultField = {
@@ -197,12 +209,18 @@
     is_array: false,
     items_type: "",
     multiline: false,
+    children: [],
   };
+
+  let pendingAddTarget = null;
 
   function normalizeField(raw) {
     const field = { ...defaultField, ...raw };
     if (!Array.isArray(field.enum)) {
       field.enum = [];
+    }
+    if (!Array.isArray(field.children)) {
+      field.children = [];
     }
     return field;
   }
@@ -278,22 +296,26 @@
   function applyVisibility(row) {
     const type = row.querySelector('[data-field="type"]').value;
     const isArray = row.querySelector('[data-field="is_array"]').checked;
+    const isGroup = type === "group";
     const showEnum = type === "enum";
     const showMinMax = type === "number" || type === "integer";
     const showFormat = type === "string";
     const showMultiline = type === "string";
     row.querySelector('[data-role="enum"]').classList.toggle("hidden", !showEnum);
     row.querySelector('[data-role="minmax"]').classList.toggle("hidden", !showMinMax);
-    row.querySelector('[data-role="format"]').classList.toggle("hidden", !showFormat);
-    row.querySelector('[data-role="placeholder"]').classList.toggle("hidden", !showFormat);
-    row.querySelector('[data-role="multiline"]').classList.toggle("hidden", !showMultiline);
+    row.querySelector('[data-role="format"]').classList.toggle("hidden", isGroup || !showFormat);
+    row.querySelector('[data-role="placeholder"]').classList.toggle("hidden", isGroup || !showFormat);
+    row.querySelector('[data-role="multiline"]').classList.toggle("hidden", isGroup || !showMultiline);
+    row.querySelector('[data-role="group-children"]').classList.toggle("hidden", !isGroup);
 
     if (isArray && type === "file") {
       row.querySelector('[data-role="format"]').classList.add("hidden");
       row.querySelector('[data-role="placeholder"]').classList.add("hidden");
     }
 
-    applyMultiline(row);
+    if (!isGroup) {
+      applyMultiline(row);
+    }
   }
 
   function readRow(row) {
@@ -306,7 +328,7 @@
       .map((value) => value.trim())
       .filter((value) => value.length > 0);
 
-    return {
+    const result = {
       key: get("key").value.trim(),
       label: get("label").value.trim(),
       type,
@@ -320,17 +342,42 @@
       is_array: isArray,
       items_type: isArray ? type : "",
       multiline: get("multiline").checked,
+      children: [],
     };
+
+    if (type === "group") {
+      const childrenList = row.querySelector(".children-list");
+      if (childrenList) {
+        const childRows = Array.from(childrenList.querySelectorAll(":scope > .field-row"));
+        result.children = childRows.map((cr) => readRow(cr));
+      }
+    }
+
+    return result;
+  }
+
+  function readFieldsFromContainer(container) {
+    const rows = Array.from(container.querySelectorAll(":scope > .field-row"));
+    return rows.map((row) => readRow(row));
   }
 
   function updateFieldsJson() {
-    const rows = Array.from(fieldList.querySelectorAll(".field-row"));
-    const fields = rows.map((row) => readRow(row));
+    const fields = readFieldsFromContainer(fieldList);
     fieldsInput.value = JSON.stringify(fields);
   }
 
+  function initSortable(container) {
+    if (window.Sortable) {
+      new Sortable(container, {
+        animation: 150,
+        handle: ".drag-handle",
+        onSort: updateFieldsJson,
+      });
+    }
+  }
+
   function attachRowEvents(row) {
-    row.querySelectorAll("input, select, textarea").forEach((input) => {
+    row.querySelectorAll(":scope > .mt-3 input, :scope > .mt-3 select, :scope > .mt-3 textarea, :scope > div > div > .flex input").forEach((input) => {
       input.addEventListener("change", () => {
         applyVisibility(row);
         updateFieldsJson();
@@ -343,10 +390,19 @@
       row.remove();
       updateFieldsJson();
     });
+    const addChildBtn = row.querySelector('[data-action="add-child"]');
+    if (addChildBtn) {
+      addChildBtn.addEventListener("click", () => {
+        pendingAddTarget = row.querySelector(".children-list");
+        typeModal.classList.remove("hidden");
+        typeModal.classList.add("flex");
+      });
+    }
     applyVisibility(row);
   }
 
-  function addRow(field) {
+  function addRow(field, container) {
+    const targetContainer = container || fieldList;
     const row = template.content.firstElementChild.cloneNode(true);
     const normalized = ensureKey(normalizeField(field));
     setValue(row, "key", normalized.key);
@@ -363,10 +419,19 @@
     setValue(row, "multiline", normalized.multiline);
 
     attachRowEvents(row);
-    fieldList.appendChild(row);
+    targetContainer.appendChild(row);
+
+    if (normalized.type === "group" && normalized.children && normalized.children.length > 0) {
+      const childrenList = row.querySelector(".children-list");
+      for (const child of normalized.children) {
+        addRow(child, childrenList);
+      }
+      initSortable(childrenList);
+    }
   }
 
   addButton.addEventListener("click", () => {
+    pendingAddTarget = null;
     if (typeModal) {
       typeModal.classList.remove("hidden");
       typeModal.classList.add("flex");
@@ -375,6 +440,7 @@
 
   if (closeTypeModal) {
     closeTypeModal.addEventListener("click", () => {
+      pendingAddTarget = null;
       typeModal.classList.add("hidden");
       typeModal.classList.remove("flex");
     });
@@ -383,7 +449,13 @@
   document.querySelectorAll(".type-option").forEach((button) => {
     button.addEventListener("click", () => {
       const selectedType = button.dataset.type || "string";
-      addRow({ ...defaultField, type: selectedType });
+      const target = pendingAddTarget || fieldList;
+      addRow({ ...defaultField, type: selectedType }, target);
+      if (pendingAddTarget && window.Sortable && !pendingAddTarget._sortableInitialized) {
+        initSortable(pendingAddTarget);
+        pendingAddTarget._sortableInitialized = true;
+      }
+      pendingAddTarget = null;
       updateFieldsJson();
       typeModal.classList.add("hidden");
       typeModal.classList.remove("flex");
@@ -396,13 +468,7 @@
 
   updateFieldsJson();
 
-  if (window.Sortable) {
-    new Sortable(fieldList, {
-      animation: 150,
-      handle: ".drag-handle",
-      onSort: updateFieldsJson,
-    });
-  }
+  initSortable(fieldList);
 
   document.querySelector("form").addEventListener("submit", () => {
     updateFieldsJson();
