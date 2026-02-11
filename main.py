@@ -162,6 +162,10 @@ def new_ulid() -> str:
     return getattr(value, "str", str(value))
 
 
+def new_short_id() -> str:
+    return secrets.token_urlsafe(8)
+
+
 def generate_field_key(existing: set[str]) -> str:
     while True:
         candidate = f"f_{secrets.token_hex(6)}"
@@ -1243,7 +1247,7 @@ async def create_form(request: Request, _: Any = Depends(admin_guard)) -> HTMLRe
 
     schema, field_order = schema_from_fields(fields)
     form_id = new_ulid()
-    public_id = new_ulid()
+    public_id = new_short_id()
     now = now_utc()
     STORAGE.forms.create_form(
         {
@@ -1637,7 +1641,7 @@ async def api_create_form(request: Request) -> JSONResponse:
     field_order = normalize_field_order(schema, payload.get("field_order"))
 
     form_id = new_ulid()
-    public_id = new_ulid()
+    public_id = new_short_id()
     now = now_utc()
     STORAGE.forms.create_form(
         {
