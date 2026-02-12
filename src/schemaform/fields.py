@@ -25,21 +25,55 @@ def flatten_fields(
     return result
 
 
-def _build_key_label_map(children: list[dict[str, Any]]) -> dict[str, str]:
-    mapping: dict[str, str] = {}
+def _build_child_map(children: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    mapping: dict[str, dict[str, Any]] = {}
     for child in children:
-        mapping[child["key"]] = child.get("label") or child["key"]
+        mapping[child["key"]] = child
     return mapping
+
+
+def _label_for_field(field: dict[str, Any], fallback_key: str) -> str:
+    return field.get("label") or field.get("key") or fallback_key
+
+
+def _format_value_by_field(value: Any, field: dict[str, Any]) -> Any:
+    if field.get("type") != "group":
+        return value
+    children = field.get("children") or []
+    if field.get("is_array"):
+        if not isinstance(value, list):
+            return value
+        return [
+            _format_group_item(item, children)
+            if isinstance(item, dict)
+            else item
+            for item in value
+        ]
+    if isinstance(value, dict):
+        return _format_group_item(value, children)
+    return value
+
+
+def _format_group_item(item: dict[str, Any], children: list[dict[str, Any]]) -> dict[str, Any]:
+    child_map = _build_child_map(children)
+    formatted: dict[str, Any] = {}
+    for key, raw_value in item.items():
+        child = child_map.get(key)
+        if child:
+            label = _label_for_field(child, key)
+            formatted[label] = _format_value_by_field(raw_value, child)
+        else:
+            formatted[key] = raw_value
+    return formatted
 
 
 def format_array_group_value(value: Any, children: list[dict[str, Any]]) -> str:
     if not value or not isinstance(value, list):
         return ""
-    key_map = _build_key_label_map(children)
-    result: list[dict[str, Any]] = []
+    result: list[Any] = []
     for item in value:
         if isinstance(item, dict):
-            result.append({key_map.get(k, k): v for k, v in item.items()})
+            result.append(_format_group_item(item, children))
         else:
             result.append(item)
     return dumps_json(result)
