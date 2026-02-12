@@ -6,7 +6,7 @@
     <p class="text-sm text-slate-600">{{ form.name }} の送信内容を確認します。</p>
   </div>
   <div class="flex gap-2">
-    <a href="/admin/forms/{{ form.id }}" class="rounded border border-slate-300 px-3 py-2 text-sm">フォーム編集</a>
+    <a href="/f/{{ form.public_id }}" class="rounded border border-slate-300 px-3 py-2 text-sm">入力ページ</a>
     <a href="/admin/forms/{{ form.id }}/export?{{ build_query(query, format='csv', page=None) }}" class="rounded border border-slate-300 px-3 py-2 text-sm">CSV</a>
     <a href="/admin/forms/{{ form.id }}/export?{{ build_query(query, format='tsv', page=None) }}" class="rounded border border-slate-300 px-3 py-2 text-sm">TSV</a>
   </div>
