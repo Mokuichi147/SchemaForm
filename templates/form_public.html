@@ -33,7 +33,8 @@
             {{ render_field(child, form_name ~ ".__INDEX__.", inactive) }}
             {% endfor %}
           </div>
-          <div class="mt-2 flex justify-end">
+          <div class="mt-2 flex items-center justify-end gap-2">
+            <span class="group-item-order text-[11px] text-slate-500"></span>
             <button type="button" class="remove-group-item rounded border border-rose-300 px-2 py-1 text-xs text-rose-600" {% if inactive %}disabled{% endif %}>削除</button>
           </div>
         </div>
@@ -222,12 +223,25 @@
     const addButton = block.querySelector(".add-group-item");
     let counter = 0;
 
+    function refreshGroupItemOrder() {
+      const entries = Array.from(list.children).filter((el) => el.classList.contains("array-group-entry"));
+      const total = entries.length;
+      entries.forEach((entry, index) => {
+        const orderEl = entry.querySelector(".group-item-order");
+        if (!orderEl) return;
+        orderEl.textContent = `${index + 1}/${total}`;
+      });
+    }
+
     function addGroupItem() {
       const node = template.content.firstElementChild.cloneNode(true);
       const idx = counter++;
       node.innerHTML = node.innerHTML.replaceAll("__INDEX__", String(idx));
       const removeButton = node.querySelector(".remove-group-item");
-      removeButton.addEventListener("click", () => node.remove());
+      removeButton.addEventListener("click", () => {
+        node.remove();
+        refreshGroupItemOrder();
+      });
       node.querySelectorAll("input[data-picker]").forEach(initPicker);
       node.querySelectorAll(".array-field").forEach((af) => {
         const afTemplate = af.querySelector("template");
@@ -247,6 +261,7 @@
         addArrayItem();
       });
       list.appendChild(node);
+      refreshGroupItemOrder();
     }
 
     addButton.addEventListener("click", addGroupItem);
