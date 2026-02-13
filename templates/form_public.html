@@ -64,9 +64,19 @@
 
 {% else %}
   {# 通常フィールド（非グループ） #}
+  {% set ns = namespace(fw="max-w-md") %}
+  {% if field.type in ["number", "integer"] %}
+    {% set ns.fw = "max-w-[10rem]" %}
+  {% elif picker in ["date", "time"] %}
+    {% set ns.fw = "max-w-[11rem]" %}
+  {% elif picker %}
+    {% set ns.fw = "max-w-xs" %}
+  {% elif field.type == "enum" or field_input_type(field) in ["email", "url"] %}
+    {% set ns.fw = "max-w-sm" %}
+  {% endif %}
   <div class="py-2 lg:py-3">
-    <div class="lg:grid lg:grid-cols-12 lg:items-start {{ 'lg:gap-3' if is_nested else 'lg:gap-4' }}">
-      <div class="{{ 'lg:col-span-2' if is_nested else 'lg:col-span-3' }}">
+    <div class="lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
+      <div class="lg:col-span-3">
         <label class="block text-sm font-semibold leading-6">
           {{ field.label or field.key }}
           {% if field.required %}
@@ -78,7 +88,7 @@
         {% endif %}
       </div>
 
-      <div class="{{ 'lg:col-span-10' if is_nested else 'lg:col-span-9' }}">
+      <div class="lg:col-span-9">
         {% if field.is_array %}
           {% if field.type == "file" %}
             <input type="file" name="{{ form_name }}" multiple class="mt-1 w-full rounded border border-slate-300 px-2 py-2 lg:mt-0" {% if inactive %}disabled{% endif %} />
@@ -113,7 +123,7 @@
           {% endif %}
         {% else %}
           {% if field.type == "enum" %}
-          <select name="{{ form_name }}" class="mt-1 w-full rounded border border-slate-300 px-2 py-2 text-sm lg:mt-0" {% if field.required %}required{% endif %} {% if inactive %}disabled{% endif %}>
+          <select name="{{ form_name }}" class="mt-1 w-full {{ ns.fw }} rounded border border-slate-300 px-2 py-2 text-sm lg:mt-0" {% if field.required %}required{% endif %} {% if inactive %}disabled{% endif %}>
             <option value="">選択してください</option>
             {% for option in field.enum %}
             <option value="{{ option }}">{{ option }}</option>
@@ -127,11 +137,11 @@
           {% elif field.type == "file" %}
           <input type="file" name="{{ form_name }}" class="mt-1 w-full rounded border border-slate-300 px-2 py-2 lg:mt-0" {% if field.required %}required{% endif %} {% if inactive %}disabled{% endif %} />
           {% elif field.type in ["number", "integer"] %}
-          <input type="number" name="{{ form_name }}" class="mt-1 w-full rounded border border-slate-300 px-2 py-2 text-sm lg:mt-0" {% if field.required %}required{% endif %} {% if inactive %}disabled{% endif %} />
+          <input type="number" name="{{ form_name }}" class="mt-1 w-full {{ ns.fw }} rounded border border-slate-300 px-2 py-2 text-sm lg:mt-0" {% if field.required %}required{% endif %} {% if inactive %}disabled{% endif %} />
           {% elif field.multiline %}
           <textarea name="{{ form_name }}" placeholder="{{ field.placeholder }}" rows="4" class="mt-1 w-full rounded border border-slate-300 px-2 py-2 text-sm lg:mt-0" {% if field.required %}required{% endif %} {% if inactive %}disabled{% endif %}></textarea>
           {% else %}
-          <input type="{{ field_input_type(field) }}" name="{{ form_name }}" placeholder="{{ field.placeholder }}" class="mt-1 w-full rounded border border-slate-300 px-2 py-2 text-sm lg:mt-0" {% if picker %}data-picker="{{ picker }}"{% endif %} {% if field.required %}required{% endif %} {% if inactive %}disabled{% endif %} />
+          <input type="{{ field_input_type(field) }}" name="{{ form_name }}" placeholder="{{ field.placeholder }}" class="mt-1 w-full {{ ns.fw }} rounded border border-slate-300 px-2 py-2 text-sm lg:mt-0" {% if picker %}data-picker="{{ picker }}"{% endif %} {% if field.required %}required{% endif %} {% if inactive %}disabled{% endif %} />
           {% endif %}
         {% endif %}
       </div>
