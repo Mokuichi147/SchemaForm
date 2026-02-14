@@ -53,7 +53,7 @@
             {{ render_field(child, form_name ~ ".__INDEX__.", inactive, depth + 1) }}
             {% endfor %}
           </div>
-          <div class="group-item-meta mt-2 pb-2 flex items-center justify-end gap-2">
+          <div class="group-item-meta mt-2 pb-2 pr-2 flex items-center justify-end gap-2">
             <span data-role="group-item-order" class="group-item-order text-[11px] text-slate-500"></span>
             <button type="button" class="remove-group-item shrink-0 whitespace-nowrap rounded border border-rose-300 px-2 py-1 text-xs text-rose-600" {% if inactive %}disabled{% endif %}>削除</button>
           </div>
@@ -198,6 +198,10 @@
 </div>
 
 <style>
+  .array-group-entry .sf-field-input-col {
+    padding-right: 0.5rem;
+  }
+
   @media (min-width: 1024px) {
     .sf-field-input-col {
       margin-left: calc(var(--sf-depth-offset, 0px) * -1);
