@@ -1,13 +1,32 @@
 {% extends "base.html" %}
 {% block content %}
 
-{% macro render_field(field, prefix, inactive) %}
+{% macro render_field(field, prefix, inactive, depth=0) %}
 {% set form_name = prefix ~ field.key %}
 {% set picker = field_picker(field) %}
-{% set is_nested = prefix != "" %}
-{% set nested_indent_class = "border-l-2 border-slate-200 pl-3 pr-0 pt-2 pb-0" %}
-{% set group_container_class = "rounded border border-slate-200 bg-white p-3" if not is_nested else nested_indent_class %}
-{% set array_entry_class = "rounded border border-slate-100 bg-slate-50 px-2 pt-2 pb-0" if not is_nested else nested_indent_class %}
+{% set depth_mod = depth % 6 %}
+{% if depth_mod == 0 %}
+  {% set indent_border_color = "border-slate-300" %}
+  {% set entry_bg_class = "bg-slate-50/40" %}
+{% elif depth_mod == 1 %}
+  {% set indent_border_color = "border-sky-300" %}
+  {% set entry_bg_class = "bg-sky-50" %}
+{% elif depth_mod == 2 %}
+  {% set indent_border_color = "border-emerald-300" %}
+  {% set entry_bg_class = "bg-emerald-50" %}
+{% elif depth_mod == 3 %}
+  {% set indent_border_color = "border-amber-300" %}
+  {% set entry_bg_class = "bg-amber-50" %}
+{% elif depth_mod == 4 %}
+  {% set indent_border_color = "border-rose-300" %}
+  {% set entry_bg_class = "bg-rose-50" %}
+{% else %}
+  {% set indent_border_color = "border-violet-300" %}
+  {% set entry_bg_class = "bg-violet-50" %}
+{% endif %}
+{% set nested_indent_class = "border-l-2 " ~ indent_border_color ~ " pl-3 pr-0 pt-2 pb-0" %}
+{% set group_container_class = nested_indent_class %}
+{% set array_entry_class = "border-l-2 " ~ indent_border_color ~ " " ~ entry_bg_class ~ " pl-3 pr-0 pt-2 pb-0" %}
 
 {% if field.type == "group" %}
   {% if field.is_array %}
@@ -31,7 +50,7 @@
         <div class="array-group-entry {{ array_entry_class }}">
           <div class="space-y-2">
             {% for child in field.children %}
-            {{ render_field(child, form_name ~ ".__INDEX__.", inactive) }}
+            {{ render_field(child, form_name ~ ".__INDEX__.", inactive, depth + 1) }}
             {% endfor %}
           </div>
           <div class="mt-2 pb-2 flex items-center justify-end gap-2">
@@ -56,7 +75,7 @@
     {% endif %}
     <div class="mt-2 space-y-3">
       {% for child in field.children %}
-      {{ render_field(child, form_name ~ ".", inactive) }}
+      {{ render_field(child, form_name ~ ".", inactive, depth + 1) }}
       {% endfor %}
     </div>
   </div>
@@ -168,7 +187,7 @@
 
   <form method="post" class="mt-5 space-y-3" enctype="multipart/form-data">
     {% for field in fields %}
-    {{ render_field(field, "", inactive) }}
+    {{ render_field(field, "", inactive, 0) }}
     {% endfor %}
 
     <button type="submit" class="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white" {% if inactive %}disabled{% endif %}>送信する</button>
