@@ -36,7 +36,7 @@
           </div>
           <div class="mt-2 pb-2 flex items-center justify-end gap-2">
             <span class="group-item-order text-[11px] text-slate-500"></span>
-            <button type="button" class="remove-group-item rounded border border-rose-300 px-2 py-1 text-xs text-rose-600" {% if inactive %}disabled{% endif %}>削除</button>
+            <button type="button" class="remove-group-item shrink-0 whitespace-nowrap rounded border border-rose-300 px-2 py-1 text-xs text-rose-600" {% if inactive %}disabled{% endif %}>削除</button>
           </div>
         </div>
       </template>
@@ -116,7 +116,7 @@
                   {% else %}
                   <input type="text" name="{{ form_name }}" placeholder="{{ field.placeholder }}" class="w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if picker %}data-picker="{{ picker }}"{% endif %} {% if inactive %}disabled{% endif %} />
                   {% endif %}
-                  <button type="button" class="remove-item rounded border border-rose-300 px-2 py-1 text-xs text-rose-600" {% if inactive %}disabled{% endif %}>削除</button>
+                  <button type="button" class="remove-item shrink-0 whitespace-nowrap rounded border border-rose-300 px-2 py-1 text-xs text-rose-600" {% if inactive %}disabled{% endif %}>削除</button>
                 </div>
               </template>
             </div>
