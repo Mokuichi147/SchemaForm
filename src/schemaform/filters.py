@@ -289,11 +289,11 @@ def csv_headers_and_rows(
     submissions: list[dict[str, Any]],
     file_names: dict[str, str],
 ) -> tuple[list[str], list[list[str]]]:
-    flat = flatten_fields(fields)
+    flat = flatten_fields(fields, expand_rows_for_group_arrays=True)
     max_lengths: dict[str, int] = {}
 
     for field in flat:
-        if field.get("is_array"):
+        if field.get("is_array") and field.get("type") != "group":
             fk = field["flat_key"]
             max_len = 1
             for submission in submissions:
@@ -306,7 +306,9 @@ def csv_headers_and_rows(
     for field in flat:
         fk = field["flat_key"]
         base = field["flat_label"]
-        if field.get("is_array"):
+        if field.get("type") == "group" and field.get("is_array"):
+            headers.append(base)
+        elif field.get("is_array"):
             for idx in range(max_lengths.get(fk, 1)):
                 headers.append(f"{base}_{idx}")
         else:
