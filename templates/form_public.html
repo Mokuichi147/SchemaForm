@@ -43,9 +43,17 @@
     <div class="mt-1 text-xs leading-relaxed text-slate-500">{{ field.description }}</div>
     {% endif %}
     <div class="array-group mt-2" data-prefix="{{ form_name }}" data-index-token="{{ index_token }}">
-      <div class="array-group-items space-y-3"></div>
-      <div class="mt-2 flex justify-start">
-        <button type="button" class="add-group-item rounded border border-slate-300 px-3 py-1 text-xs" {% if inactive %}disabled{% endif %}>追加</button>
+      <div class="array-group-items"></div>
+      <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <button type="button" class="group-prev rounded border border-slate-300 px-2 py-1 text-xs" {% if inactive %}disabled{% endif %}>前へ</button>
+          <span data-role="group-pagination" class="min-w-[3.5rem] text-center text-xs text-slate-500">0/0</span>
+          <button type="button" class="group-next rounded border border-slate-300 px-2 py-1 text-xs" {% if inactive %}disabled{% endif %}>次へ</button>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" class="add-group-item rounded border border-slate-300 px-3 py-1 text-xs" {% if inactive %}disabled{% endif %}>追加</button>
+          <button type="button" class="remove-group-item-current whitespace-nowrap rounded border border-rose-300 px-2 py-1 text-xs text-rose-600" {% if inactive %}disabled{% endif %}>削除</button>
+        </div>
       </div>
       <template>
         <div class="array-group-entry {{ array_entry_class }}">
@@ -53,10 +61,6 @@
             {% for child in field.children %}
             {{ render_field(child, form_name ~ "." ~ index_token ~ ".", inactive, depth + 1) }}
             {% endfor %}
-          </div>
-          <div class="group-item-meta mt-2 pb-2 pr-2 flex items-center justify-end gap-2">
-            <span data-role="group-item-order" class="group-item-order text-[11px] text-slate-500"></span>
-            <button type="button" class="remove-group-item shrink-0 whitespace-nowrap rounded border border-rose-300 px-2 py-1 text-xs text-rose-600" {% if inactive %}disabled{% endif %}>削除</button>
           </div>
         </div>
       </template>
@@ -271,19 +275,47 @@
     const template = block.querySelector("template");
     const list = block.querySelector(".array-group-items");
     const addButton = block.querySelector(".add-group-item");
+    const removeCurrentButton = block.querySelector(".remove-group-item-current");
+    const prevButton = block.querySelector(".group-prev");
+    const nextButton = block.querySelector(".group-next");
+    const paginationLabel = block.querySelector("[data-role='group-pagination']");
     const indexToken = block.dataset.indexToken || "__INDEX__";
     let counter = 0;
+    let currentIndex = 0;
     if (!template || !list || !addButton) return;
 
-    function refreshGroupItemOrder() {
-      const entries = Array.from(list.children).filter((el) => el.classList.contains("array-group-entry"));
+    function getEntries() {
+      return Array.from(list.children).filter((el) => el.classList.contains("array-group-entry"));
+    }
+
+    function refreshGroupState() {
+      const entries = getEntries();
       const total = entries.length;
+      if (total === 0) {
+        currentIndex = 0;
+      } else if (currentIndex >= total) {
+        currentIndex = total - 1;
+      } else if (currentIndex < 0) {
+        currentIndex = 0;
+      }
+
       entries.forEach((entry, index) => {
-        const meta = Array.from(entry.children).find((el) => el.classList.contains("group-item-meta"));
-        const orderEl = meta ? meta.querySelector("[data-role='group-item-order']") : null;
-        if (!orderEl) return;
-        orderEl.textContent = `${index + 1}/${total}`;
+        entry.classList.toggle("hidden", index !== currentIndex);
       });
+
+      if (paginationLabel) {
+        paginationLabel.textContent = total > 0 ? `${currentIndex + 1}/${total}` : "0/0";
+      }
+      const controlsLocked = addButton.disabled;
+      if (prevButton) {
+        prevButton.disabled = controlsLocked || total <= 1 || currentIndex <= 0;
+      }
+      if (nextButton) {
+        nextButton.disabled = controlsLocked || total <= 1 || currentIndex >= total - 1;
+      }
+      if (removeCurrentButton) {
+        removeCurrentButton.disabled = controlsLocked || total <= 0;
+      }
     }
 
     function bootstrapNode(node) {
@@ -296,20 +328,38 @@
       const node = template.content.firstElementChild.cloneNode(true);
       const idx = counter++;
       node.innerHTML = node.innerHTML.replaceAll(indexToken, String(idx));
-      const meta = Array.from(node.children).find((el) => el.classList.contains("group-item-meta"));
-      const removeButton = meta ? meta.querySelector(".remove-group-item") : null;
-      if (removeButton) {
-        removeButton.addEventListener("click", () => {
-          node.remove();
-          refreshGroupItemOrder();
-        });
-      }
       bootstrapNode(node);
       list.appendChild(node);
-      refreshGroupItemOrder();
+      currentIndex = getEntries().length - 1;
+      refreshGroupState();
     }
 
     addButton.addEventListener("click", addGroupItem);
+    if (removeCurrentButton) {
+      removeCurrentButton.addEventListener("click", () => {
+        const entries = getEntries();
+        if (entries.length === 0) return;
+        const target = entries[currentIndex] || entries[entries.length - 1];
+        if (!target) return;
+        target.remove();
+        refreshGroupState();
+      });
+    }
+    if (prevButton) {
+      prevButton.addEventListener("click", () => {
+        if (currentIndex <= 0) return;
+        currentIndex -= 1;
+        refreshGroupState();
+      });
+    }
+    if (nextButton) {
+      nextButton.addEventListener("click", () => {
+        const total = getEntries().length;
+        if (currentIndex >= total - 1) return;
+        currentIndex += 1;
+        refreshGroupState();
+      });
+    }
     addGroupItem();
   }
 
