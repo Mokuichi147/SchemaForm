@@ -133,7 +133,7 @@
                     <option value="false">false</option>
                   </select>
                   {% elif field.type in ["number", "integer"] %}
-                  <input type="number" name="{{ form_name }}" class="w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if inactive %}disabled{% endif %} />
+                  <input type="number" name="{{ form_name }}" class="w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if field.type == "number" %}step="any"{% else %}step="1"{% endif %} {% if inactive %}disabled{% endif %} />
                   {% elif field.multiline %}
                   <textarea name="{{ form_name }}" placeholder="{{ field.placeholder }}" rows="3" class="w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if inactive %}disabled{% endif %}></textarea>
                   {% else %}
@@ -160,7 +160,7 @@
           {% elif field.type == "file" %}
           <input type="file" name="{{ form_name }}" class="mt-1 w-full rounded border border-slate-300 px-2 py-2 lg:mt-0" {% if field.required %}required{% endif %} {% if inactive %}disabled{% endif %} />
           {% elif field.type in ["number", "integer"] %}
-          <input type="number" name="{{ form_name }}" class="mt-1 w-full {{ ns.fw }} rounded border border-slate-300 px-2 py-2 text-sm lg:mt-0" {% if field.required %}required{% endif %} {% if inactive %}disabled{% endif %} />
+          <input type="number" name="{{ form_name }}" class="mt-1 w-full {{ ns.fw }} rounded border border-slate-300 px-2 py-2 text-sm lg:mt-0" {% if field.type == "number" %}step="any"{% else %}step="1"{% endif %} {% if field.required %}required{% endif %} {% if inactive %}disabled{% endif %} />
           {% elif field.multiline %}
           <textarea name="{{ form_name }}" placeholder="{{ field.placeholder }}" rows="4" class="mt-1 w-full rounded border border-slate-300 px-2 py-2 text-sm lg:mt-0" {% if field.required %}required{% endif %} {% if inactive %}disabled{% endif %}></textarea>
           {% else %}
