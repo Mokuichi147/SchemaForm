@@ -262,6 +262,78 @@
 </style>
 
 <script>
+  function preventSubmitOnEnter(form) {
+    if (!form) return;
+    let allowSubmitByButton = false;
+    let allowSubmitTimer = 0;
+
+    function markExplicitSubmit() {
+      allowSubmitByButton = true;
+      if (allowSubmitTimer) {
+        window.clearTimeout(allowSubmitTimer);
+      }
+      allowSubmitTimer = window.setTimeout(() => {
+        allowSubmitByButton = false;
+        allowSubmitTimer = 0;
+      }, 800);
+    }
+
+    function isSubmitControl(element) {
+      if (element instanceof HTMLButtonElement) {
+        const type = (element.getAttribute("type") || "submit").toLowerCase();
+        return type === "submit" && element.form === form;
+      }
+      if (element instanceof HTMLInputElement) {
+        const type = (element.type || "").toLowerCase();
+        return type === "submit" && element.form === form;
+      }
+      return false;
+    }
+
+    form.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const control = target.closest("button, input");
+      if (!(control instanceof HTMLElement)) return;
+      if (isSubmitControl(control)) {
+        markExplicitSubmit();
+      }
+    });
+
+    form.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+
+      if (target.tagName === "TEXTAREA" || target.isContentEditable) return;
+
+      if (isSubmitControl(target)) {
+        markExplicitSubmit();
+        return;
+      }
+
+      const isImeConfirm = event.isComposing || event.keyCode === 229 || event.which === 229;
+      if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement) {
+        event.preventDefault();
+        if (isImeConfirm) {
+          event.stopPropagation();
+        }
+      }
+    });
+
+    form.addEventListener("submit", (event) => {
+      if (!allowSubmitByButton) {
+        event.preventDefault();
+        return;
+      }
+      allowSubmitByButton = false;
+      if (allowSubmitTimer) {
+        window.clearTimeout(allowSubmitTimer);
+        allowSubmitTimer = 0;
+      }
+    });
+  }
+
   function initPicker(input) {
     if (!input) return;
     if (typeof flatpickr === "undefined") return;
@@ -573,6 +645,7 @@
     addGroupItem({ animate: false });
   }
 
+  preventSubmitOnEnter(document.querySelector("form[method='post'][enctype='multipart/form-data']"));
   document.querySelectorAll("input[data-picker]").forEach(initPicker);
   document.querySelectorAll(".array-field").forEach(initArrayFieldBlock);
   document.querySelectorAll(".array-group").forEach(initArrayGroupBlock);
