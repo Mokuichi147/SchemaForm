@@ -28,10 +28,40 @@
           el.textContent = formatter.format(date);
         });
       });
+
+      (() => {
+        const ua = navigator.userAgent;
+        const isIOS =
+          /iP(hone|ad|od)/.test(ua) ||
+          (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+        if (!isIOS) return;
+
+        let lastTouchEnd = 0;
+        document.addEventListener(
+          "touchend",
+          (event) => {
+            const now = Date.now();
+            if (now - lastTouchEnd <= 320) {
+              event.preventDefault();
+            }
+            lastTouchEnd = now;
+          },
+          { passive: false },
+        );
+      })();
     </script>
     <style>
       body {
         font-family: "BIZ UDPGothic", "Noto Sans JP", system-ui, sans-serif;
+      }
+
+      a,
+      button,
+      input,
+      select,
+      textarea,
+      label {
+        touch-action: manipulation;
       }
     </style>
   </head>
