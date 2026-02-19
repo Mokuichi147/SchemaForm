@@ -91,7 +91,6 @@
 {% else %}
   {# 通常フィールド（非グループ） #}
   {% set ns = namespace(fw="max-w-md") %}
-  {% set depth_offset_px = depth * 12 %}
   {% if field.type in ["number", "integer"] %}
     {% set ns.fw = "max-w-[10rem]" %}
   {% elif picker in ["date", "time"] %}
@@ -102,7 +101,7 @@
     {% set ns.fw = "max-w-sm" %}
   {% endif %}
   <div class="py-2 lg:py-3">
-    <div class="sf-field-row lg:grid lg:grid-cols-12 lg:items-start lg:gap-4" style="--sf-depth-offset: {{ depth_offset_px }}px;">
+    <div class="sf-field-row lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
       <div class="lg:col-span-3">
         <label class="block text-sm font-semibold leading-6">
           {{ field.label or field.key }}
@@ -111,7 +110,7 @@
           {% endif %}
         </label>
         {% if field.description %}
-        <div class="mt-0.5 text-xs leading-relaxed text-slate-500">{{ field.description }}</div>
+        <div class="mt-0.5 break-words text-xs leading-relaxed text-slate-500">{{ field.description }}</div>
         {% endif %}
       </div>
 
@@ -209,8 +208,7 @@
 
   @media (min-width: 1024px) {
     .sf-field-input-col {
-      margin-left: calc(var(--sf-depth-offset, 0px) * -1);
-      width: calc(100% + var(--sf-depth-offset, 0px));
+      min-width: 0;
     }
   }
 </style>
