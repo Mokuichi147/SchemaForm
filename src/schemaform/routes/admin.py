@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from schemaform.fields import flatten_fields
+from schemaform.master import build_master_display_candidates
 from schemaform.schema import (
     fields_from_schema,
     parse_fields_json,
@@ -45,18 +45,12 @@ def build_master_field_catalog(storage: Any, current_form_id: str | None = None)
         if not form_id or (current_form_id and form_id == current_form_id):
             continue
         master_forms.append({"id": form_id, "name": form.get("name") or form_id})
-        fields = fields_from_schema(form.get("schema_json", {}), form.get("field_order", []))
-        candidates: list[dict[str, str]] = []
-        for field in flatten_fields(fields, expand_rows_for_group_arrays=True):
-            if field.get("type") in {"group", "file"}:
-                continue
-            candidates.append(
-                {
-                    "key": field.get("flat_key", ""),
-                    "label": field.get("flat_label", field.get("flat_key", "")),
-                }
-            )
-        field_catalog[form_id] = candidates
+        exclude_form_ids = {current_form_id} if current_form_id else None
+        field_catalog[form_id] = build_master_display_candidates(
+            storage,
+            form_id,
+            exclude_form_ids=exclude_form_ids,
+        )
     return master_forms, field_catalog
 
 
