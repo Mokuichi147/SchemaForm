@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlencode
 
+import markupsafe
 from fastapi import FastAPI
 from fastapi.templating import Jinja2Templates
 
@@ -15,6 +17,11 @@ from schemaform.routes.api import router as api_router
 from schemaform.routes.public import router as public_router
 from schemaform.routes.submissions import router as submissions_router
 from schemaform.storage import init_storage
+
+
+def _tojson_attr(value: Any) -> markupsafe.Markup:
+    """JSON文字列をHTML属性に安全に埋め込めるようエスケープする。"""
+    return markupsafe.Markup(markupsafe.escape(json.dumps(value, ensure_ascii=False)))
 
 
 def field_input_type(field: dict[str, Any]) -> str:
@@ -110,6 +117,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
     app.state.templates = templates
 
+    templates.env.filters["tojson_attr"] = _tojson_attr
     templates.env.globals["field_input_type"] = field_input_type
     templates.env.globals["field_picker"] = field_picker
     templates.env.globals["field_file_accept"] = field_file_accept

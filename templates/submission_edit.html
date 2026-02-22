@@ -47,7 +47,7 @@
     {% if field.description %}
     <div class="mt-1 text-xs leading-relaxed text-slate-500">{{ field.description }}</div>
     {% endif %}
-    <div class="array-group mt-2" data-prefix="{{ form_name }}" data-index-token="{{ index_token }}" data-initial-items="{{ items | tojson | e }}">
+    <div class="array-group mt-2" data-prefix="{{ form_name }}" data-index-token="{{ index_token }}" data-initial-items="{{ items | tojson_attr }}">
       <div data-role="group-dots" class="group-dot-list mb-2 flex min-h-[0.75rem] items-center gap-1.5"></div>
       <div class="array-group-items"></div>
       <div class="mt-2 space-y-1">
@@ -132,7 +132,7 @@
               <input type="file" name="{{ form_name }}" multiple class="w-full rounded border border-slate-300 px-2 py-2" {% if file_accept %}accept="{{ file_accept }}"{% endif %} />
             </div>
           {% else %}
-            <div class="array-field mt-1 w-full {{ ns.fw }} lg:mt-0" data-key="{{ form_name }}" data-type="{{ field.type }}" data-picker="{{ picker }}" data-initial="{{ arr_values | tojson | e }}">
+            <div class="array-field mt-1 w-full {{ ns.fw }} lg:mt-0" data-key="{{ form_name }}" data-type="{{ field.type }}" data-picker="{{ picker }}" data-initial="{{ arr_values | tojson_attr }}">
               <div class="space-y-2 array-items"></div>
               <button type="button" class="add-item mt-1 rounded border border-slate-300 px-3 py-1 text-xs">追加</button>
               <template>
