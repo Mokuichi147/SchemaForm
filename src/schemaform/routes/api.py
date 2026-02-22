@@ -20,6 +20,7 @@ from schemaform.schema import (
     sanitize_form_output,
 )
 from schemaform.utils import new_short_id, new_ulid, now_utc, to_iso
+from schemaform.webhook import is_valid_webhook_url
 
 router = APIRouter()
 
@@ -44,6 +45,12 @@ async def api_create_form(request: Request) -> JSONResponse:
         raise HTTPException(status_code=400, detail="nameは必須です")
     field_order = normalize_field_order(schema, payload.get("field_order"))
 
+    webhook_url = str(payload.get("webhook_url", "")).strip()
+    if webhook_url and not is_valid_webhook_url(webhook_url):
+        raise HTTPException(status_code=400, detail="webhook_urlが不正です")
+    webhook_on_submit = bool(payload.get("webhook_on_submit"))
+    webhook_on_delete = bool(payload.get("webhook_on_delete"))
+
     form_id = new_ulid()
     public_id = new_short_id()
     now = now_utc()
@@ -56,6 +63,9 @@ async def api_create_form(request: Request) -> JSONResponse:
             "status": payload.get("status", "inactive"),
             "schema_json": schema,
             "field_order": field_order,
+            "webhook_url": webhook_url,
+            "webhook_on_submit": webhook_on_submit,
+            "webhook_on_delete": webhook_on_delete,
             "created_at": now,
             "updated_at": now,
         }
@@ -84,9 +94,20 @@ async def api_update_form(form_id: str, request: Request) -> JSONResponse:
         if not isinstance(schema, dict):
             raise HTTPException(status_code=400, detail="schema_jsonが不正です")
         updates["schema_json"] = schema
-        updates["field_order"] = normalize_field_order(schema, payload.get("field_order"))
+        updates["field_order"] = normalize_field_order(
+            schema, payload.get("field_order")
+        )
     if "status" in payload:
         updates["status"] = str(payload.get("status") or "inactive")
+    if "webhook_url" in payload:
+        webhook_url = str(payload.get("webhook_url", "")).strip()
+        if webhook_url and not is_valid_webhook_url(webhook_url):
+            raise HTTPException(status_code=400, detail="webhook_urlが不正です")
+        updates["webhook_url"] = webhook_url
+    if "webhook_on_submit" in payload:
+        updates["webhook_on_submit"] = bool(payload.get("webhook_on_submit"))
+    if "webhook_on_delete" in payload:
+        updates["webhook_on_delete"] = bool(payload.get("webhook_on_delete"))
     updates["updated_at"] = now_utc()
     updated = storage.forms.update_form(form_id, updates)
     return JSONResponse(sanitize_form_output(updated))
@@ -116,10 +137,22 @@ async def api_submit_form(public_id: str, request: Request) -> JSONResponse:
 
     submission_id = new_ulid()
     created_at = now_utc()
-    storage.submissions.create_submission(
-        {"id": submission_id, "form_id": form["id"], "data_json": data, "created_at": created_at}
+    submission = {
+        "id": submission_id,
+        "form_id": form["id"],
+        "data_json": data,
+        "created_at": created_at,
+    }
+    storage.submissions.create_submission(submission)
+
+    if form.get("webhook_url") and form.get("webhook_on_submit"):
+        from schemaform.webhook import send_webhook
+
+        await send_webhook(form["webhook_url"], "submit", form, submission)
+
+    return JSONResponse(
+        {"submission_id": submission_id, "created_at": to_iso(created_at)}
     )
-    return JSONResponse({"submission_id": submission_id, "created_at": to_iso(created_at)})
 
 
 @router.get("/api/forms/{form_id}/submissions", tags=["api/submissions"])
@@ -149,7 +182,8 @@ async def api_list_submissions(request: Request, form_id: str) -> JSONResponse:
                 for item in filtered
                 if (ensure_aware(item["created_at"]) < cursor_dt)
                 or (
-                    ensure_aware(item["created_at"]) == cursor_dt and item["id"] < cursor_id
+                    ensure_aware(item["created_at"]) == cursor_dt
+                    and item["id"] < cursor_id
                 )
             ]
         else:

@@ -36,8 +36,13 @@ async def save_upload(
     file_id = new_ulid()
     destination = settings.upload_dir / file_id
     content = await file_obj.read()
-    if settings.upload_max_bytes is not None and len(content) > settings.upload_max_bytes:
-        raise HTTPException(status_code=400, detail="ファイルサイズが上限を超えています")
+    if (
+        settings.upload_max_bytes is not None
+        and len(content) > settings.upload_max_bytes
+    ):
+        raise HTTPException(
+            status_code=400, detail="ファイルサイズが上限を超えています"
+        )
     destination.write_bytes(content)
     storage.files.create_file(
         {
@@ -118,7 +123,7 @@ async def submit_form(request: Request, public_id: str) -> HTMLResponse:
                     form_prefix = f"{form_key}."
                     for k in form_data:
                         if k.startswith(form_prefix):
-                            rest = k[len(form_prefix):]
+                            rest = k[len(form_prefix) :]
                             parts = rest.split(".", 1)
                             if parts[0].isdigit():
                                 indices.add(int(parts[0]))
@@ -207,14 +212,20 @@ async def submit_form(request: Request, public_id: str) -> HTMLResponse:
             },
         )
 
-    storage.submissions.create_submission(
-        {
-            "id": new_ulid(),
-            "form_id": form["id"],
-            "data_json": submission,
-            "created_at": now_utc(),
-        }
-    )
+    submission_id = new_ulid()
+    created_at = now_utc()
+    submission_record = {
+        "id": submission_id,
+        "form_id": form["id"],
+        "data_json": submission,
+        "created_at": created_at,
+    }
+    storage.submissions.create_submission(submission_record)
+
+    if form.get("webhook_url") and form.get("webhook_on_submit"):
+        from schemaform.webhook import send_webhook
+
+        await send_webhook(form["webhook_url"], "submit", form, submission_record)
 
     return templates.TemplateResponse(
         "submission_done.html",

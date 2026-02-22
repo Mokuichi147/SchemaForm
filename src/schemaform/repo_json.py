@@ -97,6 +97,9 @@ class JSONFormRepo(JSONRepoBase):
             "status": record.get("status", "inactive"),
             "schema_json": record.get("schema_json", {}),
             "field_order": record.get("field_order", []),
+            "webhook_url": record.get("webhook_url", ""),
+            "webhook_on_submit": record.get("webhook_on_submit", False),
+            "webhook_on_delete": record.get("webhook_on_delete", False),
             "created_at": parse_dt(record.get("created_at")),
             "updated_at": parse_dt(record.get("updated_at")),
         }
@@ -108,6 +111,11 @@ class JSONSubmissionRepo(JSONRepoBase):
             items = db.table("submissions").search(Query().form_id == form_id)
         submissions = [self._from_record(item) for item in items]
         return sorted(submissions, key=lambda x: x["created_at"], reverse=True)
+
+    def get_submission(self, submission_id: str) -> dict[str, Any] | None:
+        with self._db() as db:
+            items = db.table("submissions").search(Query().id == submission_id)
+        return self._from_record(items[0]) if items else None
 
     def create_submission(self, submission: dict[str, Any]) -> None:
         record = self._to_record(submission)

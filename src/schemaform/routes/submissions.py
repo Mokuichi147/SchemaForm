@@ -111,14 +111,18 @@ def build_submission_row_values(
         value = get_nested_value(data, flat_key)
 
         if field.get("type") == "group" and field.get("is_array"):
-            row_values.append(format_array_group_value(value, field.get("children", [])))
+            row_values.append(
+                format_array_group_value(value, field.get("children", []))
+            )
             continue
 
         if field.get("type") == "master":
             lookup = master_lookup_by_field.get(flat_key, {})
             if column["kind"] == "master_display":
                 row_values.append(
-                    render_master_display_text(value, lookup, str(column.get("display_key", "")))
+                    render_master_display_text(
+                        value, lookup, str(column.get("display_key", ""))
+                    )
                 )
             else:
                 row_values.append(render_master_display_text(value, lookup))
@@ -128,8 +132,12 @@ def build_submission_row_values(
     return row_values
 
 
-@router.get("/admin/forms/{form_id}/submissions", response_class=HTMLResponse, tags=["admin"])
-async def list_submissions(request: Request, form_id: str, _: Any = Depends(admin_guard)) -> HTMLResponse:
+@router.get(
+    "/admin/forms/{form_id}/submissions", response_class=HTMLResponse, tags=["admin"]
+)
+async def list_submissions(
+    request: Request, form_id: str, _: Any = Depends(admin_guard)
+) -> HTMLResponse:
     storage = request.app.state.storage
     templates = request.app.state.templates
     form = storage.forms.get_form(form_id)
@@ -157,9 +165,10 @@ async def list_submissions(request: Request, form_id: str, _: Any = Depends(admi
     end = start + page_size
     page_items = filtered[start:end]
 
-    display_columns, master_lookup_by_field = build_submission_display_columns(storage, fields)
+    display_columns, master_lookup_by_field = build_submission_display_columns(
+        storage, fields
+    )
     filter_fields = flatten_filter_fields(fields)
-    display_fields = [column["label"] for column in display_columns]
 
     display_rows = []
     for item in page_items:
@@ -186,7 +195,6 @@ async def list_submissions(request: Request, form_id: str, _: Any = Depends(admi
             "request": request,
             "form": form,
             "fields": fields,
-            "display_fields": display_fields,
             "display_columns": display_columns,
             "filter_fields": filter_fields,
             "rows": display_rows,
@@ -199,17 +207,35 @@ async def list_submissions(request: Request, form_id: str, _: Any = Depends(admi
     )
 
 
-@router.post("/admin/forms/{form_id}/submissions/{submission_id}/delete", tags=["admin"])
+@router.post(
+    "/admin/forms/{form_id}/submissions/{submission_id}/delete", tags=["admin"]
+)
 async def delete_submission(
     request: Request, form_id: str, submission_id: str, _: Any = Depends(admin_guard)
 ) -> RedirectResponse:
     storage = request.app.state.storage
+    form = storage.forms.get_form(form_id)
+    submission_data = storage.submissions.get_submission(submission_id)
+
     storage.submissions.delete_submission(submission_id)
+
+    if (
+        form
+        and submission_data
+        and form.get("webhook_url")
+        and form.get("webhook_on_delete")
+    ):
+        from schemaform.webhook import send_webhook
+
+        await send_webhook(form["webhook_url"], "delete", form, submission_data)
+
     return RedirectResponse(f"/admin/forms/{form_id}/submissions", status_code=303)
 
 
 @router.get("/admin/forms/{form_id}/export", tags=["admin"])
-async def export_submissions(request: Request, form_id: str, _: Any = Depends(admin_guard)) -> PlainTextResponse:
+async def export_submissions(
+    request: Request, form_id: str, _: Any = Depends(admin_guard)
+) -> PlainTextResponse:
     storage = request.app.state.storage
     form = storage.forms.get_form(form_id)
     if not form:
@@ -227,7 +253,9 @@ async def export_submissions(request: Request, form_id: str, _: Any = Depends(ad
     filtered = apply_filters(
         expanded_submissions, fields, dict(request.query_params), file_names=file_names
     )
-    display_columns, master_lookup_by_field = build_submission_display_columns(storage, fields)
+    display_columns, master_lookup_by_field = build_submission_display_columns(
+        storage, fields
+    )
     headers = [column["label"] for column in display_columns]
     rows = [
         build_submission_row_values(

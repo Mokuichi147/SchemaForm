@@ -58,6 +58,30 @@
     </div>
   </div>
 
+  <details class="mt-6 rounded border border-slate-200">
+    <summary class="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">高度な設定</summary>
+    <div class="space-y-4 border-t border-slate-200 px-4 py-4">
+      <div class="text-sm font-semibold text-slate-600">Webhook設定</div>
+      <div class="grid gap-4 md:grid-cols-2">
+        <div>
+          <label class="text-sm text-slate-600">Webhook URL</label>
+          <input name="webhook_url" value="{{ form.webhook_url if form else '' }}" type="url" placeholder="https://example.com/webhook" class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm" />
+          <p class="mt-1 text-xs text-slate-500">送信・削除時に通知を送るURL</p>
+        </div>
+        <div class="flex items-start gap-6 pt-6">
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="webhook_on_submit" {% if form and form.webhook_on_submit %}checked{% endif %} />
+            送信時に通知
+          </label>
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="webhook_on_delete" {% if form and form.webhook_on_delete %}checked{% endif %} />
+            削除時に通知
+          </label>
+        </div>
+      </div>
+    </div>
+  </details>
+
   <input type="hidden" name="fields_json" id="fields_json" value="" />
 
   <div class="flex flex-wrap gap-3">
