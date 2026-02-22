@@ -132,7 +132,7 @@
               <input type="file" name="{{ form_name }}" multiple class="w-full rounded border border-slate-300 px-2 py-2" {% if file_accept %}accept="{{ file_accept }}"{% endif %} />
             </div>
           {% else %}
-            <div class="array-field mt-1 w-full {{ ns.fw }} lg:mt-0" data-key="{{ form_name }}" data-type="{{ field.type }}" data-picker="{{ picker }}" data-initial='{{ arr_values | tojson }}'>
+            <div class="array-field mt-1 w-full {{ ns.fw }} lg:mt-0" data-key="{{ form_name }}" data-type="{{ field.type }}" data-picker="{{ picker }}" data-initial="{{ arr_values | tojson | e }}">
               <div class="space-y-2 array-items"></div>
               <button type="button" class="add-item mt-1 rounded border border-slate-300 px-3 py-1 text-xs">追加</button>
               <template>
@@ -762,21 +762,24 @@
       if (!data || typeof data !== "object") return;
       Object.entries(data).forEach(([key, value]) => {
         const fieldName = prefix + key;
-        if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-          fillGroupEntryValues(node, value, fieldName + ".");
-        } else if (Array.isArray(value)) {
-          // 配列フィールドのdata-initial属性を設定
-          const arrayBlock = node.querySelector(`.array-field[data-key="${fieldName}"]`);
+        if (Array.isArray(value)) {
+          // 配列フィールド（非グループ）のdata-initial属性を設定
+          const arrayBlock = node.querySelector('.array-field[data-key="' + fieldName + '"]');
           if (arrayBlock) {
             arrayBlock.dataset.initial = JSON.stringify(value);
+            return;
           }
           // ネストされた配列グループのdata-initial-items属性を設定
-          const groupBlock = node.querySelector(`.array-group[data-prefix="${fieldName}"]`);
+          const groupBlock = node.querySelector('.array-group[data-prefix="' + fieldName + '"]');
           if (groupBlock) {
             groupBlock.dataset.initialItems = JSON.stringify(value);
+            return;
           }
+        } else if (value !== null && typeof value === "object") {
+          // ネストされたオブジェクト（通常グループ）のデータを再帰処理
+          fillGroupEntryValues(node, value, fieldName + ".");
         } else {
-          const inputs = node.querySelectorAll(`[name="${fieldName}"]`);
+          const inputs = node.querySelectorAll('[name="' + fieldName + '"]');
           inputs.forEach((input) => {
             if (input.type === "checkbox") {
               input.checked = Boolean(value);
