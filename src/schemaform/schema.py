@@ -236,6 +236,9 @@ def sanitize_form_output(form: dict[str, Any]) -> dict[str, Any]:
         "status": form.get("status", "inactive"),
         "schema_json": form.get("schema_json", {}),
         "field_order": form.get("field_order", []),
+        "webhook_url": form.get("webhook_url", ""),
+        "webhook_on_submit": bool(form.get("webhook_on_submit")),
+        "webhook_on_delete": bool(form.get("webhook_on_delete")),
         "created_at": to_iso(form.get("created_at", now_utc())),
         "updated_at": to_iso(form.get("updated_at", now_utc())),
     }
