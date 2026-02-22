@@ -762,15 +762,16 @@
       if (!data || typeof data !== "object") return;
       Object.entries(data).forEach(([key, value]) => {
         const fieldName = prefix + key;
+        const escaped = CSS.escape(fieldName);
         if (Array.isArray(value)) {
           // 配列フィールド（非グループ）のdata-initial属性を設定
-          const arrayBlock = node.querySelector('.array-field[data-key="' + fieldName + '"]');
+          const arrayBlock = node.querySelector('.array-field[data-key="' + escaped + '"]');
           if (arrayBlock) {
             arrayBlock.dataset.initial = JSON.stringify(value);
             return;
           }
           // ネストされた配列グループのdata-initial-items属性を設定
-          const groupBlock = node.querySelector('.array-group[data-prefix="' + fieldName + '"]');
+          const groupBlock = node.querySelector('.array-group[data-prefix="' + escaped + '"]');
           if (groupBlock) {
             groupBlock.dataset.initialItems = JSON.stringify(value);
             return;
@@ -779,7 +780,7 @@
           // ネストされたオブジェクト（通常グループ）のデータを再帰処理
           fillGroupEntryValues(node, value, fieldName + ".");
         } else {
-          const inputs = node.querySelectorAll('[name="' + fieldName + '"]');
+          const inputs = node.querySelectorAll('[name="' + escaped + '"]');
           inputs.forEach((input) => {
             if (input.type === "checkbox") {
               input.checked = Boolean(value);

@@ -323,9 +323,9 @@ async def update_submission(
                                 indices.add(int(parts[0]))
                     items: list[dict[str, Any]] = []
                     old_items = old_target.get(key, []) if isinstance(old_target.get(key), list) else []
-                    for idx in sorted(indices):
+                    for order, idx in enumerate(sorted(indices)):
                         item: dict[str, Any] = {}
-                        old_item = old_items[idx] if idx < len(old_items) and isinstance(old_items, list) else {}
+                        old_item = old_items[order] if order < len(old_items) and isinstance(old_items, list) else {}
                         await collect_fields(children, item, f"{form_key}.{idx}.", old_item)
                         if item:
                             items.append(item)
@@ -417,9 +417,12 @@ async def update_submission(
         )
 
     now = now_utc()
-    updated = storage.submissions.update_submission(
-        submission_id, {"data_json": submission, "updated_at": now}
-    )
+    try:
+        updated = storage.submissions.update_submission(
+            submission_id, {"data_json": submission, "updated_at": now}
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="送信データが見つかりません")
 
     if (
         form.get("webhook_url")
