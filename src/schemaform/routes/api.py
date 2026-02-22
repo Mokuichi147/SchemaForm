@@ -84,7 +84,9 @@ async def api_update_form(form_id: str, request: Request) -> JSONResponse:
         if not isinstance(schema, dict):
             raise HTTPException(status_code=400, detail="schema_jsonが不正です")
         updates["schema_json"] = schema
-        updates["field_order"] = normalize_field_order(schema, payload.get("field_order"))
+        updates["field_order"] = normalize_field_order(
+            schema, payload.get("field_order")
+        )
     if "status" in payload:
         updates["status"] = str(payload.get("status") or "inactive")
     updates["updated_at"] = now_utc()
@@ -116,10 +118,22 @@ async def api_submit_form(public_id: str, request: Request) -> JSONResponse:
 
     submission_id = new_ulid()
     created_at = now_utc()
-    storage.submissions.create_submission(
-        {"id": submission_id, "form_id": form["id"], "data_json": data, "created_at": created_at}
+    submission = {
+        "id": submission_id,
+        "form_id": form["id"],
+        "data_json": data,
+        "created_at": created_at,
+    }
+    storage.submissions.create_submission(submission)
+
+    if form.get("webhook_url") and form.get("webhook_on_submit"):
+        from schemaform.webhook import send_webhook
+
+        send_webhook(form["webhook_url"], "submit", form, submission)
+
+    return JSONResponse(
+        {"submission_id": submission_id, "created_at": to_iso(created_at)}
     )
-    return JSONResponse({"submission_id": submission_id, "created_at": to_iso(created_at)})
 
 
 @router.get("/api/forms/{form_id}/submissions", tags=["api/submissions"])
@@ -149,7 +163,8 @@ async def api_list_submissions(request: Request, form_id: str) -> JSONResponse:
                 for item in filtered
                 if (ensure_aware(item["created_at"]) < cursor_dt)
                 or (
-                    ensure_aware(item["created_at"]) == cursor_dt and item["id"] < cursor_id
+                    ensure_aware(item["created_at"]) == cursor_dt
+                    and item["id"] < cursor_id
                 )
             ]
         else:
