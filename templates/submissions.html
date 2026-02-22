@@ -119,20 +119,29 @@
         {% set column = display_columns[loop.index0] %}
         {% if column.kind == "default"
               and column.field.type == "string"
-              and not column.field.is_array
+              and (
+                column.field.format == "url"
+                or "http://" in value
+                or "https://" in value
+                or "www." in value
+              )
               and value %}
-          {% set trimmed = value | trim %}
-          {% if trimmed.startswith("http://") or trimmed.startswith("https://") %}
           <td class="px-4 py-3">
-            <a href="{{ trimmed }}" target="_blank" rel="noopener noreferrer" class="break-all text-sky-700 underline">{{ value }}</a>
+            {% set raw_items = value.split(",") if column.field.is_array else [value] %}
+            {% for raw_item in raw_items %}
+              {% set trimmed = raw_item | trim %}
+              {% if trimmed %}
+                {% if trimmed.startswith("http://") or trimmed.startswith("https://") %}
+                  <a href="{{ trimmed }}" target="_blank" rel="noopener noreferrer" class="break-all text-sky-700 underline">{{ trimmed }}</a>
+                {% elif trimmed.startswith("www.") %}
+                  <a href="https://{{ trimmed }}" target="_blank" rel="noopener noreferrer" class="break-all text-sky-700 underline">{{ trimmed }}</a>
+                {% else %}
+                  {{ trimmed }}
+                {% endif %}
+                {% if not loop.last %}, {% endif %}
+              {% endif %}
+            {% endfor %}
           </td>
-          {% elif trimmed.startswith("www.") %}
-          <td class="px-4 py-3">
-            <a href="https://{{ trimmed }}" target="_blank" rel="noopener noreferrer" class="break-all text-sky-700 underline">{{ value }}</a>
-          </td>
-          {% else %}
-          <td class="px-4 py-3">{{ value }}</td>
-          {% endif %}
         {% else %}
         <td class="px-4 py-3">{{ value }}</td>
         {% endif %}
