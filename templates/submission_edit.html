@@ -47,25 +47,14 @@
     {% if field.description %}
     <div class="mt-1 text-xs leading-relaxed text-slate-500">{{ field.description }}</div>
     {% endif %}
-    <div class="array-group mt-2" data-prefix="{{ form_name }}" data-index-token="{{ index_token }}">
+    <div class="array-group mt-2" data-prefix="{{ form_name }}" data-index-token="{{ index_token }}" data-initial-items="{{ items | tojson | e }}">
       <div data-role="group-dots" class="group-dot-list mb-2 flex min-h-[0.75rem] items-center gap-1.5"></div>
-      <div class="array-group-items">
-        {% for item_data in items %}
-        {% set item_idx = loop.index0 %}
-        <div class="array-group-entry {{ array_entry_class }}{% if not loop.first %} hidden{% endif %}">
-          <div class="space-y-2">
-            {% for child in field.children %}
-            {{ render_edit_field(child, form_name ~ "." ~ item_idx ~ ".", item_data, depth + 1) }}
-            {% endfor %}
-          </div>
-        </div>
-        {% endfor %}
-      </div>
+      <div class="array-group-items"></div>
       <div class="mt-2 space-y-1">
         <div class="flex items-center gap-2">
           <div class="flex flex-nowrap items-center gap-1.5">
             <button type="button" class="group-prev rounded border border-slate-300 px-2 py-1 text-xs">前へ</button>
-            <span data-role="group-pagination" aria-live="polite" class="min-w-[2.5rem] text-center text-xs font-medium tabular-nums text-slate-600">{{ items | length if items else 0 }}/{{ items | length if items else 0 }}</span>
+            <span data-role="group-pagination" aria-live="polite" class="min-w-[2.5rem] text-center text-xs font-medium tabular-nums text-slate-600" title="0件目 / 全0件" aria-label="0件目 / 全0件">0/0</span>
             <button type="button" class="group-next rounded border border-slate-300 px-2 py-1 text-xs">次へ</button>
           </div>
           <div class="ml-auto flex flex-nowrap items-center gap-1.5">
@@ -608,9 +597,10 @@
     const dotsContainer = block.querySelector("[data-role='group-dots']");
     const indexToken = block.dataset.indexToken || "__INDEX__";
     const slideDurationMs = 280;
+    let initialItems = [];
+    try { initialItems = JSON.parse(block.dataset.initialItems || "[]"); } catch (e) { initialItems = []; }
 
-    const existingEntries = Array.from(list.children).filter((el) => el.classList.contains("array-group-entry"));
-    let counter = existingEntries.length;
+    let counter = 0;
     let currentIndex = 0;
     let isAnimating = false;
     if (!template || !list || !addButton) return;
@@ -768,12 +758,48 @@
       initMasterReference(node);
     }
 
+    function fillGroupEntryValues(node, data, prefix) {
+      if (!data || typeof data !== "object") return;
+      Object.entries(data).forEach(([key, value]) => {
+        const fieldName = prefix + key;
+        if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+          fillGroupEntryValues(node, value, fieldName + ".");
+        } else if (Array.isArray(value)) {
+          // 配列フィールドのdata-initial属性を設定
+          const arrayBlock = node.querySelector(`.array-field[data-key="${fieldName}"]`);
+          if (arrayBlock) {
+            arrayBlock.dataset.initial = JSON.stringify(value);
+          }
+          // ネストされた配列グループのdata-initial-items属性を設定
+          const groupBlock = node.querySelector(`.array-group[data-prefix="${fieldName}"]`);
+          if (groupBlock) {
+            groupBlock.dataset.initialItems = JSON.stringify(value);
+          }
+        } else {
+          const inputs = node.querySelectorAll(`[name="${fieldName}"]`);
+          inputs.forEach((input) => {
+            if (input.type === "checkbox") {
+              input.checked = Boolean(value);
+            } else if (input.tagName === "SELECT") {
+              input.value = String(value ?? "");
+            } else {
+              input.value = value ?? "";
+            }
+          });
+        }
+      });
+    }
+
     function addGroupItem(options = {}) {
-      const { animate = false } = options;
+      const { animate = false, data = null } = options;
       const previousIndex = currentIndex;
       const node = template.content.firstElementChild.cloneNode(true);
       const idx = counter++;
       node.innerHTML = node.innerHTML.replaceAll(indexToken, String(idx));
+      const entryPrefix = block.dataset.prefix + "." + idx + ".";
+      if (data) {
+        fillGroupEntryValues(node, data, entryPrefix);
+      }
       bootstrapNode(node);
       list.appendChild(node);
       currentIndex = getEntries().length - 1;
@@ -838,10 +864,12 @@
       });
     }
 
-    // 既存エントリがある場合はそれを使い、ない場合は新規追加
-    if (existingEntries.length > 0) {
-      // 既存エントリのbootstrap
-      existingEntries.forEach((entry) => bootstrapNode(entry));
+    // 初期データがある場合はデータ付きでエントリを生成、なければ空エントリを1つ追加
+    if (initialItems.length > 0) {
+      initialItems.forEach((itemData) => {
+        addGroupItem({ animate: false, data: itemData });
+      });
+      currentIndex = 0;
       refreshGroupState();
     } else {
       addGroupItem({ animate: false });
