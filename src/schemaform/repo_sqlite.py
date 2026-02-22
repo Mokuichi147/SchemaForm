@@ -46,6 +46,7 @@ class SQLiteFormRepo:
                 webhook_url=form.get("webhook_url", ""),
                 webhook_on_submit=1 if form.get("webhook_on_submit") else 0,
                 webhook_on_delete=1 if form.get("webhook_on_delete") else 0,
+                webhook_on_edit=1 if form.get("webhook_on_edit") else 0,
                 created_at=form["created_at"],
                 updated_at=form["updated_at"],
             )
@@ -60,7 +61,7 @@ class SQLiteFormRepo:
             for key, value in updates.items():
                 if key in {"schema_json", "field_order"}:
                     setattr(row, key, dumps_json(value))
-                elif key in {"webhook_on_submit", "webhook_on_delete"}:
+                elif key in {"webhook_on_submit", "webhook_on_delete", "webhook_on_edit"}:
                     setattr(row, key, 1 if value else 0)
                 else:
                     setattr(row, key, value)
@@ -97,6 +98,7 @@ class SQLiteFormRepo:
             "webhook_url": row.webhook_url or "",
             "webhook_on_submit": bool(row.webhook_on_submit),
             "webhook_on_delete": bool(row.webhook_on_delete),
+            "webhook_on_edit": bool(row.webhook_on_edit),
             "created_at": row.created_at,
             "updated_at": row.updated_at,
         }
@@ -132,6 +134,21 @@ class SQLiteSubmissionRepo:
             session.add(row)
             session.commit()
 
+    def update_submission(
+        self, submission_id: str, updates: dict[str, Any]
+    ) -> dict[str, Any]:
+        with self._Session() as session:
+            row = session.get(SubmissionModel, submission_id)
+            if not row:
+                raise KeyError(submission_id)
+            if "data_json" in updates:
+                row.data_json = dumps_json(updates["data_json"])
+            if "updated_at" in updates:
+                row.updated_at = updates["updated_at"]
+            session.commit()
+            session.refresh(row)
+            return self._to_dict(row)
+
     def delete_submission(self, submission_id: str) -> None:
         with self._Session() as session:
             row = session.get(SubmissionModel, submission_id)
@@ -146,6 +163,7 @@ class SQLiteSubmissionRepo:
             "form_id": row.form_id,
             "data_json": loads_json(row.data_json) or {},
             "created_at": row.created_at,
+            "updated_at": row.updated_at,
         }
 
 
@@ -196,19 +214,31 @@ class SQLiteStorage:
     def _migrate_add_webhook_columns(self) -> None:
         with self._engine.connect() as conn:
             result = conn.execute(text("PRAGMA table_info(forms)"))
-            columns = {row[1] for row in result.fetchall()}
-            if "webhook_url" not in columns:
+            form_columns = {row[1] for row in result.fetchall()}
+            if "webhook_url" not in form_columns:
                 conn.execute(text("ALTER TABLE forms ADD COLUMN webhook_url TEXT"))
-            if "webhook_on_submit" not in columns:
+            if "webhook_on_submit" not in form_columns:
                 conn.execute(
                     text(
                         "ALTER TABLE forms ADD COLUMN webhook_on_submit INTEGER DEFAULT 0"
                     )
                 )
-            if "webhook_on_delete" not in columns:
+            if "webhook_on_delete" not in form_columns:
                 conn.execute(
                     text(
                         "ALTER TABLE forms ADD COLUMN webhook_on_delete INTEGER DEFAULT 0"
                     )
+                )
+            if "webhook_on_edit" not in form_columns:
+                conn.execute(
+                    text(
+                        "ALTER TABLE forms ADD COLUMN webhook_on_edit INTEGER DEFAULT 0"
+                    )
+                )
+            result = conn.execute(text("PRAGMA table_info(submissions)"))
+            sub_columns = {row[1] for row in result.fetchall()}
+            if "updated_at" not in sub_columns:
+                conn.execute(
+                    text("ALTER TABLE submissions ADD COLUMN updated_at DATETIME")
                 )
             conn.commit()

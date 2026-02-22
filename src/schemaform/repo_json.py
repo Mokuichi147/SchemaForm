@@ -100,6 +100,7 @@ class JSONFormRepo(JSONRepoBase):
             "webhook_url": record.get("webhook_url", ""),
             "webhook_on_submit": record.get("webhook_on_submit", False),
             "webhook_on_delete": record.get("webhook_on_delete", False),
+            "webhook_on_edit": record.get("webhook_on_edit", False),
             "created_at": parse_dt(record.get("created_at")),
             "updated_at": parse_dt(record.get("updated_at")),
         }
@@ -122,6 +123,21 @@ class JSONSubmissionRepo(JSONRepoBase):
         with self._db() as db:
             db.table("submissions").insert(record)
 
+    def update_submission(
+        self, submission_id: str, updates: dict[str, Any]
+    ) -> dict[str, Any]:
+        with self._db() as db:
+            table = db.table("submissions")
+            item = table.get(Query().id == submission_id)
+            if not item:
+                raise KeyError(submission_id)
+            if "data_json" in updates:
+                item["data_json"] = updates["data_json"]
+            if "updated_at" in updates:
+                item["updated_at"] = to_iso(updates["updated_at"])
+            table.update(item, Query().id == submission_id)
+        return self._from_record(item)
+
     def delete_submission(self, submission_id: str) -> None:
         with self._db() as db:
             db.table("submissions").remove(Query().id == submission_id)
@@ -142,6 +158,7 @@ class JSONSubmissionRepo(JSONRepoBase):
             "form_id": record["form_id"],
             "data_json": record.get("data_json", {}),
             "created_at": parse_dt(record.get("created_at")),
+            "updated_at": parse_dt(record.get("updated_at")) if record.get("updated_at") else None,
         }
 
 
