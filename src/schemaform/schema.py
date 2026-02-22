@@ -239,6 +239,7 @@ def sanitize_form_output(form: dict[str, Any]) -> dict[str, Any]:
         "webhook_url": form.get("webhook_url", ""),
         "webhook_on_submit": bool(form.get("webhook_on_submit")),
         "webhook_on_delete": bool(form.get("webhook_on_delete")),
+        "webhook_on_edit": bool(form.get("webhook_on_edit")),
         "created_at": to_iso(form.get("created_at", now_utc())),
         "updated_at": to_iso(form.get("updated_at", now_utc())),
     }

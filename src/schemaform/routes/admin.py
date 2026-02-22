@@ -141,6 +141,7 @@ async def create_form(request: Request, _: Any = Depends(admin_guard)) -> HTMLRe
         )
     webhook_on_submit = bool(form_data.get("webhook_on_submit"))
     webhook_on_delete = bool(form_data.get("webhook_on_delete"))
+    webhook_on_edit = bool(form_data.get("webhook_on_edit"))
     storage.forms.create_form(
         {
             "id": form_id,
@@ -153,6 +154,7 @@ async def create_form(request: Request, _: Any = Depends(admin_guard)) -> HTMLRe
             "webhook_url": webhook_url,
             "webhook_on_submit": webhook_on_submit,
             "webhook_on_delete": webhook_on_delete,
+            "webhook_on_edit": webhook_on_edit,
             "created_at": now,
             "updated_at": now,
         }
@@ -241,6 +243,7 @@ async def update_form(
         )
     webhook_on_submit = bool(form_data.get("webhook_on_submit"))
     webhook_on_delete = bool(form_data.get("webhook_on_delete"))
+    webhook_on_edit = bool(form_data.get("webhook_on_edit"))
     updated = storage.forms.update_form(
         form_id,
         {
@@ -251,6 +254,7 @@ async def update_form(
             "webhook_url": webhook_url,
             "webhook_on_submit": webhook_on_submit,
             "webhook_on_delete": webhook_on_delete,
+            "webhook_on_edit": webhook_on_edit,
             "updated_at": now_utc(),
         },
     )
