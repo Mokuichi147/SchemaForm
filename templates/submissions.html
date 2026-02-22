@@ -127,7 +127,6 @@
         {% set column = display_columns[loop.index0] %}
         {% if column.kind == "default"
               and column.field.type == "string"
-              and not column.field.is_array
               and (
                 column.field.format == "url"
                 or "http://" in value
