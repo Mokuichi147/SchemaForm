@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from schemaform.models import Base, FileModel, FormModel, SubmissionModel
@@ -26,7 +26,11 @@ class SQLiteFormRepo:
 
     def get_form_by_public_id(self, public_id: str) -> dict[str, Any] | None:
         with self._Session() as session:
-            row = session.query(FormModel).filter(FormModel.public_id == public_id).first()
+            row = (
+                session.query(FormModel)
+                .filter(FormModel.public_id == public_id)
+                .first()
+            )
             return self._to_dict(row) if row else None
 
     def create_form(self, form: dict[str, Any]) -> None:
@@ -39,6 +43,9 @@ class SQLiteFormRepo:
                 status=form["status"],
                 schema_json=dumps_json(form["schema_json"]),
                 field_order=dumps_json(form["field_order"]),
+                webhook_url=form.get("webhook_url", ""),
+                webhook_on_submit=1 if form.get("webhook_on_submit") else 0,
+                webhook_on_delete=1 if form.get("webhook_on_delete") else 0,
                 created_at=form["created_at"],
                 updated_at=form["updated_at"],
             )
@@ -85,6 +92,9 @@ class SQLiteFormRepo:
             "status": row.status,
             "schema_json": loads_json(row.schema_json) or {},
             "field_order": loads_json(row.field_order) or [],
+            "webhook_url": row.webhook_url or "",
+            "webhook_on_submit": bool(row.webhook_on_submit),
+            "webhook_on_delete": bool(row.webhook_on_delete),
             "created_at": row.created_at,
             "updated_at": row.updated_at,
         }
@@ -171,6 +181,27 @@ class SQLiteStorage:
         self._engine = create_engine(f"sqlite:///{db_path}", future=True)
         self._Session = sessionmaker(self._engine, expire_on_commit=False)
         Base.metadata.create_all(self._engine)
+        self._migrate_add_webhook_columns()
         self.forms = SQLiteFormRepo(self._Session)
         self.submissions = SQLiteSubmissionRepo(self._Session)
         self.files = SQLiteFileRepo(self._Session)
+
+    def _migrate_add_webhook_columns(self) -> None:
+        with self._engine.connect() as conn:
+            result = conn.execute(text("PRAGMA table_info(forms)"))
+            columns = {row[1] for row in result.fetchall()}
+            if "webhook_url" not in columns:
+                conn.execute(text("ALTER TABLE forms ADD COLUMN webhook_url TEXT"))
+            if "webhook_on_submit" not in columns:
+                conn.execute(
+                    text(
+                        "ALTER TABLE forms ADD COLUMN webhook_on_submit INTEGER DEFAULT 0"
+                    )
+                )
+            if "webhook_on_delete" not in columns:
+                conn.execute(
+                    text(
+                        "ALTER TABLE forms ADD COLUMN webhook_on_delete INTEGER DEFAULT 0"
+                    )
+                )
+            conn.commit()

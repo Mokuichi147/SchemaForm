@@ -37,7 +37,9 @@ def resolve_redirect_target(next_path: Any, default: str = "/admin/forms") -> st
     return parsed.path
 
 
-def build_master_field_catalog(storage: Any, current_form_id: str | None = None) -> tuple[list[dict[str, str]], dict[str, list[dict[str, str]]]]:
+def build_master_field_catalog(
+    storage: Any, current_form_id: str | None = None
+) -> tuple[list[dict[str, str]], dict[str, list[dict[str, str]]]]:
     master_forms: list[dict[str, str]] = []
     field_catalog: dict[str, list[dict[str, str]]] = {}
     for form in storage.forms.list_forms():
@@ -121,6 +123,9 @@ async def create_form(request: Request, _: Any = Depends(admin_guard)) -> HTMLRe
     form_id = new_ulid()
     public_id = new_short_id()
     now = now_utc()
+    webhook_url = str(form_data.get("webhook_url", "")).strip()
+    webhook_on_submit = bool(form_data.get("webhook_on_submit"))
+    webhook_on_delete = bool(form_data.get("webhook_on_delete"))
     storage.forms.create_form(
         {
             "id": form_id,
@@ -130,6 +135,9 @@ async def create_form(request: Request, _: Any = Depends(admin_guard)) -> HTMLRe
             "status": "inactive",
             "schema_json": schema,
             "field_order": field_order,
+            "webhook_url": webhook_url,
+            "webhook_on_submit": webhook_on_submit,
+            "webhook_on_delete": webhook_on_delete,
             "created_at": now,
             "updated_at": now,
         }
@@ -138,14 +146,18 @@ async def create_form(request: Request, _: Any = Depends(admin_guard)) -> HTMLRe
 
 
 @router.get("/admin/forms/{form_id}", response_class=HTMLResponse, tags=["admin"])
-async def edit_form(request: Request, form_id: str, _: Any = Depends(admin_guard)) -> HTMLResponse:
+async def edit_form(
+    request: Request, form_id: str, _: Any = Depends(admin_guard)
+) -> HTMLResponse:
     storage = request.app.state.storage
     templates = request.app.state.templates
     form = storage.forms.get_form(form_id)
     if not form:
         raise HTTPException(status_code=404, detail="フォームが見つかりません")
     fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
-    master_forms, master_field_catalog = build_master_field_catalog(storage, current_form_id=form_id)
+    master_forms, master_field_catalog = build_master_field_catalog(
+        storage, current_form_id=form_id
+    )
     return templates.TemplateResponse(
         "admin_form_builder.html",
         {
@@ -161,7 +173,9 @@ async def edit_form(request: Request, form_id: str, _: Any = Depends(admin_guard
 
 
 @router.post("/admin/forms/{form_id}", response_class=HTMLResponse, tags=["admin"])
-async def update_form(request: Request, form_id: str, _: Any = Depends(admin_guard)) -> HTMLResponse:
+async def update_form(
+    request: Request, form_id: str, _: Any = Depends(admin_guard)
+) -> HTMLResponse:
     storage = request.app.state.storage
     templates = request.app.state.templates
     form = storage.forms.get_form(form_id)
@@ -174,7 +188,9 @@ async def update_form(request: Request, form_id: str, _: Any = Depends(admin_gua
     fields_json = str(form_data.get("fields_json", ""))
 
     fields, errors = parse_fields_json(fields_json)
-    master_forms, master_field_catalog = build_master_field_catalog(storage, current_form_id=form_id)
+    master_forms, master_field_catalog = build_master_field_catalog(
+        storage, current_form_id=form_id
+    )
     if not name:
         errors.append("フォーム名は必須です")
 
@@ -193,6 +209,9 @@ async def update_form(request: Request, form_id: str, _: Any = Depends(admin_gua
         )
 
     schema, field_order = schema_from_fields(fields)
+    webhook_url = str(form_data.get("webhook_url", "")).strip()
+    webhook_on_submit = bool(form_data.get("webhook_on_submit"))
+    webhook_on_delete = bool(form_data.get("webhook_on_delete"))
     updated = storage.forms.update_form(
         form_id,
         {
@@ -200,6 +219,9 @@ async def update_form(request: Request, form_id: str, _: Any = Depends(admin_gua
             "description": description,
             "schema_json": schema,
             "field_order": field_order,
+            "webhook_url": webhook_url,
+            "webhook_on_submit": webhook_on_submit,
+            "webhook_on_delete": webhook_on_delete,
             "updated_at": now_utc(),
         },
     )
@@ -207,7 +229,9 @@ async def update_form(request: Request, form_id: str, _: Any = Depends(admin_gua
 
 
 @router.post("/admin/forms/{form_id}/publish", tags=["admin"])
-async def publish_form(request: Request, form_id: str, _: Any = Depends(admin_guard)) -> RedirectResponse:
+async def publish_form(
+    request: Request, form_id: str, _: Any = Depends(admin_guard)
+) -> RedirectResponse:
     storage = request.app.state.storage
     storage.forms.set_status(form_id, "active")
     target = resolve_redirect_target(request.query_params.get("next"))
@@ -215,7 +239,9 @@ async def publish_form(request: Request, form_id: str, _: Any = Depends(admin_gu
 
 
 @router.post("/admin/forms/{form_id}/stop", tags=["admin"])
-async def stop_form(request: Request, form_id: str, _: Any = Depends(admin_guard)) -> RedirectResponse:
+async def stop_form(
+    request: Request, form_id: str, _: Any = Depends(admin_guard)
+) -> RedirectResponse:
     storage = request.app.state.storage
     storage.forms.set_status(form_id, "inactive")
     target = resolve_redirect_target(request.query_params.get("next"))
@@ -223,7 +249,9 @@ async def stop_form(request: Request, form_id: str, _: Any = Depends(admin_guard
 
 
 @router.post("/admin/forms/{form_id}/delete", tags=["admin"])
-async def delete_form(request: Request, form_id: str, _: Any = Depends(admin_guard)) -> RedirectResponse:
+async def delete_form(
+    request: Request, form_id: str, _: Any = Depends(admin_guard)
+) -> RedirectResponse:
     storage = request.app.state.storage
     storage.forms.delete_form(form_id)
     return RedirectResponse("/admin/forms", status_code=303)
