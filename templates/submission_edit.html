@@ -1,0 +1,857 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% macro get_value(data, key) %}{{ data.get(key, "") if data else "" }}{% endmacro %}
+
+{% macro render_edit_field(field, prefix, data, depth=0) %}
+{% set form_name = prefix ~ field.key %}
+{% set picker = field_picker(field) %}
+{% set file_accept = field_file_accept(field) %}
+{% set index_token = "__INDEX_D" ~ depth ~ "__" %}
+{% set depth_mod = depth % 6 %}
+{% if depth_mod == 0 %}
+  {% set indent_border_color = "border-slate-300" %}
+  {% set entry_bg_class = "bg-slate-50/40" %}
+{% elif depth_mod == 1 %}
+  {% set indent_border_color = "border-sky-300" %}
+  {% set entry_bg_class = "bg-sky-50" %}
+{% elif depth_mod == 2 %}
+  {% set indent_border_color = "border-emerald-300" %}
+  {% set entry_bg_class = "bg-emerald-50" %}
+{% elif depth_mod == 3 %}
+  {% set indent_border_color = "border-amber-300" %}
+  {% set entry_bg_class = "bg-amber-50" %}
+{% elif depth_mod == 4 %}
+  {% set indent_border_color = "border-rose-300" %}
+  {% set entry_bg_class = "bg-rose-50" %}
+{% else %}
+  {% set indent_border_color = "border-violet-300" %}
+  {% set entry_bg_class = "bg-violet-50" %}
+{% endif %}
+{% set nested_indent_class = "border-l-2 " ~ indent_border_color ~ " " ~ entry_bg_class ~ " pl-3 pr-0 pt-2 pb-0" %}
+{% set group_container_class = nested_indent_class %}
+{% set array_entry_class = "border-l-2 " ~ indent_border_color ~ " " ~ entry_bg_class ~ " pl-3 pr-0 pt-2 pb-0" %}
+
+{% set current_value = data.get(field.key) if data else None %}
+
+{% if field.type == "group" %}
+  {% if field.is_array %}
+  {% set items = current_value if current_value is iterable and current_value is not string and current_value is not mapping else [] %}
+  <div class="py-2 lg:py-3">
+    <div class="text-sm font-semibold leading-6 text-slate-700">
+      {{ field.label or field.key }}
+      {% if field.required %}
+      <span class="text-rose-500">*</span>
+      {% endif %}
+    </div>
+    {% if field.description %}
+    <div class="mt-1 text-xs leading-relaxed text-slate-500">{{ field.description }}</div>
+    {% endif %}
+    <div class="array-group mt-2" data-prefix="{{ form_name }}" data-index-token="{{ index_token }}">
+      <div data-role="group-dots" class="group-dot-list mb-2 flex min-h-[0.75rem] items-center gap-1.5"></div>
+      <div class="array-group-items">
+        {% for item_data in items %}
+        <div class="array-group-entry {{ array_entry_class }}{% if not loop.first %} hidden{% endif %}">
+          <div class="space-y-2">
+            {% for child in field.children %}
+            {{ render_edit_field(child, form_name ~ "." ~ loop.parent.loop.index0 ~ ".", item_data, depth + 1) }}
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="mt-2 space-y-1">
+        <div class="flex items-center gap-2">
+          <div class="flex flex-nowrap items-center gap-1.5">
+            <button type="button" class="group-prev rounded border border-slate-300 px-2 py-1 text-xs">前へ</button>
+            <span data-role="group-pagination" aria-live="polite" class="min-w-[2.5rem] text-center text-xs font-medium tabular-nums text-slate-600">{{ items | length if items else 0 }}/{{ items | length if items else 0 }}</span>
+            <button type="button" class="group-next rounded border border-slate-300 px-2 py-1 text-xs">次へ</button>
+          </div>
+          <div class="ml-auto flex flex-nowrap items-center gap-1.5">
+            <button type="button" class="add-group-item rounded border border-slate-300 px-2 py-1 text-xs">追加</button>
+            <button type="button" class="remove-group-item-current whitespace-nowrap rounded border border-rose-300 px-2 py-1 text-xs text-rose-600">削除</button>
+          </div>
+        </div>
+      </div>
+      <template>
+        <div class="array-group-entry {{ array_entry_class }}">
+          <div class="space-y-2">
+            {% for child in field.children %}
+            {{ render_edit_field(child, form_name ~ "." ~ index_token ~ ".", {}, depth + 1) }}
+            {% endfor %}
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+  {% else %}
+  {% set group_data = current_value if current_value is mapping else {} %}
+  <div class="py-2 lg:py-3">
+    <div class="text-sm font-semibold leading-6 text-slate-700">
+      {{ field.label or field.key }}
+      {% if field.required %}
+      <span class="text-rose-500">*</span>
+      {% endif %}
+    </div>
+    {% if field.description %}
+    <div class="mt-1 text-xs leading-relaxed text-slate-500">{{ field.description }}</div>
+    {% endif %}
+    <div class="mt-2 {{ group_container_class }}">
+      <div class="space-y-3">
+        {% for child in field.children %}
+        {{ render_edit_field(child, form_name ~ ".", group_data, depth + 1) }}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+{% else %}
+  {% set ns = namespace(fw="max-w-md") %}
+  {% if field.type in ["number", "integer"] %}
+    {% set ns.fw = "max-w-[10rem]" %}
+  {% elif picker in ["date", "time"] %}
+    {% set ns.fw = "max-w-[11rem]" %}
+  {% elif picker %}
+    {% set ns.fw = "max-w-xs" %}
+  {% elif field.type in ["enum", "master"] or field_input_type(field) in ["email", "url"] %}
+    {% set ns.fw = "max-w-sm" %}
+  {% endif %}
+  <div class="py-2 lg:py-3">
+    <div class="sf-field-row lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
+      <div class="lg:col-span-3">
+        <label class="block text-sm font-semibold leading-6">
+          {{ field.label or field.key }}
+          {% if field.required %}
+          <span class="text-rose-500">*</span>
+          {% endif %}
+        </label>
+        {% if field.description %}
+        <div class="mt-0.5 break-words text-xs leading-relaxed text-slate-500">{{ field.description }}</div>
+        {% endif %}
+      </div>
+
+      <div class="sf-field-input-col lg:col-span-9">
+        {% if field.is_array %}
+          {% set arr_values = current_value if current_value is iterable and current_value is not string and current_value is not mapping else [] %}
+          {% if field.type == "file" %}
+            <div class="mt-1 w-full {{ ns.fw }} lg:mt-0">
+              {% if arr_values %}
+              <div class="mb-2 text-xs text-slate-500">現在のファイル: {{ arr_values | length }}件 (新しいファイルを選択すると置き換えます)</div>
+              {% endif %}
+              <input type="file" name="{{ form_name }}" multiple class="w-full rounded border border-slate-300 px-2 py-2" {% if file_accept %}accept="{{ file_accept }}"{% endif %} />
+            </div>
+          {% else %}
+            <div class="array-field mt-1 w-full {{ ns.fw }} lg:mt-0" data-key="{{ form_name }}" data-type="{{ field.type }}" data-picker="{{ picker }}" data-initial='{{ arr_values | tojson }}'>
+              <div class="space-y-2 array-items"></div>
+              <button type="button" class="add-item mt-1 rounded border border-slate-300 px-3 py-1 text-xs">追加</button>
+              <template>
+                <div class="flex items-start gap-2 array-item">
+                  {% if field.type == "enum" %}
+                  <div class="w-full space-y-1">
+                    <select name="{{ form_name }}" data-choice-select="1" data-search-placeholder="選択肢を検索" class="w-full rounded border border-slate-300 px-2 py-2 text-sm">
+                      {% for option in field.enum %}
+                      <option value="{{ option }}">{{ option }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  {% elif field.type == "master" %}
+                  <div class="w-full space-y-1" data-role="master-ref">
+                    <select name="{{ form_name }}" data-role="master-select" data-choice-select="1" data-search-placeholder="参照データを検索" class="w-full rounded border border-slate-300 px-2 py-2 text-sm">
+                      {% for option in field.master_options or [] %}
+                      <option value="{{ option.value }}" data-master-display="{{ option.display_json | default('{}') | e }}">{{ option.label }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  {% elif field.type == "boolean" %}
+                  <select name="{{ form_name }}" class="w-full rounded border border-slate-300 px-2 py-2 text-sm">
+                    <option value="true">true</option>
+                    <option value="false">false</option>
+                  </select>
+                  {% elif field.type in ["number", "integer"] %}
+                  <input type="number" name="{{ form_name }}" class="w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if field.type == "number" %}step="any"{% else %}step="1"{% endif %} />
+                  {% elif field.multiline %}
+                  <textarea name="{{ form_name }}" placeholder="{{ field.placeholder }}" rows="3" class="w-full rounded border border-slate-300 px-2 py-2 text-sm"></textarea>
+                  {% else %}
+                  <input type="text" name="{{ form_name }}" placeholder="{{ field.placeholder }}" class="w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if picker %}data-picker="{{ picker }}"{% endif %} />
+                  {% endif %}
+                  <button type="button" class="remove-item shrink-0 whitespace-nowrap rounded border border-rose-300 px-2 py-1 text-xs text-rose-600">削除</button>
+                </div>
+              </template>
+            </div>
+          {% endif %}
+        {% else %}
+          {% if field.type == "enum" %}
+          <div class="mt-1 w-full {{ ns.fw }} space-y-1 lg:mt-0">
+            <select name="{{ form_name }}" data-choice-select="1" data-search-placeholder="選択肢を検索" class="w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if field.required %}required{% endif %}>
+              <option value="">選択してください</option>
+              {% for option in field.enum %}
+              <option value="{{ option }}" {% if current_value == option %}selected{% endif %}>{{ option }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% elif field.type == "master" %}
+          <div class="mt-1 w-full {{ ns.fw }} space-y-1 lg:mt-0" data-role="master-ref">
+            <select name="{{ form_name }}" data-role="master-select" data-choice-select="1" data-search-placeholder="参照データを検索" class="w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if field.required %}required{% endif %}>
+              <option value="" data-master-display="{}">選択してください</option>
+              {% for option in field.master_options or [] %}
+              <option value="{{ option.value }}" {% if current_value == option.value %}selected{% endif %} data-master-display="{{ option.display_json | default('{}') | e }}">{{ option.label }}</option>
+              {% endfor %}
+            </select>
+            <div data-role="master-display" class="hidden mt-2 {{ group_container_class }}">
+              <div class="space-y-3">
+              {% for display_item in field.master_display_items or [] %}
+              <div data-role="master-display-row" data-master-display-key="{{ display_item.key }}" class="hidden py-2 lg:py-3">
+                <div class="sf-field-row lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
+                  <div class="lg:col-span-3">
+                    <div class="block text-sm font-semibold leading-6">{{ display_item.label }}</div>
+                  </div>
+                  <div class="sf-field-input-col lg:col-span-9">
+                    <div data-role="master-display-value" class="mt-1 w-full rounded border border-slate-200 bg-white/70 px-2 py-2 text-sm text-slate-700 lg:mt-0"></div>
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
+              </div>
+            </div>
+          </div>
+          {% elif field.type == "boolean" %}
+          <div class="mt-1 flex items-center gap-2">
+            <input type="checkbox" name="{{ form_name }}" value="true" class="h-4 w-4" {% if current_value %}checked{% endif %} {% if field.required %}required{% endif %} />
+            <span class="text-sm text-slate-700">はい</span>
+          </div>
+          {% elif field.type == "file" %}
+          <div class="mt-1 w-full {{ ns.fw }} lg:mt-0">
+            {% if current_value %}
+            <div class="mb-2 text-xs text-slate-500">現在のファイルあり (新しいファイルを選択すると置き換えます)</div>
+            {% endif %}
+            <input type="file" name="{{ form_name }}" class="w-full rounded border border-slate-300 px-2 py-2" {% if file_accept %}accept="{{ file_accept }}"{% endif %} />
+          </div>
+          {% elif field.type in ["number", "integer"] %}
+          <input type="number" name="{{ form_name }}" value="{{ current_value if current_value is not none else '' }}" class="mt-1 w-full {{ ns.fw }} rounded border border-slate-300 px-2 py-2 text-sm lg:mt-0" {% if field.type == "number" %}step="any"{% else %}step="1"{% endif %} {% if field.required %}required{% endif %} />
+          {% elif field.multiline %}
+          <textarea name="{{ form_name }}" placeholder="{{ field.placeholder }}" rows="4" class="mt-1 w-full rounded border border-slate-300 px-2 py-2 text-sm lg:mt-0" {% if field.required %}required{% endif %}>{{ current_value if current_value is not none else '' }}</textarea>
+          {% else %}
+          <input type="{{ field_input_type(field) }}" name="{{ form_name }}" value="{{ current_value if current_value is not none else '' }}" placeholder="{{ field.placeholder }}" class="mt-1 w-full {{ ns.fw }} rounded border border-slate-300 px-2 py-2 text-sm lg:mt-0" {% if picker %}data-picker="{{ picker }}"{% endif %} {% if field.required %}required{% endif %} />
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+{% endif %}
+{% endmacro %}
+
+<div class="max-w-5xl">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-semibold">送信データ編集</h1>
+      <p class="text-sm text-slate-600">{{ form.name }} の送信データを編集します。</p>
+    </div>
+    <a href="/admin/forms/{{ form.id }}/submissions" class="rounded border border-slate-300 px-3 py-2 text-sm">送信一覧に戻る</a>
+  </div>
+
+  {% if errors %}
+  <div class="mt-4 rounded border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+    <ul class="list-disc pl-5">
+      {% for error in errors %}
+      <li>{{ error }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <form method="post" class="mt-5 space-y-3" enctype="multipart/form-data">
+    {% set sub_data = submission.data_json if submission else {} %}
+    {% for field in fields %}
+    {{ render_edit_field(field, "", sub_data, 0) }}
+    {% endfor %}
+
+    <div class="flex gap-3">
+      <button type="submit" class="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">保存</button>
+      <a href="/admin/forms/{{ form.id }}/submissions" class="rounded border border-slate-300 px-4 py-2 text-sm">キャンセル</a>
+    </div>
+  </form>
+</div>
+
+<style>
+  .array-group-entry {
+    will-change: transform, opacity;
+  }
+
+  .array-group-entry .sf-field-input-col {
+    padding-right: 0.5rem;
+  }
+
+  .group-page-dot {
+    height: 0.5rem;
+    width: 0.5rem;
+    border-radius: 9999px;
+    border: 1px solid rgb(148 163 184);
+    background-color: rgb(226 232 240);
+    transition: transform 150ms ease, background-color 150ms ease, border-color 150ms ease;
+  }
+
+  .group-page-dot:hover:not(:disabled) {
+    transform: scale(1.15);
+    border-color: rgb(71 85 105);
+  }
+
+  .group-page-dot.is-active {
+    border-color: rgb(71 85 105);
+    background-color: rgb(71 85 105);
+  }
+
+  .group-page-dot:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  .add-group-item.sf-button-pop {
+    animation: sf-button-pop 180ms ease-out;
+  }
+
+  @keyframes sf-button-pop {
+    0% { transform: scale(1); }
+    35% { transform: scale(1.08); }
+    100% { transform: scale(1); }
+  }
+
+  @media (min-width: 1024px) {
+    .sf-field-input-col {
+      min-width: 0;
+    }
+  }
+
+  @supports (-webkit-touch-callout: none) {
+    .sf-choice-search {
+      font-size: 16px;
+      line-height: 1.4;
+    }
+  }
+</style>
+
+<script>
+  function preventSubmitOnEnter(form) {
+    if (!form) return;
+    let allowSubmitByButton = false;
+    let allowSubmitTimer = 0;
+
+    function markExplicitSubmit() {
+      allowSubmitByButton = true;
+      if (allowSubmitTimer) {
+        window.clearTimeout(allowSubmitTimer);
+      }
+      allowSubmitTimer = window.setTimeout(() => {
+        allowSubmitByButton = false;
+        allowSubmitTimer = 0;
+      }, 800);
+    }
+
+    function isSubmitControl(element) {
+      if (element instanceof HTMLButtonElement) {
+        const type = (element.getAttribute("type") || "submit").toLowerCase();
+        return type === "submit" && element.form === form;
+      }
+      if (element instanceof HTMLInputElement) {
+        const type = (element.type || "").toLowerCase();
+        return type === "submit" && element.form === form;
+      }
+      return false;
+    }
+
+    form.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const control = target.closest("button, input");
+      if (!(control instanceof HTMLElement)) return;
+      if (isSubmitControl(control)) {
+        markExplicitSubmit();
+      }
+    });
+
+    form.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (target.tagName === "TEXTAREA" || target.isContentEditable) return;
+      if (isSubmitControl(target)) {
+        markExplicitSubmit();
+        return;
+      }
+      const isImeConfirm = event.isComposing || event.keyCode === 229 || event.which === 229;
+      if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement) {
+        event.preventDefault();
+        if (isImeConfirm) {
+          event.stopPropagation();
+        }
+      }
+    });
+
+    form.addEventListener("submit", (event) => {
+      if (!allowSubmitByButton) {
+        event.preventDefault();
+        return;
+      }
+      allowSubmitByButton = false;
+      if (allowSubmitTimer) {
+        window.clearTimeout(allowSubmitTimer);
+        allowSubmitTimer = 0;
+      }
+    });
+  }
+
+  function initPicker(input) {
+    if (!input) return;
+    if (typeof flatpickr === "undefined") return;
+    const kind = input.dataset.picker;
+    if (!kind || input._flatpickr) return;
+    const options = { locale: "ja" };
+    if (kind === "datetime-local") {
+      options.enableTime = true;
+      options.dateFormat = "Y-m-d\\TH:i";
+      options.altInput = true;
+      options.altFormat = "Y/m/d H:i";
+      options.time_24hr = true;
+    } else if (kind === "date") {
+      options.dateFormat = "Y-m-d";
+      options.altInput = true;
+      options.altFormat = "Y/m/d";
+    } else if (kind === "time") {
+      options.enableTime = true;
+      options.noCalendar = true;
+      options.dateFormat = "H:i";
+      options.time_24hr = true;
+      options.altInput = true;
+      options.altFormat = "H:i";
+    }
+    const rawValue = input.value;
+    if (rawValue) {
+      const parsed = new Date(rawValue);
+      if (!Number.isNaN(parsed.getTime())) {
+        options.defaultDate = parsed;
+      }
+    }
+    flatpickr(input, options);
+  }
+
+  const CHOICE_SEARCH_THRESHOLD = 6;
+
+  function snapshotSelectOptions(select) {
+    return Array.from(select.options).map((option) => ({
+      value: option.value,
+      text: option.textContent || "",
+      disabled: option.disabled,
+      dataset: { ...option.dataset },
+    }));
+  }
+
+  function buildSelectOption(meta) {
+    const option = document.createElement("option");
+    option.value = meta.value;
+    option.textContent = meta.text;
+    option.disabled = Boolean(meta.disabled);
+    Object.entries(meta.dataset || {}).forEach(([key, value]) => {
+      option.dataset[key] = String(value);
+    });
+    return option;
+  }
+
+  function applyChoiceFilter(select, searchInput) {
+    const allOptions = select._sfChoiceOptions || [];
+    if (allOptions.length === 0) return;
+    const query = (searchInput?.value || "").trim().toLowerCase();
+    const selectedValue = select.value;
+    const filtered = allOptions.filter((meta) => {
+      const isPlaceholder = meta.value === "";
+      if (isPlaceholder) return true;
+      if (selectedValue !== "" && meta.value === selectedValue) return true;
+      if (!query) return true;
+      return meta.text.toLowerCase().includes(query);
+    });
+    select.replaceChildren(...filtered.map((meta) => buildSelectOption(meta)));
+    if (selectedValue !== "") {
+      select.value = selectedValue;
+    }
+    if (select.dataset.role === "master-select") {
+      updateMasterDisplay(select);
+    }
+  }
+
+  function initChoiceSelectSearch(scope) {
+    if (!scope || !scope.querySelectorAll) return;
+    scope.querySelectorAll("select[data-choice-select='1']").forEach((select) => {
+      if (select.dataset.sfChoiceInit === "1") return;
+      const allOptions = snapshotSelectOptions(select);
+      const optionCount = allOptions.filter((meta) => meta.value !== "").length;
+      if (optionCount < CHOICE_SEARCH_THRESHOLD) {
+        select.dataset.sfChoiceInit = "1";
+        return;
+      }
+      const searchInput = document.createElement("input");
+      searchInput.type = "search";
+      searchInput.autocomplete = "off";
+      searchInput.spellcheck = false;
+      searchInput.placeholder = select.dataset.searchPlaceholder || "検索";
+      searchInput.className = "sf-choice-search mb-1 w-full rounded border border-slate-300 px-2 py-1 text-sm";
+      searchInput.disabled = select.disabled;
+      select._sfChoiceOptions = allOptions;
+      select.parentElement?.insertBefore(searchInput, select);
+      searchInput.addEventListener("input", () => applyChoiceFilter(select, searchInput));
+      select.dataset.sfChoiceInit = "1";
+    });
+  }
+
+  function parseMasterDisplay(option) {
+    const raw = option?.dataset.masterDisplay || "{}";
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed;
+      }
+      return {};
+    } catch (error) {
+      return {};
+    }
+  }
+
+  function updateMasterDisplay(select) {
+    if (!select) return;
+    const wrapper = select.closest("[data-role='master-ref']");
+    if (!wrapper) return;
+    const panel = wrapper.querySelector("[data-role='master-display']");
+    if (!panel) return;
+    const rows = Array.from(panel.querySelectorAll("[data-role='master-display-row']"));
+    if (rows.length === 0) {
+      panel.classList.add("hidden");
+      return;
+    }
+    const option = select.options[select.selectedIndex];
+    const displayMap = parseMasterDisplay(option);
+    let visibleCount = 0;
+    rows.forEach((row) => {
+      const key = row.dataset.masterDisplayKey || "";
+      const value = String(displayMap[key] ?? "").trim();
+      const valueEl = row.querySelector("[data-role='master-display-value']");
+      if (valueEl) {
+        valueEl.textContent = value;
+      }
+      const show = value.length > 0;
+      row.classList.toggle("hidden", !show);
+      if (show) {
+        visibleCount += 1;
+      }
+    });
+    panel.classList.toggle("hidden", !select.value || visibleCount === 0);
+  }
+
+  function initMasterReference(scope) {
+    if (!scope || !scope.querySelectorAll) return;
+    scope.querySelectorAll("select[data-role='master-select']").forEach((select) => {
+      if (select.dataset.sfMasterInit !== "1") {
+        select.dataset.sfMasterInit = "1";
+        select.addEventListener("change", () => updateMasterDisplay(select));
+      }
+      updateMasterDisplay(select);
+    });
+  }
+
+  function initArrayFieldBlock(block) {
+    if (!block || block.dataset.sfArrayInit === "1") return;
+    block.dataset.sfArrayInit = "1";
+    const template = block.querySelector("template");
+    const list = block.querySelector(".array-items");
+    const addButton = block.querySelector(".add-item");
+    const picker = block.dataset.picker;
+    const initialData = JSON.parse(block.dataset.initial || "[]");
+    if (!template || !list || !addButton) return;
+
+    function addItem(value) {
+      const node = template.content.firstElementChild.cloneNode(true);
+      const removeButton = node.querySelector(".remove-item");
+      if (removeButton) {
+        removeButton.addEventListener("click", () => node.remove());
+      }
+      if (value !== undefined && value !== null) {
+        const input = node.querySelector("input, select, textarea");
+        if (input) {
+          input.value = String(value);
+        }
+      }
+      if (picker) {
+        const input = node.querySelector("input[data-picker]");
+        initPicker(input);
+      }
+      initChoiceSelectSearch(node);
+      initMasterReference(node);
+      list.appendChild(node);
+    }
+
+    addButton.addEventListener("click", () => addItem());
+    if (initialData.length > 0) {
+      initialData.forEach((val) => addItem(val));
+    } else {
+      addItem();
+    }
+  }
+
+  function initArrayGroupBlock(block) {
+    if (!block || block.dataset.sfArrayInit === "1") return;
+    block.dataset.sfArrayInit = "1";
+    const template = block.querySelector("template");
+    const list = block.querySelector(".array-group-items");
+    const addButton = block.querySelector(".add-group-item");
+    const removeCurrentButton = block.querySelector(".remove-group-item-current");
+    const prevButton = block.querySelector(".group-prev");
+    const nextButton = block.querySelector(".group-next");
+    const paginationLabel = block.querySelector("[data-role='group-pagination']");
+    const dotsContainer = block.querySelector("[data-role='group-dots']");
+    const indexToken = block.dataset.indexToken || "__INDEX__";
+    const slideDurationMs = 280;
+
+    const existingEntries = Array.from(list.children).filter((el) => el.classList.contains("array-group-entry"));
+    let counter = existingEntries.length;
+    let currentIndex = 0;
+    let isAnimating = false;
+    if (!template || !list || !addButton) return;
+
+    function getEntries() {
+      return Array.from(list.children).filter((el) => el.classList.contains("array-group-entry"));
+    }
+
+    function cleanupSlideStyles(entry) {
+      if (!entry) return;
+      entry.style.transition = "";
+      entry.style.transform = "";
+      entry.style.position = "";
+      entry.style.inset = "";
+      entry.style.width = "";
+      entry.style.zIndex = "";
+      entry.style.opacity = "";
+      entry.style.pointerEvents = "";
+    }
+
+    function playAddButtonAnimation() {
+      addButton.classList.remove("sf-button-pop");
+      void addButton.offsetWidth;
+      addButton.classList.add("sf-button-pop");
+    }
+
+    function playPageTransition(fromEntry, toEntry, direction, onTransitionEnd = null) {
+      if (!fromEntry || !toEntry || fromEntry === toEntry) return;
+      const incomingFrom = direction < 0 ? "-100%" : "100%";
+      const outgoingTo = direction < 0 ? "100%" : "-100%";
+      isAnimating = true;
+      if (list._sfSlideTimer) {
+        window.clearTimeout(list._sfSlideTimer);
+      }
+      const maxHeight = Math.max(fromEntry.offsetHeight, toEntry.offsetHeight);
+      list.style.position = "relative";
+      list.style.minHeight = `${maxHeight}px`;
+      list.style.overflow = "hidden";
+      fromEntry.classList.remove("hidden");
+      toEntry.classList.remove("hidden");
+      fromEntry.style.position = "absolute";
+      toEntry.style.position = "absolute";
+      fromEntry.style.inset = "0";
+      toEntry.style.inset = "0";
+      fromEntry.style.width = "100%";
+      toEntry.style.width = "100%";
+      fromEntry.style.zIndex = "1";
+      toEntry.style.zIndex = "2";
+      fromEntry.style.pointerEvents = "none";
+      toEntry.style.pointerEvents = "none";
+      fromEntry.style.transition = "none";
+      toEntry.style.transition = "none";
+      fromEntry.style.transform = "translateX(0)";
+      toEntry.style.transform = `translateX(${incomingFrom})`;
+      void list.offsetWidth;
+      fromEntry.style.transition = `transform ${slideDurationMs}ms cubic-bezier(0.22, 0.61, 0.36, 1)`;
+      toEntry.style.transition = `transform ${slideDurationMs}ms cubic-bezier(0.22, 0.61, 0.36, 1)`;
+      fromEntry.style.transform = `translateX(${outgoingTo})`;
+      toEntry.style.transform = "translateX(0)";
+      list._sfSlideTimer = window.setTimeout(() => {
+        cleanupSlideStyles(fromEntry);
+        cleanupSlideStyles(toEntry);
+        if (typeof onTransitionEnd === "function") {
+          onTransitionEnd();
+        }
+        isAnimating = false;
+        refreshGroupState();
+        list.style.position = "";
+        list.style.minHeight = "";
+        list.style.overflow = "";
+      }, slideDurationMs + 30);
+    }
+
+    function renderDots(total, controlsLocked) {
+      if (!dotsContainer) return;
+      dotsContainer.replaceChildren();
+      if (total <= 1) return;
+      for (let index = 0; index < total; index += 1) {
+        const dot = document.createElement("button");
+        dot.type = "button";
+        dot.className = "group-page-dot";
+        dot.disabled = controlsLocked;
+        if (index === currentIndex) {
+          dot.classList.add("is-active");
+          dot.setAttribute("aria-current", "page");
+        } else {
+          dot.setAttribute("aria-current", "false");
+        }
+        dot.setAttribute("aria-label", `${index + 1}件目へ移動`);
+        dot.addEventListener("click", () => {
+          if (index === currentIndex || isAnimating) return;
+          const direction = index > currentIndex ? 1 : -1;
+          const fromIndex = currentIndex;
+          currentIndex = index;
+          refreshGroupState({ animate: true, direction, fromIndex });
+        });
+        dotsContainer.appendChild(dot);
+      }
+    }
+
+    function refreshGroupState(options = {}) {
+      const { animate = false, direction = 1, fromIndex = currentIndex, onTransitionEnd = null } = options;
+      const entries = getEntries();
+      const total = entries.length;
+      if (total === 0) {
+        currentIndex = 0;
+      } else if (currentIndex >= total) {
+        currentIndex = total - 1;
+      } else if (currentIndex < 0) {
+        currentIndex = 0;
+      }
+      if (!isAnimating) {
+        entries.forEach((entry, index) => {
+          entry.classList.toggle("hidden", index !== currentIndex);
+        });
+      }
+      if (animate && !isAnimating && total > 0 && fromIndex >= 0 && fromIndex < total && fromIndex !== currentIndex) {
+        entries.forEach((entry, index) => {
+          if (index !== fromIndex && index !== currentIndex) {
+            entry.classList.add("hidden");
+          }
+        });
+        playPageTransition(entries[fromIndex], entries[currentIndex], direction, onTransitionEnd);
+      }
+      if (paginationLabel) {
+        if (total > 0) {
+          const detailed = `${currentIndex + 1}件目 / 全${total}件`;
+          paginationLabel.textContent = `${currentIndex + 1}/${total}`;
+          paginationLabel.title = detailed;
+          paginationLabel.setAttribute("aria-label", detailed);
+        } else {
+          paginationLabel.textContent = "0/0";
+          paginationLabel.title = "0件目 / 全0件";
+          paginationLabel.setAttribute("aria-label", "0件目 / 全0件");
+        }
+      }
+      const controlsLocked = addButton.disabled || isAnimating;
+      if (prevButton) {
+        prevButton.disabled = controlsLocked || total <= 1 || currentIndex <= 0;
+      }
+      if (nextButton) {
+        nextButton.disabled = controlsLocked || total <= 1 || currentIndex >= total - 1;
+      }
+      if (removeCurrentButton) {
+        removeCurrentButton.disabled = controlsLocked || total <= 0;
+      }
+      renderDots(total, controlsLocked);
+    }
+
+    function bootstrapNode(node) {
+      node.querySelectorAll("input[data-picker]").forEach(initPicker);
+      node.querySelectorAll(".array-field").forEach(initArrayFieldBlock);
+      node.querySelectorAll(".array-group").forEach(initArrayGroupBlock);
+      initChoiceSelectSearch(node);
+      initMasterReference(node);
+    }
+
+    function addGroupItem(options = {}) {
+      const { animate = false } = options;
+      const previousIndex = currentIndex;
+      const node = template.content.firstElementChild.cloneNode(true);
+      const idx = counter++;
+      node.innerHTML = node.innerHTML.replaceAll(indexToken, String(idx));
+      bootstrapNode(node);
+      list.appendChild(node);
+      currentIndex = getEntries().length - 1;
+      refreshGroupState({ animate, direction: 1, fromIndex: previousIndex });
+    }
+
+    addButton.addEventListener("click", () => {
+      if (isAnimating) return;
+      playAddButtonAnimation();
+      addGroupItem({ animate: true });
+    });
+    if (removeCurrentButton) {
+      removeCurrentButton.addEventListener("click", () => {
+        if (isAnimating) return;
+        const entries = getEntries();
+        if (entries.length === 0) return;
+        if (entries.length === 1) {
+          const onlyEntry = entries[0];
+          if (!onlyEntry) return;
+          onlyEntry.remove();
+          currentIndex = 0;
+          refreshGroupState();
+          return;
+        }
+        const fromIdx = currentIndex;
+        const fromEntry = entries[fromIdx];
+        const hasNext = fromIdx < entries.length - 1;
+        const toIndex = hasNext ? fromIdx + 1 : fromIdx - 1;
+        const dir = hasNext ? 1 : -1;
+        const toEntry = entries[toIndex];
+        if (!fromEntry || !toEntry) return;
+        currentIndex = toIndex;
+        refreshGroupState({
+          animate: true,
+          direction: dir,
+          fromIndex: fromIdx,
+          onTransitionEnd: () => {
+            fromEntry.remove();
+            if (fromIdx < currentIndex) {
+              currentIndex -= 1;
+            }
+          },
+        });
+      });
+    }
+    if (prevButton) {
+      prevButton.addEventListener("click", () => {
+        if (currentIndex <= 0 || isAnimating) return;
+        const fromIdx = currentIndex;
+        currentIndex -= 1;
+        refreshGroupState({ animate: true, direction: -1, fromIndex: fromIdx });
+      });
+    }
+    if (nextButton) {
+      nextButton.addEventListener("click", () => {
+        if (isAnimating) return;
+        const total = getEntries().length;
+        if (currentIndex >= total - 1) return;
+        const fromIdx = currentIndex;
+        currentIndex += 1;
+        refreshGroupState({ animate: true, direction: 1, fromIndex: fromIdx });
+      });
+    }
+
+    // 既存エントリがある場合はそれを使い、ない場合は新規追加
+    if (existingEntries.length > 0) {
+      // 既存エントリのbootstrap
+      existingEntries.forEach((entry) => bootstrapNode(entry));
+      refreshGroupState();
+    } else {
+      addGroupItem({ animate: false });
+    }
+  }
+
+  preventSubmitOnEnter(document.querySelector("form[method='post'][enctype='multipart/form-data']"));
+  document.querySelectorAll("input[data-picker]").forEach(initPicker);
+  document.querySelectorAll(".array-field").forEach(initArrayFieldBlock);
+  document.querySelectorAll(".array-group").forEach(initArrayGroupBlock);
+  initChoiceSelectSearch(document);
+  initMasterReference(document);
+</script>
+{% endblock %}

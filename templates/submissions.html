@@ -103,6 +103,7 @@
     <thead class="bg-slate-100 text-left">
       <tr>
         <th class="px-4 py-3">送信日時</th>
+        <th class="px-4 py-3">更新日時</th>
         {% for column in display_columns %}
         <th class="px-4 py-3">{{ column.label }}</th>
         {% endfor %}
@@ -115,17 +116,27 @@
         <td class="px-4 py-3 text-slate-600">
           <time class="js-local-dt" data-iso="{{ iso_dt(row.created_at) }}">{{ format_dt(row.created_at) }}</time>
         </td>
+        <td class="px-4 py-3 text-slate-600">
+          {% if row.updated_at %}
+          <time class="js-local-dt" data-iso="{{ iso_dt(row.updated_at) }}">{{ format_dt(row.updated_at) }}</time>
+          {% else %}
+          -
+          {% endif %}
+        </td>
         {% for value in row["values"] %}
         {% set column = display_columns[loop.index0] %}
         {% if column.kind == "default"
               and column.field.type == "string"
               and not column.field.is_array
-              and column.field.format == "url"
               and value %}
           {% set trimmed = value | trim %}
           {% if trimmed.startswith("http://") or trimmed.startswith("https://") %}
           <td class="px-4 py-3">
             <a href="{{ trimmed }}" target="_blank" rel="noopener noreferrer" class="break-all text-sky-700 underline">{{ value }}</a>
+          </td>
+          {% elif trimmed.startswith("www.") %}
+          <td class="px-4 py-3">
+            <a href="https://{{ trimmed }}" target="_blank" rel="noopener noreferrer" class="break-all text-sky-700 underline">{{ value }}</a>
           </td>
           {% else %}
           <td class="px-4 py-3">{{ value }}</td>
@@ -135,14 +146,17 @@
         {% endif %}
         {% endfor %}
         <td class="px-4 py-3">
-          <form method="post" action="/admin/forms/{{ form.id }}/submissions/{{ row.id }}/delete">
-            <button class="whitespace-nowrap rounded border border-rose-300 px-2 py-1 text-xs text-rose-600">削除</button>
-          </form>
+          <div class="flex gap-1">
+            <a href="/admin/forms/{{ form.id }}/submissions/{{ row.id }}/edit" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs text-slate-700">編集</a>
+            <form method="post" action="/admin/forms/{{ form.id }}/submissions/{{ row.id }}/delete">
+              <button class="whitespace-nowrap rounded border border-rose-300 px-2 py-1 text-xs text-rose-600">削除</button>
+            </form>
+          </div>
         </td>
       </tr>
       {% else %}
       <tr>
-        <td colspan="{{ display_columns | length + 2 }}" class="px-4 py-6 text-center text-slate-500">該当データがありません。</td>
+        <td colspan="{{ display_columns | length + 3 }}" class="px-4 py-6 text-center text-slate-500">該当データがありません。</td>
       </tr>
       {% endfor %}
     </tbody>

@@ -66,7 +66,7 @@
         <div>
           <label class="text-sm text-slate-600">Webhook URL</label>
           <input name="webhook_url" value="{{ form.webhook_url if form else '' }}" type="url" placeholder="https://example.com/webhook" class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm" />
-          <p class="mt-1 text-xs text-slate-500">送信・削除時に通知を送るURL</p>
+          <p class="mt-1 text-xs text-slate-500">送信・削除・編集時に通知を送るURL</p>
         </div>
         <div class="flex items-start gap-6 pt-6">
           <label class="flex items-center gap-2 text-sm">
@@ -76,6 +76,10 @@
           <label class="flex items-center gap-2 text-sm">
             <input type="checkbox" name="webhook_on_delete" {% if form and form.webhook_on_delete %}checked{% endif %} />
             削除時に通知
+          </label>
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="webhook_on_edit" {% if form and form.webhook_on_edit %}checked{% endif %} />
+            編集時に通知
           </label>
         </div>
       </div>
