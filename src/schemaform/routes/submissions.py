@@ -187,6 +187,7 @@ async def list_submissions(request: Request, form_id: str, _: Any = Depends(admi
             "form": form,
             "fields": fields,
             "display_fields": display_fields,
+            "display_columns": display_columns,
             "filter_fields": filter_fields,
             "rows": display_rows,
             "page": page,
