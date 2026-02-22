@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -10,13 +11,20 @@ from schemaform.utils import to_iso
 logger = logging.getLogger(__name__)
 
 
+def is_valid_webhook_url(url: str) -> bool:
+    if not url:
+        return False
+    parsed = urlsplit(url)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
 async def send_webhook(
     url: str,
     event: str,
     form: dict[str, Any],
     submission: dict[str, Any] | None = None,
 ) -> bool:
-    if not url:
+    if not is_valid_webhook_url(url):
         return False
 
     payload: dict[str, Any] = {

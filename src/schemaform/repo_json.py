@@ -112,6 +112,11 @@ class JSONSubmissionRepo(JSONRepoBase):
         submissions = [self._from_record(item) for item in items]
         return sorted(submissions, key=lambda x: x["created_at"], reverse=True)
 
+    def get_submission(self, submission_id: str) -> dict[str, Any] | None:
+        with self._db() as db:
+            items = db.table("submissions").search(Query().id == submission_id)
+        return self._from_record(items[0]) if items else None
+
     def create_submission(self, submission: dict[str, Any]) -> None:
         record = self._to_record(submission)
         with self._db() as db:

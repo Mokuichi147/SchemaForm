@@ -13,6 +13,7 @@ from schemaform.schema import (
     schema_from_fields,
 )
 from schemaform.utils import dumps_json, new_short_id, new_ulid, now_utc
+from schemaform.webhook import is_valid_webhook_url
 
 router = APIRouter()
 
@@ -124,6 +125,20 @@ async def create_form(request: Request, _: Any = Depends(admin_guard)) -> HTMLRe
     public_id = new_short_id()
     now = now_utc()
     webhook_url = str(form_data.get("webhook_url", "")).strip()
+    if webhook_url and not is_valid_webhook_url(webhook_url):
+        errors.append("Webhook URLはhttp://またはhttps://で始まる有効なURLを指定してください")
+        return templates.TemplateResponse(
+            "admin_form_builder.html",
+            {
+                "request": request,
+                "form": {"name": name, "description": description, "webhook_url": webhook_url},
+                "fields": fields,
+                "fields_json": dumps_json(fields),
+                "master_forms_json": dumps_json(master_forms),
+                "master_field_catalog_json": dumps_json(master_field_catalog),
+                "errors": errors,
+            },
+        )
     webhook_on_submit = bool(form_data.get("webhook_on_submit"))
     webhook_on_delete = bool(form_data.get("webhook_on_delete"))
     storage.forms.create_form(
@@ -210,6 +225,20 @@ async def update_form(
 
     schema, field_order = schema_from_fields(fields)
     webhook_url = str(form_data.get("webhook_url", "")).strip()
+    if webhook_url and not is_valid_webhook_url(webhook_url):
+        errors.append("Webhook URLはhttp://またはhttps://で始まる有効なURLを指定してください")
+        return templates.TemplateResponse(
+            "admin_form_builder.html",
+            {
+                "request": request,
+                "form": {**form, "name": name, "description": description, "webhook_url": webhook_url},
+                "fields": fields,
+                "fields_json": dumps_json(fields),
+                "master_forms_json": dumps_json(master_forms),
+                "master_field_catalog_json": dumps_json(master_field_catalog),
+                "errors": errors,
+            },
+        )
     webhook_on_submit = bool(form_data.get("webhook_on_submit"))
     webhook_on_delete = bool(form_data.get("webhook_on_delete"))
     updated = storage.forms.update_form(

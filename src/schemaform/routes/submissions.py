@@ -169,7 +169,6 @@ async def list_submissions(
         storage, fields
     )
     filter_fields = flatten_filter_fields(fields)
-    display_fields = [column["label"] for column in display_columns]
 
     display_rows = []
     for item in page_items:
@@ -196,7 +195,6 @@ async def list_submissions(
             "request": request,
             "form": form,
             "fields": fields,
-            "display_fields": display_fields,
             "display_columns": display_columns,
             "filter_fields": filter_fields,
             "rows": display_rows,
@@ -217,8 +215,7 @@ async def delete_submission(
 ) -> RedirectResponse:
     storage = request.app.state.storage
     form = storage.forms.get_form(form_id)
-    submission = storage.submissions.list_submissions(form_id)
-    submission_data = next((s for s in submission if s["id"] == submission_id), None)
+    submission_data = storage.submissions.get_submission(submission_id)
 
     storage.submissions.delete_submission(submission_id)
 

@@ -60,6 +60,8 @@ class SQLiteFormRepo:
             for key, value in updates.items():
                 if key in {"schema_json", "field_order"}:
                     setattr(row, key, dumps_json(value))
+                elif key in {"webhook_on_submit", "webhook_on_delete"}:
+                    setattr(row, key, 1 if value else 0)
                 else:
                     setattr(row, key, value)
             session.commit()
@@ -113,6 +115,11 @@ class SQLiteSubmissionRepo:
                 .all()
             )
             return [self._to_dict(row) for row in rows]
+
+    def get_submission(self, submission_id: str) -> dict[str, Any] | None:
+        with self._Session() as session:
+            row = session.get(SubmissionModel, submission_id)
+            return self._to_dict(row) if row else None
 
     def create_submission(self, submission: dict[str, Any]) -> None:
         with self._Session() as session:
