@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 
 from schemaform.fields import (
+    clean_empty_recursive,
     expand_group_array_rows,
     flatten_fields,
     flatten_filter_fields,
@@ -17,10 +18,16 @@ from schemaform.fields import (
 from schemaform.filters import (
     apply_filters,
     collect_file_ids,
+    normalize_number,
+    parse_bool,
     resolve_file_names,
     value_to_text,
 )
-from schemaform.master import build_master_reference_context
+from schemaform.master import (
+    build_master_reference_context,
+    enrich_master_options,
+    validate_master_references,
+)
 from schemaform.schema import fields_from_schema
 
 router = APIRouter()
@@ -183,6 +190,7 @@ async def list_submissions(
             {
                 "id": item["id"],
                 "created_at": item["created_at"],
+                "updated_at": item.get("updated_at"),
                 "values": row_values,
             }
         )
@@ -228,6 +236,201 @@ async def delete_submission(
         from schemaform.webhook import send_webhook
 
         await send_webhook(form["webhook_url"], "delete", form, submission_data)
+
+    return RedirectResponse(f"/admin/forms/{form_id}/submissions", status_code=303)
+
+
+@router.get(
+    "/admin/forms/{form_id}/submissions/{submission_id}/edit",
+    response_class=HTMLResponse,
+    tags=["admin"],
+)
+async def edit_submission(
+    request: Request, form_id: str, submission_id: str, _: Any = Depends(admin_guard)
+) -> HTMLResponse:
+    storage = request.app.state.storage
+    templates = request.app.state.templates
+    form = storage.forms.get_form(form_id)
+    if not form:
+        raise HTTPException(status_code=404, detail="フォームが見つかりません")
+    submission = storage.submissions.get_submission(submission_id)
+    if not submission or submission["form_id"] != form_id:
+        raise HTTPException(status_code=404, detail="送信データが見つかりません")
+    fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
+    enrich_master_options(storage, fields)
+    return templates.TemplateResponse(
+        "submission_edit.html",
+        {
+            "request": request,
+            "form": form,
+            "fields": fields,
+            "submission": submission,
+            "errors": [],
+        },
+    )
+
+
+@router.post(
+    "/admin/forms/{form_id}/submissions/{submission_id}/edit",
+    response_class=HTMLResponse,
+    tags=["admin"],
+)
+async def update_submission(
+    request: Request, form_id: str, submission_id: str, _: Any = Depends(admin_guard)
+) -> HTMLResponse:
+    from jsonschema import Draft7Validator
+
+    from schemaform.routes.public import save_upload
+    from schemaform.utils import now_utc
+
+    storage = request.app.state.storage
+    templates = request.app.state.templates
+    form = storage.forms.get_form(form_id)
+    if not form:
+        raise HTTPException(status_code=404, detail="フォームが見つかりません")
+    existing = storage.submissions.get_submission(submission_id)
+    if not existing or existing["form_id"] != form_id:
+        raise HTTPException(status_code=404, detail="送信データが見つかりません")
+
+    form_data = await request.form()
+    fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
+    enrich_master_options(storage, fields)
+    submission: dict[str, Any] = {}
+    old_data = existing.get("data_json", {})
+
+    async def collect_fields(
+        field_list: list[dict[str, Any]],
+        target: dict[str, Any],
+        prefix: str,
+        old_target: dict[str, Any],
+    ) -> None:
+        for field in field_list:
+            key = field["key"]
+            form_key = f"{prefix}{key}" if prefix else key
+            field_type = field["type"]
+            is_array = field.get("is_array", False)
+
+            if field_type == "group":
+                children = field.get("children") or []
+                if is_array:
+                    indices: set[int] = set()
+                    form_prefix = f"{form_key}."
+                    for k in form_data:
+                        if k.startswith(form_prefix):
+                            rest = k[len(form_prefix) :]
+                            parts = rest.split(".", 1)
+                            if parts[0].isdigit():
+                                indices.add(int(parts[0]))
+                    items: list[dict[str, Any]] = []
+                    old_items = old_target.get(key, []) if isinstance(old_target.get(key), list) else []
+                    for order, idx in enumerate(sorted(indices)):
+                        item: dict[str, Any] = {}
+                        old_item = old_items[order] if order < len(old_items) and isinstance(old_items, list) else {}
+                        await collect_fields(children, item, f"{form_key}.{idx}.", old_item)
+                        if item:
+                            items.append(item)
+                    target[key] = items
+                else:
+                    group_data: dict[str, Any] = {}
+                    old_group = old_target.get(key, {}) if isinstance(old_target.get(key), dict) else {}
+                    await collect_fields(children, group_data, f"{form_key}.", old_group)
+                    target[key] = group_data
+                continue
+
+            if is_array:
+                if field_type == "file":
+                    uploads = form_data.getlist(form_key)
+                    file_ids: list[str] = []
+                    has_new_upload = any(
+                        upload and getattr(upload, "filename", "")
+                        for upload in uploads
+                    )
+                    if has_new_upload:
+                        for upload in uploads:
+                            if upload and getattr(upload, "filename", ""):
+                                file_ids.append(
+                                    await save_upload(
+                                        upload,
+                                        form["id"],
+                                        request,
+                                        str(field.get("format", "")),
+                                        field.get("allowed_extensions") or [],
+                                    )
+                                )
+                        target[key] = file_ids
+                    else:
+                        target[key] = old_target.get(key, [])
+                    continue
+
+                values = [v for v in form_data.getlist(form_key) if v not in (None, "")]
+                if field_type in {"number", "integer"}:
+                    parsed = [
+                        normalize_number(v, field_type == "integer")
+                        for v in values
+                        if normalize_number(v, field_type == "integer") is not None
+                    ]
+                    target[key] = parsed
+                elif field_type == "boolean":
+                    target[key] = [parse_bool(v) for v in values]
+                else:
+                    target[key] = values
+            else:
+                if field_type == "file":
+                    upload = form_data.get(form_key)
+                    if upload and getattr(upload, "filename", ""):
+                        target[key] = await save_upload(
+                            upload,
+                            form["id"],
+                            request,
+                            str(field.get("format", "")),
+                            field.get("allowed_extensions") or [],
+                        )
+                    else:
+                        target[key] = old_target.get(key)
+                    continue
+
+                raw_value = form_data.get(form_key)
+                if field_type in {"number", "integer"}:
+                    target[key] = normalize_number(raw_value, field_type == "integer")
+                elif field_type == "boolean":
+                    target[key] = parse_bool(raw_value)
+                else:
+                    target[key] = str(raw_value) if raw_value is not None else None
+
+    await collect_fields(fields, submission, "", old_data)
+    submission = clean_empty_recursive(submission) or {}
+
+    validator = Draft7Validator(form["schema_json"])
+    errors = sorted(validator.iter_errors(submission), key=lambda err: list(err.path))
+    master_errors = validate_master_references(storage, fields, submission)
+    if errors or master_errors:
+        messages = [f"{error.message}" for error in errors] + master_errors
+        return templates.TemplateResponse(
+            "submission_edit.html",
+            {
+                "request": request,
+                "form": form,
+                "fields": fields,
+                "submission": {**existing, "data_json": submission},
+                "errors": messages,
+            },
+        )
+
+    now = now_utc()
+    try:
+        updated = storage.submissions.update_submission(
+            submission_id, {"data_json": submission, "updated_at": now}
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="送信データが見つかりません")
+
+    if (
+        form.get("webhook_url")
+        and form.get("webhook_on_edit")
+    ):
+        from schemaform.webhook import send_webhook
+
+        await send_webhook(form["webhook_url"], "edit", form, updated)
 
     return RedirectResponse(f"/admin/forms/{form_id}/submissions", status_code=303)
 

@@ -21,6 +21,7 @@ class FormModel(Base):
     webhook_url = Column(Text, nullable=True)
     webhook_on_submit = Column(Integer, default=0)
     webhook_on_delete = Column(Integer, default=0)
+    webhook_on_edit = Column(Integer, default=0)
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
 
@@ -32,6 +33,7 @@ class SubmissionModel(Base):
     form_id = Column(String, index=True)
     data_json = Column(Text)
     created_at = Column(DateTime)
+    updated_at = Column(DateTime, nullable=True)
 
 
 class FileModel(Base):

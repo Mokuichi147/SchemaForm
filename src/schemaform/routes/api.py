@@ -50,6 +50,7 @@ async def api_create_form(request: Request) -> JSONResponse:
         raise HTTPException(status_code=400, detail="webhook_urlが不正です")
     webhook_on_submit = bool(payload.get("webhook_on_submit"))
     webhook_on_delete = bool(payload.get("webhook_on_delete"))
+    webhook_on_edit = bool(payload.get("webhook_on_edit"))
 
     form_id = new_ulid()
     public_id = new_short_id()
@@ -66,6 +67,7 @@ async def api_create_form(request: Request) -> JSONResponse:
             "webhook_url": webhook_url,
             "webhook_on_submit": webhook_on_submit,
             "webhook_on_delete": webhook_on_delete,
+            "webhook_on_edit": webhook_on_edit,
             "created_at": now,
             "updated_at": now,
         }
@@ -108,6 +110,8 @@ async def api_update_form(form_id: str, request: Request) -> JSONResponse:
         updates["webhook_on_submit"] = bool(payload.get("webhook_on_submit"))
     if "webhook_on_delete" in payload:
         updates["webhook_on_delete"] = bool(payload.get("webhook_on_delete"))
+    if "webhook_on_edit" in payload:
+        updates["webhook_on_edit"] = bool(payload.get("webhook_on_edit"))
     updates["updated_at"] = now_utc()
     updated = storage.forms.update_form(form_id, updates)
     return JSONResponse(sanitize_form_output(updated))
@@ -196,6 +200,7 @@ async def api_list_submissions(request: Request, form_id: str) -> JSONResponse:
             "form_id": item["form_id"],
             "data_json": item.get("data_json", {}),
             "created_at": to_iso(item["created_at"]),
+            "updated_at": to_iso(item["updated_at"]) if item.get("updated_at") else None,
         }
         for item in page_items
     ]
