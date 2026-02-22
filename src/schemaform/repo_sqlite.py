@@ -26,7 +26,11 @@ class SQLiteFormRepo:
 
     def get_form_by_public_id(self, public_id: str) -> dict[str, Any] | None:
         with self._Session() as session:
-            row = session.query(FormModel).filter(FormModel.public_id == public_id).first()
+            row = (
+                session.query(FormModel)
+                .filter(FormModel.public_id == public_id)
+                .first()
+            )
             return self._to_dict(row) if row else None
 
     def create_form(self, form: dict[str, Any]) -> None:
@@ -85,6 +89,9 @@ class SQLiteFormRepo:
             "status": row.status,
             "schema_json": loads_json(row.schema_json) or {},
             "field_order": loads_json(row.field_order) or [],
+            "webhook_url": row.webhook_url or "",
+            "webhook_on_submit": bool(row.webhook_on_submit),
+            "webhook_on_delete": bool(row.webhook_on_delete),
             "created_at": row.created_at,
             "updated_at": row.updated_at,
         }

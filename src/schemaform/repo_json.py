@@ -97,6 +97,9 @@ class JSONFormRepo(JSONRepoBase):
             "status": record.get("status", "inactive"),
             "schema_json": record.get("schema_json", {}),
             "field_order": record.get("field_order", []),
+            "webhook_url": record.get("webhook_url", ""),
+            "webhook_on_submit": record.get("webhook_on_submit", False),
+            "webhook_on_delete": record.get("webhook_on_delete", False),
             "created_at": parse_dt(record.get("created_at")),
             "updated_at": parse_dt(record.get("updated_at")),
         }

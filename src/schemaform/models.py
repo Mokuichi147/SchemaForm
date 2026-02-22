@@ -18,6 +18,9 @@ class FormModel(Base):
     status = Column(String)
     schema_json = Column(Text)
     field_order = Column(Text)
+    webhook_url = Column(Text, nullable=True)
+    webhook_on_submit = Column(Integer, default=0)
+    webhook_on_delete = Column(Integer, default=0)
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
 
