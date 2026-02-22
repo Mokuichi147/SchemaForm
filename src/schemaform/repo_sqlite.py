@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from schemaform.models import Base, FileModel, FormModel, SubmissionModel
@@ -178,6 +178,27 @@ class SQLiteStorage:
         self._engine = create_engine(f"sqlite:///{db_path}", future=True)
         self._Session = sessionmaker(self._engine, expire_on_commit=False)
         Base.metadata.create_all(self._engine)
+        self._migrate_add_webhook_columns()
         self.forms = SQLiteFormRepo(self._Session)
         self.submissions = SQLiteSubmissionRepo(self._Session)
         self.files = SQLiteFileRepo(self._Session)
+
+    def _migrate_add_webhook_columns(self) -> None:
+        with self._engine.connect() as conn:
+            result = conn.execute(text("PRAGMA table_info(forms)"))
+            columns = {row[1] for row in result.fetchall()}
+            if "webhook_url" not in columns:
+                conn.execute(text("ALTER TABLE forms ADD COLUMN webhook_url TEXT"))
+            if "webhook_on_submit" not in columns:
+                conn.execute(
+                    text(
+                        "ALTER TABLE forms ADD COLUMN webhook_on_submit INTEGER DEFAULT 0"
+                    )
+                )
+            if "webhook_on_delete" not in columns:
+                conn.execute(
+                    text(
+                        "ALTER TABLE forms ADD COLUMN webhook_on_delete INTEGER DEFAULT 0"
+                    )
+                )
+            conn.commit()
