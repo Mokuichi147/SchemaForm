@@ -51,10 +51,11 @@
       <div data-role="group-dots" class="group-dot-list mb-2 flex min-h-[0.75rem] items-center gap-1.5"></div>
       <div class="array-group-items">
         {% for item_data in items %}
+        {% set item_idx = loop.index0 %}
         <div class="array-group-entry {{ array_entry_class }}{% if not loop.first %} hidden{% endif %}">
           <div class="space-y-2">
             {% for child in field.children %}
-            {{ render_edit_field(child, form_name ~ "." ~ loop.parent.loop.index0 ~ ".", item_data, depth + 1) }}
+            {{ render_edit_field(child, form_name ~ "." ~ item_idx ~ ".", item_data, depth + 1) }}
             {% endfor %}
           </div>
         </div>
