@@ -103,8 +103,8 @@
     <thead class="bg-slate-100 text-left">
       <tr>
         <th class="px-4 py-3">送信日時</th>
-        {% for label in display_fields %}
-        <th class="px-4 py-3">{{ label }}</th>
+        {% for column in display_columns %}
+        <th class="px-4 py-3">{{ column.label }}</th>
         {% endfor %}
         <th class="px-4 py-3">操作</th>
       </tr>
@@ -116,7 +116,23 @@
           <time class="js-local-dt" data-iso="{{ iso_dt(row.created_at) }}">{{ format_dt(row.created_at) }}</time>
         </td>
         {% for value in row["values"] %}
+        {% set column = display_columns[loop.index0] %}
+        {% if column.kind == "default"
+              and column.field.type == "string"
+              and not column.field.is_array
+              and column.field.format == "url"
+              and value %}
+          {% set trimmed = value | trim %}
+          {% if trimmed.startswith("http://") or trimmed.startswith("https://") %}
+          <td class="px-4 py-3">
+            <a href="{{ trimmed }}" target="_blank" rel="noopener noreferrer" class="break-all text-sky-700 underline">{{ value }}</a>
+          </td>
+          {% else %}
+          <td class="px-4 py-3">{{ value }}</td>
+          {% endif %}
+        {% else %}
         <td class="px-4 py-3">{{ value }}</td>
+        {% endif %}
         {% endfor %}
         <td class="px-4 py-3">
           <form method="post" action="/admin/forms/{{ form.id }}/submissions/{{ row.id }}/delete">
@@ -126,7 +142,7 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="{{ display_fields | length + 2 }}" class="px-4 py-6 text-center text-slate-500">該当データがありません。</td>
+        <td colspan="{{ display_columns | length + 2 }}" class="px-4 py-6 text-center text-slate-500">該当データがありません。</td>
       </tr>
       {% endfor %}
     </tbody>

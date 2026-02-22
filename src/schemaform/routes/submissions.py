@@ -197,6 +197,7 @@ async def list_submissions(
             "form": form,
             "fields": fields,
             "display_fields": display_fields,
+            "display_columns": display_columns,
             "filter_fields": filter_fields,
             "rows": display_rows,
             "page": page,
@@ -229,7 +230,7 @@ async def delete_submission(
     ):
         from schemaform.webhook import send_webhook
 
-        send_webhook(form["webhook_url"], "delete", form, submission_data)
+        await send_webhook(form["webhook_url"], "delete", form, submission_data)
 
     return RedirectResponse(f"/admin/forms/{form_id}/submissions", status_code=303)
 

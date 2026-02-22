@@ -225,7 +225,7 @@ async def submit_form(request: Request, public_id: str) -> HTMLResponse:
     if form.get("webhook_url") and form.get("webhook_on_submit"):
         from schemaform.webhook import send_webhook
 
-        send_webhook(form["webhook_url"], "submit", form, submission_record)
+        await send_webhook(form["webhook_url"], "submit", form, submission_record)
 
     return templates.TemplateResponse(
         "submission_done.html",

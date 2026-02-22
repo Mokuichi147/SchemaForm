@@ -10,7 +10,7 @@ from schemaform.utils import to_iso
 logger = logging.getLogger(__name__)
 
 
-def send_webhook(
+async def send_webhook(
     url: str,
     event: str,
     form: dict[str, Any],
@@ -33,8 +33,8 @@ def send_webhook(
             payload["created_at"] = to_iso(submission["created_at"])
 
     try:
-        with httpx.Client(timeout=10.0) as client:
-            response = client.post(url, json=payload)
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(url, json=payload)
             response.raise_for_status()
         logger.info("Webhook sent successfully: %s -> %s", event, url)
         return True

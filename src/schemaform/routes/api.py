@@ -129,7 +129,7 @@ async def api_submit_form(public_id: str, request: Request) -> JSONResponse:
     if form.get("webhook_url") and form.get("webhook_on_submit"):
         from schemaform.webhook import send_webhook
 
-        send_webhook(form["webhook_url"], "submit", form, submission)
+        await send_webhook(form["webhook_url"], "submit", form, submission)
 
     return JSONResponse(
         {"submission_id": submission_id, "created_at": to_iso(created_at)}
