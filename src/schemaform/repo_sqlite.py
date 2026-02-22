@@ -43,6 +43,9 @@ class SQLiteFormRepo:
                 status=form["status"],
                 schema_json=dumps_json(form["schema_json"]),
                 field_order=dumps_json(form["field_order"]),
+                webhook_url=form.get("webhook_url", ""),
+                webhook_on_submit=1 if form.get("webhook_on_submit") else 0,
+                webhook_on_delete=1 if form.get("webhook_on_delete") else 0,
                 created_at=form["created_at"],
                 updated_at=form["updated_at"],
             )
