@@ -120,12 +120,15 @@
         {% if column.kind == "default"
               and column.field.type == "string"
               and not column.field.is_array
-              and column.field.format == "url"
               and value %}
           {% set trimmed = value | trim %}
           {% if trimmed.startswith("http://") or trimmed.startswith("https://") %}
           <td class="px-4 py-3">
             <a href="{{ trimmed }}" target="_blank" rel="noopener noreferrer" class="break-all text-sky-700 underline">{{ value }}</a>
+          </td>
+          {% elif trimmed.startswith("www.") %}
+          <td class="px-4 py-3">
+            <a href="https://{{ trimmed }}" target="_blank" rel="noopener noreferrer" class="break-all text-sky-700 underline">{{ value }}</a>
           </td>
           {% else %}
           <td class="px-4 py-3">{{ value }}</td>
