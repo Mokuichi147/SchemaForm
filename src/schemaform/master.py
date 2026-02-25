@@ -77,10 +77,14 @@ def _get_submission_by_id(
         source_fields = _get_form_fields(storage, form_id, cache)
         data = row.get("data_json", {})
         if isinstance(data, dict) and source_fields:
-            expanded = expand_group_array_rows(source_fields, data)
+            expanded_cache = cache.setdefault("expanded_rows", {})
+            exp_key = (form_id, base_id)
+            if exp_key not in expanded_cache:
+                expanded_cache[exp_key] = expand_group_array_rows(source_fields, data)
+            expanded = expanded_cache[exp_key]
             if row_index < len(expanded):
                 return {**row, "data_json": expanded[row_index]}
-        return row
+        return None
 
     return None
 
@@ -573,6 +577,34 @@ def build_master_reference_context(storage: Any, field: dict[str, Any]) -> dict[
         use_expansion = _has_expand_rows(source_fields) if source_fields else False
         submissions = storage.submissions.list_submissions(source_form_id)
         record_index = 0
+
+        def _append_record(record_id: str, sub: dict[str, Any]) -> None:
+            nonlocal record_index
+            record_index += 1
+            records.append(
+                {
+                    "id": record_id,
+                    "label": build_master_option_label(
+                        storage=storage,
+                        source_form_id=source_form_id,
+                        submission=sub,
+                        label_key=effective_label_key,
+                        fallback_keys=fallback_keys,
+                        fallback_index=record_index,
+                        cache=cache,
+                        visited_forms={source_form_id},
+                    ),
+                    "values": build_master_display_values(
+                        storage=storage,
+                        source_form_id=source_form_id,
+                        submission=sub,
+                        display_keys=effective_display_keys,
+                        cache=cache,
+                        visited_forms={source_form_id},
+                    ),
+                }
+            )
+
         for submission in submissions:
             submission_id = _as_non_empty_str(submission.get("id"))
             if not submission_id:
@@ -586,56 +618,12 @@ def build_master_reference_context(storage: Any, field: dict[str, Any]) -> dict[
                     else [{}]
                 )
                 for row_idx, expanded_data in enumerate(expanded_rows):
-                    record_index += 1
-                    expanded_submission = {**submission, "data_json": expanded_data}
-                    records.append(
-                        {
-                            "id": f"{submission_id}:{row_idx}",
-                            "label": build_master_option_label(
-                                storage=storage,
-                                source_form_id=source_form_id,
-                                submission=expanded_submission,
-                                label_key=effective_label_key,
-                                fallback_keys=fallback_keys,
-                                fallback_index=record_index,
-                                cache=cache,
-                                visited_forms={source_form_id},
-                            ),
-                            "values": build_master_display_values(
-                                storage=storage,
-                                source_form_id=source_form_id,
-                                submission=expanded_submission,
-                                display_keys=effective_display_keys,
-                                cache=cache,
-                                visited_forms={source_form_id},
-                            ),
-                        }
+                    _append_record(
+                        f"{submission_id}:{row_idx}",
+                        {**submission, "data_json": expanded_data},
                     )
             else:
-                record_index += 1
-                records.append(
-                    {
-                        "id": submission_id,
-                        "label": build_master_option_label(
-                            storage=storage,
-                            source_form_id=source_form_id,
-                            submission=submission,
-                            label_key=effective_label_key,
-                            fallback_keys=fallback_keys,
-                            fallback_index=record_index,
-                            cache=cache,
-                            visited_forms={source_form_id},
-                        ),
-                        "values": build_master_display_values(
-                            storage=storage,
-                            source_form_id=source_form_id,
-                            submission=submission,
-                            display_keys=effective_display_keys,
-                            cache=cache,
-                            visited_forms={source_form_id},
-                        ),
-                    }
-                )
+                _append_record(submission_id, submission)
 
     return {
         "source_form_id": source_form_id,
