@@ -58,6 +58,12 @@ def build_submission_display_columns(
 
         context = build_master_reference_context(storage, field)
         lookup = {row["id"]: row for row in context["records"]}
+        for row in context["records"]:
+            rid = row["id"]
+            if ":" in rid:
+                base_id = rid.rsplit(":", 1)[0]
+                if base_id not in lookup:
+                    lookup[base_id] = row
         master_lookup_by_field[flat_key] = lookup
         display_items = context["display_items"]
 
