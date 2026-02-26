@@ -126,7 +126,23 @@ def _get_column_sort_key(
     if value is None or value == "":
         return (1, 0.0) if is_numeric else (1, "")
 
-    if isinstance(value, (list, dict)):
+    if isinstance(value, list):
+        if field.get("type") == "master":
+            lookup = master_lookup_by_field.get(flat_key, {})
+            display_key = column.get("display_key")
+            if display_key:
+                text = render_master_display_text(value, lookup, str(display_key))
+            else:
+                text = render_master_display_text(value, lookup)
+            return (0, text.lower()) if text else (1, "")
+        if is_numeric:
+            try:
+                return (0, sum(float(v) for v in value))
+            except (ValueError, TypeError):
+                return (1, 0.0)
+        return (0, str(value).lower())
+
+    if isinstance(value, dict):
         return (0, str(value).lower()) if not is_numeric else (1, 0.0)
 
     if field.get("type") == "master":
@@ -160,7 +176,9 @@ def sort_submissions(
     reverse = order == "desc"
 
     if sort in ("created_at", "updated_at"):
-        submissions.sort(key=lambda s: s.get(sort) or "", reverse=reverse)
+        submissions.sort(
+            key=lambda s: str(s.get(sort) or ""), reverse=reverse
+        )
         return
 
     if sort.isdigit():
@@ -176,7 +194,7 @@ def sort_submissions(
             return
 
     # Fallback: created_at desc
-    submissions.sort(key=lambda s: s.get("created_at") or "", reverse=True)
+    submissions.sort(key=lambda s: str(s.get("created_at") or ""), reverse=True)
 
 
 def build_submission_row_values(
