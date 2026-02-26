@@ -111,6 +111,74 @@ def render_master_display_text(
     return resolve_one(raw_value)
 
 
+def _get_column_sort_key(
+    item: dict[str, Any],
+    column: dict[str, Any],
+    master_lookup_by_field: dict[str, dict[str, dict[str, Any]]],
+) -> tuple[int, Any]:
+    """Return a comparable sort key for a single submission row by column."""
+    data = item.get("data_json", {})
+    field = column["field"]
+    flat_key = field["flat_key"]
+    value = get_nested_value(data, flat_key)
+    is_numeric = field.get("type") in ("number", "integer")
+
+    if value is None or value == "":
+        return (1, 0.0) if is_numeric else (1, "")
+
+    if isinstance(value, (list, dict)):
+        return (0, str(value).lower()) if not is_numeric else (1, 0.0)
+
+    if field.get("type") == "master":
+        lookup = master_lookup_by_field.get(flat_key, {})
+        display_key = column.get("display_key")
+        if display_key:
+            text = render_master_display_text(value, lookup, str(display_key))
+        else:
+            text = render_master_display_text(value, lookup)
+        return (0, text.lower()) if text else (1, "")
+
+    if is_numeric:
+        try:
+            return (0, float(value))
+        except (ValueError, TypeError):
+            return (1, 0.0)
+
+    return (0, str(value).lower())
+
+
+def sort_submissions(
+    submissions: list[dict[str, Any]],
+    sort: str,
+    order: str,
+    display_columns: list[dict[str, Any]],
+    master_lookup_by_field: dict[str, dict[str, dict[str, Any]]],
+) -> None:
+    """Sort the submission list in place."""
+    if order not in ("asc", "desc"):
+        order = "desc"
+    reverse = order == "desc"
+
+    if sort in ("created_at", "updated_at"):
+        submissions.sort(key=lambda s: s.get(sort) or "", reverse=reverse)
+        return
+
+    if sort.isdigit():
+        col_idx = int(sort)
+        if 0 <= col_idx < len(display_columns):
+            column = display_columns[col_idx]
+            submissions.sort(
+                key=lambda item: _get_column_sort_key(
+                    item, column, master_lookup_by_field
+                ),
+                reverse=reverse,
+            )
+            return
+
+    # Fallback: created_at desc
+    submissions.sort(key=lambda s: s.get("created_at") or "", reverse=True)
+
+
 def build_submission_row_values(
     data: dict[str, Any],
     display_columns: list[dict[str, Any]],
@@ -171,6 +239,14 @@ async def list_submissions(
         expanded_submissions, fields, dict(request.query_params), file_names=file_names
     )
 
+    display_columns, master_lookup_by_field = build_submission_display_columns(
+        storage, fields
+    )
+
+    sort = request.query_params.get("sort", "created_at")
+    order = request.query_params.get("order", "desc")
+    sort_submissions(filtered, sort, order, display_columns, master_lookup_by_field)
+
     page = int(request.query_params.get("page", 1))
     page_size = int(request.query_params.get("page_size", 50))
     total = len(filtered)
@@ -178,9 +254,6 @@ async def list_submissions(
     end = start + page_size
     page_items = filtered[start:end]
 
-    display_columns, master_lookup_by_field = build_submission_display_columns(
-        storage, fields
-    )
     filter_fields = flatten_filter_fields(fields)
 
     display_rows = []
@@ -217,6 +290,8 @@ async def list_submissions(
             "total": total,
             "total_pages": total_pages,
             "query": dict(request.query_params),
+            "sort": sort,
+            "order": order,
         },
     )
 
@@ -465,6 +540,11 @@ async def export_submissions(
     display_columns, master_lookup_by_field = build_submission_display_columns(
         storage, fields
     )
+
+    sort = request.query_params.get("sort", "created_at")
+    order = request.query_params.get("order", "desc")
+    sort_submissions(filtered, sort, order, display_columns, master_lookup_by_field)
+
     headers = [column["label"] for column in display_columns]
     rows = [
         build_submission_row_values(

@@ -12,10 +12,37 @@
   <table class="min-w-full divide-y divide-slate-200 text-sm">
     <thead class="bg-slate-100 text-left">
       <tr>
-        <th class="px-4 py-3">フォーム名</th>
-        <th class="px-4 py-3">状態</th>
+        <th class="px-4 py-3">
+          <a href="?sort=name&order={{ 'desc' if sort == 'name' and order == 'asc' else 'asc' }}" class="group inline-flex items-center gap-1">
+            フォーム名
+            {% if sort == 'name' %}
+            <span class="text-slate-400">{{ '▲' if order == 'asc' else '▼' }}</span>
+            {% else %}
+            <span class="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity">▲</span>
+            {% endif %}
+          </a>
+        </th>
+        <th class="px-4 py-3">
+          <a href="?sort=status&order={{ 'desc' if sort == 'status' and order == 'asc' else 'asc' }}" class="group inline-flex items-center gap-1">
+            状態
+            {% if sort == 'status' %}
+            <span class="text-slate-400">{{ '▲' if order == 'asc' else '▼' }}</span>
+            {% else %}
+            <span class="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity">▲</span>
+            {% endif %}
+          </a>
+        </th>
         <th class="px-4 py-3">ページ遷移</th>
-        <th class="px-4 py-3">更新</th>
+        <th class="px-4 py-3">
+          <a href="?sort=updated_at&order={{ 'desc' if sort == 'updated_at' and order == 'asc' else 'asc' }}" class="group inline-flex items-center gap-1">
+            更新
+            {% if sort == 'updated_at' %}
+            <span class="text-slate-400">{{ '▲' if order == 'asc' else '▼' }}</span>
+            {% else %}
+            <span class="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity">▲</span>
+            {% endif %}
+          </a>
+        </th>
         <th class="px-4 py-3">削除</th>
       </tr>
     </thead>
