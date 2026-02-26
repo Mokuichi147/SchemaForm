@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from schemaform.fields import expand_group_array_rows
 from schemaform.schema import fields_from_schema
 from schemaform.utils import dumps_json, to_iso
 
@@ -61,7 +62,31 @@ def _get_submission_by_id(
 ) -> dict[str, Any] | None:
     rows = _get_submission_map(storage, form_id, cache)
     row = rows.get(submission_id)
-    return row if isinstance(row, dict) else None
+    if row is not None:
+        return row if isinstance(row, dict) else None
+
+    if ":" in submission_id:
+        base_id, idx_str = submission_id.rsplit(":", 1)
+        try:
+            row_index = int(idx_str)
+        except ValueError:
+            return None
+        row = rows.get(base_id)
+        if not isinstance(row, dict):
+            return None
+        source_fields = _get_form_fields(storage, form_id, cache)
+        data = row.get("data_json", {})
+        if isinstance(data, dict) and source_fields:
+            expanded_cache = cache.setdefault("expanded_rows", {})
+            exp_key = (form_id, base_id)
+            if exp_key not in expanded_cache:
+                expanded_cache[exp_key] = expand_group_array_rows(source_fields, data)
+            expanded = expanded_cache[exp_key]
+            if row_index < len(expanded):
+                return {**row, "data_json": expanded[row_index]}
+        return None
+
+    return None
 
 
 def _get_field_map(fields: list[dict[str, Any]], cache: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -171,12 +196,14 @@ def _resolve_single_part(
     if field_type == "group":
         children = field.get("children") or []
         if field.get("is_array"):
-            if not isinstance(raw_child, list):
-                return []
-            contexts: list[tuple[Any, list[dict[str, Any]], set[str]]] = []
-            for item in raw_child:
-                contexts.append((item, children, set(visited_forms)))
-            return contexts
+            if isinstance(raw_child, list):
+                contexts: list[tuple[Any, list[dict[str, Any]], set[str]]] = []
+                for item in raw_child:
+                    contexts.append((item, children, set(visited_forms)))
+                return contexts
+            if isinstance(raw_child, dict):
+                return [(raw_child, children, set(visited_forms))]
+            return []
         return [(raw_child, children, set(visited_forms))]
 
     if field_type == "master":
@@ -509,6 +536,16 @@ def build_master_display_candidates(
     return [{"key": item["key"], "label": item["label"]} for item in candidates]
 
 
+def _has_expand_rows(fields: list[dict[str, Any]]) -> bool:
+    for field in fields:
+        if field.get("type") == "group":
+            if field.get("is_array") and field.get("expand_rows"):
+                return True
+            if _has_expand_rows(field.get("children") or []):
+                return True
+    return False
+
+
 def build_master_reference_context(storage: Any, field: dict[str, Any]) -> dict[str, Any]:
     source_form_id = _as_non_empty_str(field.get("master_form_id"))
     label_key = _as_non_empty_str(field.get("master_label_key"))
@@ -536,34 +573,57 @@ def build_master_reference_context(storage: Any, field: dict[str, Any]) -> dict[
 
     records: list[dict[str, Any]] = []
     if source_form_id:
+        source_fields = _get_form_fields(storage, source_form_id, cache)
+        use_expansion = _has_expand_rows(source_fields) if source_fields else False
         submissions = storage.submissions.list_submissions(source_form_id)
-        for index, submission in enumerate(submissions, start=1):
-            submission_id = _as_non_empty_str(submission.get("id"))
-            if not submission_id:
-                continue
+        record_index = 0
+
+        def _append_record(record_id: str, sub: dict[str, Any]) -> None:
+            nonlocal record_index
+            record_index += 1
             records.append(
                 {
-                    "id": submission_id,
+                    "id": record_id,
                     "label": build_master_option_label(
                         storage=storage,
                         source_form_id=source_form_id,
-                        submission=submission,
+                        submission=sub,
                         label_key=effective_label_key,
                         fallback_keys=fallback_keys,
-                        fallback_index=index,
+                        fallback_index=record_index,
                         cache=cache,
                         visited_forms={source_form_id},
                     ),
                     "values": build_master_display_values(
                         storage=storage,
                         source_form_id=source_form_id,
-                        submission=submission,
+                        submission=sub,
                         display_keys=effective_display_keys,
                         cache=cache,
                         visited_forms={source_form_id},
                     ),
                 }
             )
+
+        for submission in submissions:
+            submission_id = _as_non_empty_str(submission.get("id"))
+            if not submission_id:
+                continue
+
+            if use_expansion:
+                data = submission.get("data_json", {})
+                expanded_rows = (
+                    expand_group_array_rows(source_fields, data)
+                    if isinstance(data, dict)
+                    else [{}]
+                )
+                for row_idx, expanded_data in enumerate(expanded_rows):
+                    _append_record(
+                        f"{submission_id}:{row_idx}",
+                        {**submission, "data_json": expanded_data},
+                    )
+            else:
+                _append_record(submission_id, submission)
 
     return {
         "source_form_id": source_form_id,
@@ -595,6 +655,13 @@ def enrich_master_options(storage: Any, fields: list[dict[str, Any]]) -> None:
                 }
             )
         field["master_options"] = options
+
+
+def _extract_base_id(value: Any) -> str:
+    text = str(value)
+    if ":" in text:
+        return text.rsplit(":", 1)[0]
+    return text
 
 
 def validate_master_references(storage: Any, fields: list[dict[str, Any]], data: dict[str, Any]) -> list[str]:
@@ -641,13 +708,17 @@ def validate_master_references(storage: Any, fields: list[dict[str, Any]], data:
             if field.get("is_array"):
                 if not isinstance(value, list):
                     continue
-                invalid = [item for item in value if item not in (None, "") and str(item) not in master_ids]
+                invalid = [
+                    item
+                    for item in value
+                    if item not in (None, "") and _extract_base_id(item) not in master_ids
+                ]
                 if invalid:
                     errors.append(f"{label}: 選択値に無効な項目があります")
             else:
                 if value in (None, ""):
                     continue
-                if str(value) not in master_ids:
+                if _extract_base_id(value) not in master_ids:
                     errors.append(f"{label}: 選択値が不正です")
 
     validate(fields, data)
