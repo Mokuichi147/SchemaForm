@@ -80,7 +80,7 @@ async def list_forms(request: Request, _: Any = Depends(admin_guard)) -> HTMLRes
         forms.sort(key=lambda f: f.get("status") or "", reverse=reverse)
     else:
         sort = "updated_at"
-        forms.sort(key=lambda f: f.get("updated_at") or "", reverse=reverse)
+        forms.sort(key=lambda f: str(f.get("updated_at") or ""), reverse=reverse)
 
     return templates.TemplateResponse(
         "admin_forms.html",
