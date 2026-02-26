@@ -20,6 +20,8 @@
       <button type="button" data-action="close-filter-modal" class="rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700">閉じる</button>
     </div>
     <form id="filter-form" method="get" class="max-h-[80vh] overflow-y-auto p-4">
+      <input type="hidden" name="sort" value="{{ sort }}" />
+      <input type="hidden" name="order" value="{{ order }}" />
       <div class="grid gap-3 md:grid-cols-3">
         <div>
           <label class="text-xs text-slate-500">フリーワード</label>
@@ -102,10 +104,37 @@
   <table class="min-w-full divide-y divide-slate-200 text-sm">
     <thead class="bg-slate-100 text-left">
       <tr>
-        <th class="px-4 py-3">送信日時</th>
-        <th class="px-4 py-3">更新日時</th>
+        <th class="px-4 py-3">
+          <a href="?{{ build_query(query, sort='created_at', order=('desc' if sort == 'created_at' and order == 'asc' else 'asc'), page=1) }}" class="group inline-flex items-center gap-1">
+            送信日時
+            {% if sort == 'created_at' %}
+            <span class="text-slate-400">{{ '▲' if order == 'asc' else '▼' }}</span>
+            {% else %}
+            <span class="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity">▲</span>
+            {% endif %}
+          </a>
+        </th>
+        <th class="px-4 py-3">
+          <a href="?{{ build_query(query, sort='updated_at', order=('desc' if sort == 'updated_at' and order == 'asc' else 'asc'), page=1) }}" class="group inline-flex items-center gap-1">
+            更新日時
+            {% if sort == 'updated_at' %}
+            <span class="text-slate-400">{{ '▲' if order == 'asc' else '▼' }}</span>
+            {% else %}
+            <span class="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity">▲</span>
+            {% endif %}
+          </a>
+        </th>
         {% for column in display_columns %}
-        <th class="px-4 py-3">{{ column.label }}</th>
+        <th class="px-4 py-3">
+          <a href="?{{ build_query(query, sort=loop.index0|string, order=('desc' if sort == loop.index0|string and order == 'asc' else 'asc'), page=1) }}" class="group inline-flex items-center gap-1">
+            {{ column.label }}
+            {% if sort == loop.index0|string %}
+            <span class="text-slate-400">{{ '▲' if order == 'asc' else '▼' }}</span>
+            {% else %}
+            <span class="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity">▲</span>
+            {% endif %}
+          </a>
+        </th>
         {% endfor %}
         <th class="px-4 py-3">操作</th>
       </tr>
