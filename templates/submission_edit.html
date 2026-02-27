@@ -197,7 +197,7 @@
                     <div class="block text-sm font-semibold leading-6">{{ display_item.label }}</div>
                   </div>
                   <div class="sf-field-input-col lg:col-span-9">
-                    <div data-role="master-display-value" class="mt-1 w-full rounded border border-slate-200 bg-white/70 px-2 py-2 text-sm text-slate-700 lg:mt-0"></div>
+                    <div data-role="master-display-value" class="mt-1 w-full rounded-md bg-slate-100/70 px-3 py-2 text-sm leading-relaxed text-slate-700 break-words lg:mt-0"></div>
                   </div>
                 </div>
               </div>
@@ -504,6 +504,49 @@
     }
   }
 
+  function normalizeUrlCandidate(rawValue) {
+    const value = String(rawValue || "").trim();
+    if (!value) return "";
+    if (value.startsWith("http://") || value.startsWith("https://")) {
+      return value;
+    }
+    if (value.startsWith("www.")) {
+      return `https://${value}`;
+    }
+    return "";
+  }
+
+  function renderMasterDisplayValue(valueEl, rawValue) {
+    if (!valueEl) return;
+    valueEl.replaceChildren();
+    const value = String(rawValue ?? "").trim();
+    if (!value) return;
+
+    const parts = value
+      .split(/,\s+/)
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0);
+    const items = parts.length > 1 ? parts : [value];
+
+    items.forEach((item, index) => {
+      if (index > 0) {
+        valueEl.append(", ");
+      }
+      const href = normalizeUrlCandidate(item);
+      if (!href) {
+        valueEl.append(item);
+        return;
+      }
+      const link = document.createElement("a");
+      link.href = href;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.className = "break-all text-sky-700 underline";
+      link.textContent = item;
+      valueEl.append(link);
+    });
+  }
+
   function updateMasterDisplay(select) {
     if (!select) return;
     const wrapper = select.closest("[data-role='master-ref']");
@@ -522,9 +565,7 @@
       const key = row.dataset.masterDisplayKey || "";
       const value = String(displayMap[key] ?? "").trim();
       const valueEl = row.querySelector("[data-role='master-display-value']");
-      if (valueEl) {
-        valueEl.textContent = value;
-      }
+      renderMasterDisplayValue(valueEl, value);
       const show = value.length > 0;
       row.classList.toggle("hidden", !show);
       if (show) {
