@@ -557,8 +557,8 @@ def build_master_reference_context(storage: Any, field: dict[str, Any]) -> dict[
     cache: dict[str, Any] = {}
 
     candidates = _get_form_candidates(storage, source_form_id, cache) if source_form_id else []
-    label_by_key = {item["key"]: item["label"] for item in candidates if item.get("key")}
-    available_keys = set(label_by_key.keys())
+    candidate_by_key = {item["key"]: item for item in candidates if item.get("key")}
+    available_keys = set(candidate_by_key.keys())
     fallback_keys = _fallback_keys_from_candidates(candidates)
 
     effective_label_key = label_key if label_key in available_keys else ""
@@ -566,7 +566,8 @@ def build_master_reference_context(storage: Any, field: dict[str, Any]) -> dict[
     display_items = [
         {
             "key": key,
-            "label": label_by_key.get(key, key),
+            "label": candidate_by_key[key].get("label", key),
+            "type": candidate_by_key[key].get("type", "string"),
         }
         for key in effective_display_keys
     ]

@@ -132,7 +132,7 @@
               <input type="file" name="{{ form_name }}" multiple class="w-full rounded border border-slate-300 px-2 py-2" {% if file_accept %}accept="{{ file_accept }}"{% endif %} />
             </div>
           {% else %}
-            <div class="array-field mt-1 w-full {{ ns.fw }} lg:mt-0" data-key="{{ form_name }}" data-type="{{ field.type }}" data-picker="{{ picker }}" data-initial="{{ arr_values | tojson_attr }}">
+            <div class="array-field mt-1 w-full {% if field.type != 'master' %}{{ ns.fw }}{% endif %} lg:mt-0" data-key="{{ form_name }}" data-type="{{ field.type }}" data-picker="{{ picker }}" data-initial="{{ arr_values | tojson_attr }}">
               <div class="space-y-2 array-items"></div>
               <button type="button" class="add-item mt-1 rounded border border-slate-300 px-3 py-1 text-xs">追加</button>
               <template>
@@ -147,11 +147,13 @@
                   </div>
                   {% elif field.type == "master" %}
                   <div class="w-full space-y-1" data-role="master-ref">
-                    <select name="{{ form_name }}" data-role="master-select" data-choice-select="1" data-search-placeholder="参照データを検索" class="w-full rounded border border-slate-300 px-2 py-2 text-sm">
-                      {% for option in field.master_options or [] %}
-                      <option value="{{ option.value }}" data-master-display="{{ option.display_json | default('{}') | e }}">{{ option.label }}</option>
-                      {% endfor %}
-                    </select>
+                    <div class="{{ ns.fw }}">
+                      <select name="{{ form_name }}" data-role="master-select" data-choice-select="1" data-search-placeholder="参照データを検索" class="w-full rounded border border-slate-300 px-2 py-2 text-sm">
+                        {% for option in field.master_options or [] %}
+                        <option value="{{ option.value }}" data-master-display="{{ option.display_json | default('{}') | e }}">{{ option.label }}</option>
+                        {% endfor %}
+                      </select>
+                    </div>
                   </div>
                   {% elif field.type == "boolean" %}
                   <select name="{{ form_name }}" class="w-full rounded border border-slate-300 px-2 py-2 text-sm">
@@ -181,23 +183,31 @@
             </select>
           </div>
           {% elif field.type == "master" %}
-          <div class="mt-1 w-full {{ ns.fw }} space-y-1 lg:mt-0" data-role="master-ref">
-            <select name="{{ form_name }}" data-role="master-select" data-choice-select="1" data-search-placeholder="参照データを検索" class="w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if field.required %}required{% endif %}>
-              <option value="" data-master-display="{}">選択してください</option>
-              {% for option in field.master_options or [] %}
-              <option value="{{ option.value }}" {% if current_value == option.value %}selected{% endif %} data-master-display="{{ option.display_json | default('{}') | e }}">{{ option.label }}</option>
-              {% endfor %}
-            </select>
+          <div class="mt-1 w-full space-y-1 lg:mt-0" data-role="master-ref">
+            <div class="{{ ns.fw }}">
+              <select name="{{ form_name }}" data-role="master-select" data-choice-select="1" data-search-placeholder="参照データを検索" class="w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if field.required %}required{% endif %}>
+                <option value="" data-master-display="{}">選択してください</option>
+                {% for option in field.master_options or [] %}
+                <option value="{{ option.value }}" {% if current_value == option.value %}selected{% endif %} data-master-display="{{ option.display_json | default('{}') | e }}">{{ option.label }}</option>
+                {% endfor %}
+              </select>
+            </div>
             <div data-role="master-display" class="hidden mt-2 {{ group_container_class }}">
-              <div class="space-y-3">
+              <div class="space-y-1">
               {% for display_item in field.master_display_items or [] %}
-              <div data-role="master-display-row" data-master-display-key="{{ display_item.key }}" class="hidden py-2 lg:py-3">
+              {% set di_fw = "max-w-md" %}
+              {% if display_item.type in ["number", "integer", "boolean"] %}
+                {% set di_fw = "max-w-[10rem]" %}
+              {% elif display_item.type in ["enum", "master"] %}
+                {% set di_fw = "max-w-sm" %}
+              {% endif %}
+              <div data-role="master-display-row" data-master-display-key="{{ display_item.key }}" class="hidden py-1 lg:py-1.5">
                 <div class="sf-field-row lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
                   <div class="lg:col-span-3">
                     <div class="block text-sm font-semibold leading-6">{{ display_item.label }}</div>
                   </div>
                   <div class="sf-field-input-col lg:col-span-9">
-                    <div data-role="master-display-value" class="mt-1 w-full rounded-md bg-slate-100/70 px-3 py-2 text-sm leading-relaxed text-slate-700 break-words lg:mt-0"></div>
+                    <div data-role="master-display-value" class="mt-1 w-full {{ di_fw }} rounded-md bg-slate-100/70 px-3 py-2 text-sm leading-relaxed text-slate-700 break-words lg:mt-0"></div>
                   </div>
                 </div>
               </div>
