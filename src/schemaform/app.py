@@ -16,6 +16,7 @@ from schemaform.routes.admin import router as admin_router
 from schemaform.routes.api import router as api_router
 from schemaform.routes.public import router as public_router
 from schemaform.routes.submissions import router as submissions_router
+from schemaform.routes.user import router as user_router
 from schemaform.storage import init_storage
 
 
@@ -103,6 +104,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         openapi_tags=[
             {"name": "admin", "description": "管理画面（HTML）"},
+            {"name": "user", "description": "利用者画面（HTML）"},
             {"name": "public", "description": "公開フォーム（HTML）"},
             {"name": "api/forms", "description": "REST API: フォーム"},
             {"name": "api/submissions", "description": "REST API: 送信"},
@@ -126,6 +128,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     templates.env.globals["build_query"] = build_query
 
     app.include_router(admin_router)
+    app.include_router(user_router)
     app.include_router(public_router)
     app.include_router(submissions_router)
     app.include_router(api_router)
