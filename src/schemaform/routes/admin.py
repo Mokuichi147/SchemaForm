@@ -59,7 +59,7 @@ def build_master_field_catalog(
 
 @router.get("/", response_class=HTMLResponse, tags=["admin"])
 async def home(request: Request) -> HTMLResponse:
-    return RedirectResponse("/admin/forms")
+    return RedirectResponse("/forms")
 
 
 @router.get("/admin/forms", response_class=HTMLResponse, tags=["admin"])

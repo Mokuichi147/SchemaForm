@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex flex-wrap items-center justify-between gap-3">
+  <div>
+    <h1 class="text-2xl font-semibold">フォーム一覧</h1>
+    <p class="text-sm text-slate-600">公開中のフォームを確認できます。</p>
+  </div>
+</div>
+
+<div class="mt-6 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+  <table class="min-w-full divide-y divide-slate-200 text-sm">
+    <thead class="bg-slate-100 text-left">
+      <tr>
+        <th class="px-4 py-3">
+          <a href="?sort=name&order={{ 'desc' if sort == 'name' and order == 'asc' else 'asc' }}" class="group inline-flex items-center gap-1">
+            フォーム名
+            {% if sort == 'name' %}
+            <span class="text-slate-400">{{ '▲' if order == 'asc' else '▼' }}</span>
+            {% else %}
+            <span class="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity">▲</span>
+            {% endif %}
+          </a>
+        </th>
+        <th class="px-4 py-3">ページ遷移</th>
+        <th class="px-4 py-3">
+          <a href="?sort=updated_at&order={{ 'desc' if sort == 'updated_at' and order == 'asc' else 'asc' }}" class="group inline-flex items-center gap-1">
+            更新
+            {% if sort == 'updated_at' %}
+            <span class="text-slate-400">{{ '▲' if order == 'asc' else '▼' }}</span>
+            {% else %}
+            <span class="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity">▲</span>
+            {% endif %}
+          </a>
+        </th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-slate-200">
+      {% for form in forms %}
+      <tr>
+        <td class="px-4 py-3 font-medium">
+          <div class="whitespace-nowrap text-slate-900">{{ form.name }}</div>
+          <div class="text-xs text-slate-500">{{ form.description }}</div>
+        </td>
+        <td class="px-4 py-3">
+          <div class="flex flex-nowrap gap-2 whitespace-nowrap">
+            <a href="/f/{{ form.public_id }}" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs">入力</a>
+            <a href="/forms/{{ form.id }}/submissions" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs">一覧</a>
+          </div>
+        </td>
+        <td class="px-4 py-3 text-slate-600">
+          <time class="js-local-dt" data-iso="{{ iso_dt(form.updated_at) }}">{{ format_dt(form.updated_at) }}</time>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="3" class="px-4 py-6 text-center text-slate-500">公開中のフォームがありません。</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
