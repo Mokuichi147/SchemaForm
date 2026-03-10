@@ -92,8 +92,16 @@ async def list_submissions(request: Request, form_id: str) -> HTMLResponse:
     order = request.query_params.get("order", "desc")
     sort_submissions(filtered, sort, order, display_columns, master_lookup_by_field)
 
-    page = int(request.query_params.get("page", 1))
-    page_size = int(request.query_params.get("page_size", 50))
+    try:
+        page = int(request.query_params.get("page", 1))
+    except (ValueError, TypeError):
+        page = 1
+    try:
+        page_size = int(request.query_params.get("page_size", 50))
+    except (ValueError, TypeError):
+        page_size = 50
+    page = max(1, page)
+    page_size = max(1, min(page_size, 100))
     total = len(filtered)
     start = (page - 1) * page_size
     end = start + page_size
