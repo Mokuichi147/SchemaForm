@@ -32,19 +32,19 @@ async def list_forms(request: Request) -> HTMLResponse:
 
     active_forms = [f for f in forms if f.get("status") == "active"]
 
-    sort = request.query_params.get("sort", "updated_at")
-    order = request.query_params.get("order", "desc")
+    sort = request.query_params.get("sort", "name")
+    order = request.query_params.get("order", "asc")
     if order not in ("asc", "desc"):
-        order = "desc"
+        order = "asc"
     reverse = order == "desc"
 
-    if sort == "name":
-        active_forms.sort(key=lambda f: (f.get("name") or "").lower(), reverse=reverse)
-    else:
-        sort = "updated_at"
+    if sort == "updated_at":
         active_forms.sort(
             key=lambda f: str(f.get("updated_at") or ""), reverse=reverse
         )
+    else:
+        sort = "name"
+        active_forms.sort(key=lambda f: (f.get("name") or "").lower(), reverse=reverse)
 
     return templates.TemplateResponse(
         "forms.html",

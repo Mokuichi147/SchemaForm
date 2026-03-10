@@ -68,19 +68,19 @@ async def list_forms(request: Request, _: Any = Depends(admin_guard)) -> HTMLRes
     templates = request.app.state.templates
     forms = storage.forms.list_forms()
 
-    sort = request.query_params.get("sort", "updated_at")
-    order = request.query_params.get("order", "desc")
+    sort = request.query_params.get("sort", "name")
+    order = request.query_params.get("order", "asc")
     if order not in ("asc", "desc"):
-        order = "desc"
+        order = "asc"
     reverse = order == "desc"
 
-    if sort == "name":
-        forms.sort(key=lambda f: (f.get("name") or "").lower(), reverse=reverse)
+    if sort == "updated_at":
+        forms.sort(key=lambda f: str(f.get("updated_at") or ""), reverse=reverse)
     elif sort == "status":
         forms.sort(key=lambda f: f.get("status") or "", reverse=reverse)
     else:
-        sort = "updated_at"
-        forms.sort(key=lambda f: str(f.get("updated_at") or ""), reverse=reverse)
+        sort = "name"
+        forms.sort(key=lambda f: (f.get("name") or "").lower(), reverse=reverse)
 
     return templates.TemplateResponse(
         "admin_forms.html",
