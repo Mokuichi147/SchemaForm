@@ -605,7 +605,7 @@ def _build_import_field_map(
     fields: list[dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
     """Build a mapping from label/key to flat field info for CSV import."""
-    flat_fields = flatten_fields(fields)
+    flat_fields = flatten_fields(fields, expand_rows_for_group_arrays=True)
     mapping: dict[str, dict[str, Any]] = {}
     for field in flat_fields:
         mapping[field["flat_label"]] = field
@@ -631,6 +631,8 @@ def _convert_cell_value(raw: str, field: dict[str, Any]) -> Any:
 async def import_submissions(
     request: Request, form_id: str, _: Any = Depends(admin_guard)
 ) -> RedirectResponse:
+    from jsonschema import Draft7Validator
+
     storage = request.app.state.storage
     form = storage.forms.get_form(form_id)
     if not form:
@@ -672,8 +674,11 @@ async def import_submissions(
         header_stripped = header.strip()
         col_field_map.append(field_map.get(header_stripped))
 
+    validator = Draft7Validator(form["schema_json"])
+
     now = now_utc()
     imported_count = 0
+    skipped_count = 0
     for row in reader:
         if not any(cell.strip() for cell in row):
             continue
@@ -691,6 +696,12 @@ async def import_submissions(
 
         data = clean_empty_recursive(data) or {}
         if not data:
+            continue
+
+        schema_errors = list(validator.iter_errors(data))
+        master_errors = validate_master_references(storage, fields, data)
+        if schema_errors or master_errors:
+            skipped_count += 1
             continue
 
         submission_id = new_ulid()
