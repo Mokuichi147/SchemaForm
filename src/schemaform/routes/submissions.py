@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -613,11 +614,36 @@ def _build_import_field_map(
     return mapping
 
 
+def _wrap_arrays_from_schema(
+    fields: list[dict[str, Any]], data: dict[str, Any]
+) -> None:
+    """Wrap dict values into single-element lists for array group fields."""
+    for field in fields:
+        key = field["key"]
+        if key not in data:
+            continue
+        if field.get("type") == "group":
+            if field.get("is_array"):
+                if isinstance(data[key], dict):
+                    data[key] = [data[key]]
+            else:
+                children = field.get("children") or []
+                if isinstance(data[key], dict) and children:
+                    _wrap_arrays_from_schema(children, data[key])
+
+
 def _convert_cell_value(raw: str, field: dict[str, Any]) -> Any:
     """Convert a raw CSV cell string to the appropriate Python type."""
     field_type = field.get("type", "string")
     if raw == "":
         return None
+    if field.get("is_array") or field_type == "group":
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                return parsed
+        except (json.JSONDecodeError, ValueError):
+            pass
     if field_type in ("number", "integer"):
         return normalize_number(raw, field_type == "integer")
     if field_type == "boolean":
@@ -694,6 +720,7 @@ async def import_submissions(
             if value is not None:
                 set_nested_value(data, flat_key, value)
 
+        _wrap_arrays_from_schema(fields, data)
         data = clean_empty_recursive(data) or {}
         if not data:
             continue
