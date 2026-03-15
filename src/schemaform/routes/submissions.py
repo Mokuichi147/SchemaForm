@@ -14,6 +14,7 @@ from schemaform.fields import (
     flatten_filter_fields,
     format_array_group_value,
     get_nested_value,
+    set_nested_value,
 )
 from schemaform.filters import (
     apply_filters,
@@ -29,6 +30,7 @@ from schemaform.master import (
     validate_master_references,
 )
 from schemaform.schema import fields_from_schema
+from schemaform.utils import new_ulid, now_utc
 
 router = APIRouter()
 
@@ -597,6 +599,112 @@ async def export_submissions(
         media_type=content_type,
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
+
+def _build_import_field_map(
+    fields: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Build a mapping from label/key to flat field info for CSV import."""
+    flat_fields = flatten_fields(fields)
+    mapping: dict[str, dict[str, Any]] = {}
+    for field in flat_fields:
+        mapping[field["flat_label"]] = field
+        mapping[field["flat_key"]] = field
+    return mapping
+
+
+def _convert_cell_value(raw: str, field: dict[str, Any]) -> Any:
+    """Convert a raw CSV cell string to the appropriate Python type."""
+    field_type = field.get("type", "string")
+    if raw == "":
+        return None
+    if field_type in ("number", "integer"):
+        return normalize_number(raw, field_type == "integer")
+    if field_type == "boolean":
+        return parse_bool(raw)
+    return raw
+
+
+@router.post(
+    "/admin/forms/{form_id}/import", tags=["admin"]
+)
+async def import_submissions(
+    request: Request, form_id: str, _: Any = Depends(admin_guard)
+) -> RedirectResponse:
+    storage = request.app.state.storage
+    form = storage.forms.get_form(form_id)
+    if not form:
+        raise HTTPException(status_code=404, detail="フォームが見つかりません")
+
+    form_data = await request.form()
+    upload = form_data.get("file")
+    if not upload or not getattr(upload, "filename", ""):
+        raise HTTPException(status_code=400, detail="ファイルを選択してください")
+
+    content = await upload.read()
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        try:
+            text = content.decode("shift_jis")
+        except UnicodeDecodeError:
+            raise HTTPException(
+                status_code=400, detail="ファイルのエンコーディングを認識できません"
+            )
+
+    filename = getattr(upload, "filename", "") or ""
+    if filename.lower().endswith(".tsv"):
+        delimiter = "\t"
+    else:
+        delimiter = ","
+
+    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+    try:
+        headers = next(reader)
+    except StopIteration:
+        raise HTTPException(status_code=400, detail="ファイルが空です")
+
+    fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
+    field_map = _build_import_field_map(fields)
+
+    col_field_map: list[dict[str, Any] | None] = []
+    for header in headers:
+        header_stripped = header.strip()
+        col_field_map.append(field_map.get(header_stripped))
+
+    now = now_utc()
+    imported_count = 0
+    for row in reader:
+        if not any(cell.strip() for cell in row):
+            continue
+        data: dict[str, Any] = {}
+        for col_idx, cell in enumerate(row):
+            if col_idx >= len(col_field_map):
+                break
+            field_info = col_field_map[col_idx]
+            if field_info is None:
+                continue
+            flat_key = field_info["flat_key"]
+            value = _convert_cell_value(cell.strip(), field_info)
+            if value is not None:
+                set_nested_value(data, flat_key, value)
+
+        data = clean_empty_recursive(data) or {}
+        if not data:
+            continue
+
+        submission_id = new_ulid()
+        storage.submissions.create_submission(
+            {
+                "id": submission_id,
+                "form_id": form_id,
+                "data_json": data,
+                "created_at": now,
+            }
+        )
+        imported_count += 1
+
+    return RedirectResponse(f"/admin/forms/{form_id}/submissions", status_code=303)
 
 
 @router.get("/healthz", tags=["system"])
