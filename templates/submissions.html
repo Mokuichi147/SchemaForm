@@ -7,6 +7,10 @@
   </div>
   <div class="flex gap-2">
     <button type="button" id="open-filter-modal" class="rounded border border-slate-300 px-3 py-2 text-sm">フィルター</button>
+    <form id="import-form" method="post" action="/admin/forms/{{ form.id }}/import" enctype="multipart/form-data" class="inline">
+      <input type="file" id="import-file-input" name="file" accept=".csv,.tsv" required class="hidden" />
+      <button type="button" id="open-import-modal" class="rounded border border-slate-300 px-3 py-2 text-sm">取り込み</button>
+    </form>
     <a href="/f/{{ form.public_id }}" class="rounded border border-slate-300 px-3 py-2 text-sm">入力ページ</a>
     <a href="/admin/forms/{{ form.id }}/export?{{ build_query(query, format='csv', page=None) }}" class="rounded border border-slate-300 px-3 py-2 text-sm">CSV</a>
     <a href="/admin/forms/{{ form.id }}/export?{{ build_query(query, format='tsv', page=None) }}" class="rounded border border-slate-300 px-3 py-2 text-sm">TSV</a>
@@ -99,6 +103,7 @@
     </form>
   </div>
 </div>
+
 
 <div class="mt-6 overflow-x-auto rounded-lg border border-slate-200 bg-white">
   <table class="min-w-full divide-y divide-slate-200 text-sm">
@@ -245,6 +250,20 @@
         closeFilterModal();
       }
     });
+
+    const openImportButton = document.getElementById("open-import-modal");
+    const importFileInput = document.getElementById("import-file-input");
+    const importForm = document.getElementById("import-form");
+
+    openImportButton?.addEventListener("click", () => {
+      importFileInput?.click();
+    });
+    importFileInput?.addEventListener("change", () => {
+      if (importFileInput.files.length > 0) {
+        importForm?.submit();
+      }
+    });
+
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
         closeFilterModal();
