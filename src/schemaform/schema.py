@@ -400,6 +400,7 @@ def fields_from_schema(schema: dict[str, Any], field_order: list[str]) -> list[d
     def _display_formulas(field_list: list[dict[str, Any]]) -> None:
         for field in field_list:
             if field["type"] == "calculated" and field.get("formula"):
+                field["formula_raw"] = field["formula"]
                 field["formula"] = formula_keys_to_labels(
                     field["formula"], field_list,
                 )
