@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 
+from schemaform.calculated import evaluate_formula
 from schemaform.fields import (
     clean_empty_recursive,
     expand_group_array_rows,
@@ -420,6 +421,11 @@ async def update_submission(
             field_type = field["type"]
             is_array = field.get("is_array", False)
 
+            if field_type == "calculated":
+                raw_value = form_data.get(form_key)
+                target[key] = normalize_number(raw_value, False)
+                continue
+
             if field_type == "group":
                 children = field.get("children") or []
                 if is_array:
@@ -509,6 +515,22 @@ async def update_submission(
 
     await collect_fields(fields, submission, "", old_data)
     submission = clean_empty_recursive(submission) or {}
+
+    def _compute_calculated_edit(
+        field_list: list[dict[str, Any]], data: dict[str, Any],
+    ) -> None:
+        for field in field_list:
+            if field["type"] == "calculated" and field.get("formula"):
+                result = evaluate_formula(field["formula"], data)
+                if result is not None:
+                    data[field["key"]] = result
+            elif field["type"] == "group" and not field.get("is_array"):
+                children = field.get("children") or []
+                group_data = data.get(field["key"])
+                if isinstance(group_data, dict):
+                    _compute_calculated_edit(children, group_data)
+
+    _compute_calculated_edit(fields, submission)
 
     validator = Draft7Validator(form["schema_json"])
     errors = sorted(validator.iter_errors(submission), key=lambda err: list(err.path))

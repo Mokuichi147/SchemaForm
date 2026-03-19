@@ -4,6 +4,11 @@ from typing import Any
 
 import orjson
 
+from schemaform.calculated import (
+    formula_keys_to_labels,
+    formula_labels_to_keys,
+    validate_formula_syntax,
+)
 from schemaform.config import ALLOWED_TYPES, KEY_PATTERN
 from schemaform.file_formats import (
     normalize_allowed_extensions,
@@ -78,6 +83,12 @@ def parse_fields_json(fields_json: str) -> tuple[list[dict[str, Any]], list[str]
                         seen_display_keys.add(key_name)
                         master_display_fields.append(key_name)
 
+            formula = ""
+            if field_type == "calculated":
+                formula = str(raw.get("formula", "")).strip()
+                if not formula:
+                    errors.append(f"{loc}: 計算式を指定してください")
+
             if field_type not in ALLOWED_TYPES:
                 errors.append(f"{loc}: 種類が不正です ({field_type})")
             if field_type == "master" and not master_form_id:
@@ -126,6 +137,7 @@ def parse_fields_json(fields_json: str) -> tuple[list[dict[str, Any]], list[str]
                     "master_form_id": master_form_id,
                     "master_label_key": master_label_key,
                     "master_display_fields": master_display_fields,
+                    "formula": formula,
                     "children": children,
                 }
             )
@@ -135,6 +147,22 @@ def parse_fields_json(fields_json: str) -> tuple[list[dict[str, Any]], list[str]
 
     if not fields:
         errors.append("最低1つのフィールドが必要です")
+
+    def _resolve_formulas(field_list: list[dict[str, Any]]) -> None:
+        for field in field_list:
+            if field["type"] == "calculated" and field.get("formula"):
+                converted, conv_errors = formula_labels_to_keys(
+                    field["formula"], field_list,
+                )
+                errors.extend(conv_errors)
+                field["formula"] = converted
+                syntax_errors = validate_formula_syntax(converted)
+                for se in syntax_errors:
+                    errors.append(se)
+            if field["type"] == "group" and field.get("children"):
+                _resolve_formulas(field["children"])
+
+    _resolve_formulas(fields)
 
     return fields, errors
 
@@ -177,7 +205,14 @@ def build_property(field: dict[str, Any]) -> dict[str, Any]:
             payload["format"] = field["format"]
         return payload
 
-    if field["type"] == "group":
+    if field["type"] == "calculated":
+        prop: dict[str, Any] = {
+            "type": "number",
+            "x-field-type": "calculated",
+        }
+        if field.get("formula"):
+            prop["x-formula"] = field["formula"]
+    elif field["type"] == "group":
         children = field.get("children") or []
         child_schema, child_order = schema_from_fields(children)
         obj: dict[str, Any] = {
@@ -253,7 +288,7 @@ def schema_from_fields(fields: list[dict[str, Any]]) -> tuple[dict[str, Any], li
         key = field["key"]
         field_order.append(key)
         properties[key] = build_property(field)
-        if field.get("required"):
+        if field.get("required") and field.get("type") != "calculated":
             required.append(key)
     schema: dict[str, Any] = {"type": "object", "properties": properties}
     if required:
@@ -305,6 +340,7 @@ def fields_from_schema(schema: dict[str, Any], field_order: list[str]) -> list[d
                     "master_form_id": "",
                     "master_label_key": "",
                     "master_display_fields": [],
+                    "formula": "",
                     "children": children,
                 }
             )
@@ -323,6 +359,8 @@ def fields_from_schema(schema: dict[str, Any], field_order: list[str]) -> list[d
             field_type = "file"
         if target.get("x-field-type") == "master":
             field_type = "master"
+        if target.get("x-field-type") == "calculated":
+            field_type = "calculated"
 
         fields.append(
             {
@@ -354,7 +392,21 @@ def fields_from_schema(schema: dict[str, Any], field_order: list[str]) -> list[d
                 "master_form_id": target.get("x-master-form-id", "") if field_type == "master" else "",
                 "master_label_key": target.get("x-master-label-key", "") if field_type == "master" else "",
                 "master_display_fields": master_display_fields if field_type == "master" else [],
+                "formula": target.get("x-formula", "") if field_type == "calculated" else "",
                 "children": [],
             }
         )
+
+    def _display_formulas(field_list: list[dict[str, Any]]) -> None:
+        for field in field_list:
+            if field["type"] == "calculated" and field.get("formula"):
+                field["formula_raw"] = field["formula"]
+                field["formula"] = formula_keys_to_labels(
+                    field["formula"], field_list,
+                )
+            if field["type"] == "group" and field.get("children"):
+                _display_formulas(field["children"])
+
+    _display_formulas(fields)
+
     return fields

@@ -16,6 +16,7 @@ ALLOWED_TYPES = {
     "time",
     "group",
     "master",
+    "calculated",
 }
 KEY_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 
