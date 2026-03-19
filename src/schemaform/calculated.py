@@ -30,9 +30,23 @@ def extract_field_refs(formula: str) -> list[str]:
 def _resolve_value(data: dict[str, Any], dotted_key: str) -> Any:
     parts = dotted_key.split(".")
     current: Any = data
-    for part in parts:
+    for i, part in enumerate(parts):
         if isinstance(current, dict):
             current = current.get(part)
+        elif isinstance(current, list):
+            remaining = parts[i:]
+            results: list[Any] = []
+            for item in current:
+                sub: Any = item
+                for sub_part in remaining:
+                    if isinstance(sub, dict):
+                        sub = sub.get(sub_part)
+                    else:
+                        sub = None
+                        break
+                if sub is not None:
+                    results.append(sub)
+            return results if results else None
         else:
             return None
     return current
@@ -190,6 +204,14 @@ def formula_labels_to_keys(
             label_to_key[label] = key
         if key:
             key_set.add(key)
+        if field.get("type") == "group" and field.get("children"):
+            for child in field["children"]:
+                child_label = child.get("label", "").strip()
+                child_key = child.get("key", "")
+                if label and child_label:
+                    label_to_key[f"{label}.{child_label}"] = f"{key}.{child_key}"
+                if key and child_key:
+                    key_set.add(f"{key}.{child_key}")
 
     errors: list[str] = []
 
@@ -235,6 +257,12 @@ def formula_keys_to_labels(
         label = field.get("label", "").strip()
         if key and label:
             key_to_label[key] = label
+        if field.get("type") == "group" and field.get("children"):
+            for child in field["children"]:
+                child_key = child.get("key", "")
+                child_label = child.get("label", "").strip()
+                if key and child_key and label and child_label:
+                    key_to_label[f"{key}.{child_key}"] = f"{label}.{child_label}"
 
     def _replace_aggregate(match: re.Match) -> str:
         func_name = match.group(1)
