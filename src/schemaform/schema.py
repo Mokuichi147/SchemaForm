@@ -288,7 +288,7 @@ def schema_from_fields(fields: list[dict[str, Any]]) -> tuple[dict[str, Any], li
         key = field["key"]
         field_order.append(key)
         properties[key] = build_property(field)
-        if field.get("required"):
+        if field.get("required") and field.get("type") != "calculated":
             required.append(key)
     schema: dict[str, Any] = {"type": "object", "properties": properties}
     if required:
