@@ -92,6 +92,26 @@
   </div>
   {% endif %}
 
+{% elif field.type == "calculated" %}
+  {# 計算フィールド #}
+  <div class="py-2 lg:py-3">
+    <div class="sf-field-row lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
+      <div class="lg:col-span-3">
+        <label class="block text-sm font-semibold leading-6">
+          {{ field.label or field.key }}
+        </label>
+        {% if field.description %}
+        <div class="mt-0.5 break-words text-xs leading-relaxed text-slate-500">{{ field.description }}</div>
+        {% endif %}
+      </div>
+      <div class="sf-field-input-col lg:col-span-9">
+        <div class="mt-1 w-full max-w-[10rem] rounded-md bg-slate-100/70 px-3 py-2 text-sm leading-relaxed text-slate-700 lg:mt-0" data-role="calculated-display" data-formula="{{ field.formula | e }}" data-key="{{ form_name }}">
+          <span class="text-slate-400">自動計算</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
 {% else %}
   {# 通常フィールド（非グループ） #}
   {% set ns = namespace(fw="max-w-md") %}

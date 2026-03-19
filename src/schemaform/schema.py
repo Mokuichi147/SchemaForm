@@ -4,6 +4,7 @@ from typing import Any
 
 import orjson
 
+from schemaform.calculated import validate_formula
 from schemaform.config import ALLOWED_TYPES, KEY_PATTERN
 from schemaform.file_formats import (
     normalize_allowed_extensions,
@@ -78,6 +79,16 @@ def parse_fields_json(fields_json: str) -> tuple[list[dict[str, Any]], list[str]
                         seen_display_keys.add(key_name)
                         master_display_fields.append(key_name)
 
+            formula = ""
+            if field_type == "calculated":
+                formula = str(raw.get("formula", "")).strip()
+                if not formula:
+                    errors.append(f"{loc}: 計算式を指定してください")
+                else:
+                    formula_errors = validate_formula(formula)
+                    for fe in formula_errors:
+                        errors.append(f"{loc}: {fe}")
+
             if field_type not in ALLOWED_TYPES:
                 errors.append(f"{loc}: 種類が不正です ({field_type})")
             if field_type == "master" and not master_form_id:
@@ -126,6 +137,7 @@ def parse_fields_json(fields_json: str) -> tuple[list[dict[str, Any]], list[str]
                     "master_form_id": master_form_id,
                     "master_label_key": master_label_key,
                     "master_display_fields": master_display_fields,
+                    "formula": formula,
                     "children": children,
                 }
             )
@@ -177,7 +189,14 @@ def build_property(field: dict[str, Any]) -> dict[str, Any]:
             payload["format"] = field["format"]
         return payload
 
-    if field["type"] == "group":
+    if field["type"] == "calculated":
+        prop: dict[str, Any] = {
+            "type": "number",
+            "x-field-type": "calculated",
+        }
+        if field.get("formula"):
+            prop["x-formula"] = field["formula"]
+    elif field["type"] == "group":
         children = field.get("children") or []
         child_schema, child_order = schema_from_fields(children)
         obj: dict[str, Any] = {
@@ -305,6 +324,7 @@ def fields_from_schema(schema: dict[str, Any], field_order: list[str]) -> list[d
                     "master_form_id": "",
                     "master_label_key": "",
                     "master_display_fields": [],
+                    "formula": "",
                     "children": children,
                 }
             )
@@ -323,6 +343,8 @@ def fields_from_schema(schema: dict[str, Any], field_order: list[str]) -> list[d
             field_type = "file"
         if target.get("x-field-type") == "master":
             field_type = "master"
+        if target.get("x-field-type") == "calculated":
+            field_type = "calculated"
 
         fields.append(
             {
@@ -354,6 +376,7 @@ def fields_from_schema(schema: dict[str, Any], field_order: list[str]) -> list[d
                 "master_form_id": target.get("x-master-form-id", "") if field_type == "master" else "",
                 "master_label_key": target.get("x-master-label-key", "") if field_type == "master" else "",
                 "master_display_fields": master_display_fields if field_type == "master" else [],
+                "formula": target.get("x-formula", "") if field_type == "calculated" else "",
                 "children": [],
             }
         )

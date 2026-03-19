@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from schemaform.calculated import evaluate_formula
 from schemaform.filters import (
     apply_filters,
     collect_file_ids,
@@ -132,9 +133,26 @@ async def api_submit_form(public_id: str, request: Request) -> JSONResponse:
     if not isinstance(data, dict):
         raise HTTPException(status_code=400, detail="data_jsonが不正です")
 
+    fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
+
+    def _compute_calculated_api(
+        field_list: list[Any], target: dict[str, Any],
+    ) -> None:
+        for field in field_list:
+            if field["type"] == "calculated" and field.get("formula"):
+                result = evaluate_formula(field["formula"], target)
+                if result is not None:
+                    target[field["key"]] = result
+            elif field["type"] == "group" and not field.get("is_array"):
+                children = field.get("children") or []
+                group_data = target.get(field["key"])
+                if isinstance(group_data, dict):
+                    _compute_calculated_api(children, group_data)
+
+    _compute_calculated_api(fields, data)
+
     validator = Draft7Validator(form["schema_json"])
     errors = sorted(validator.iter_errors(data), key=lambda err: list(err.path))
-    fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
     master_errors = validate_master_references(storage, fields, data)
     if errors or master_errors:
         raise HTTPException(status_code=400, detail="バリデーションに失敗しました")
