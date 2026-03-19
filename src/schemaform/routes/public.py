@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from jsonschema import Draft7Validator
 
+from schemaform.calculated import evaluate_formula
 from schemaform.file_formats import upload_matches_file_constraints
 from schemaform.fields import clean_empty_recursive
 from schemaform.filters import normalize_number, parse_bool
@@ -200,6 +201,22 @@ async def submit_form(request: Request, public_id: str) -> HTMLResponse:
 
     await collect_fields(fields, submission, "")
     submission = clean_empty_recursive(submission) or {}
+
+    def _compute_calculated(
+        field_list: list[dict[str, Any]], data: dict[str, Any],
+    ) -> None:
+        for field in field_list:
+            if field["type"] == "calculated" and field.get("formula"):
+                result = evaluate_formula(field["formula"], data)
+                if result is not None:
+                    data[field["key"]] = result
+            elif field["type"] == "group" and not field.get("is_array"):
+                children = field.get("children") or []
+                group_data = data.get(field["key"])
+                if isinstance(group_data, dict):
+                    _compute_calculated(children, group_data)
+
+    _compute_calculated(fields, submission)
 
     validator = Draft7Validator(form["schema_json"])
     errors = sorted(validator.iter_errors(submission), key=lambda err: list(err.path))
