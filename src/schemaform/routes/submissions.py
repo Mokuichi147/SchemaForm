@@ -201,6 +201,22 @@ def sort_submissions(
     submissions.sort(key=lambda s: str(s.get("created_at") or ""), reverse=True)
 
 
+def _recompute_calculated(
+    field_list: list[dict[str, Any]], data: dict[str, Any],
+) -> None:
+    """保存済みデータに対して計算フィールドの値を再計算する。"""
+    for field in field_list:
+        if field["type"] == "calculated" and field.get("formula"):
+            result = evaluate_formula(field["formula"], data)
+            if result is not None:
+                data[field["key"]] = result
+        elif field["type"] == "group" and not field.get("is_array"):
+            children = field.get("children") or []
+            group_data = data.get(field["key"])
+            if isinstance(group_data, dict):
+                _recompute_calculated(children, group_data)
+
+
 def build_submission_row_values(
     data: dict[str, Any],
     display_columns: list[dict[str, Any]],
@@ -289,6 +305,7 @@ async def list_submissions(
     display_rows = []
     for item in page_items:
         data = item.get("data_json", {})
+        _recompute_calculated(fields, data)
         row_values = build_submission_row_values(
             data,
             display_columns,
@@ -595,15 +612,18 @@ async def export_submissions(
     sort_submissions(filtered, sort, order, display_columns, master_lookup_by_field)
 
     headers = [column["label"] for column in display_columns]
-    rows = [
-        build_submission_row_values(
-            submission.get("data_json", {}),
-            display_columns,
-            master_lookup_by_field,
-            file_names,
+    rows = []
+    for submission in filtered:
+        data = submission.get("data_json", {})
+        _recompute_calculated(fields, data)
+        rows.append(
+            build_submission_row_values(
+                data,
+                display_columns,
+                master_lookup_by_field,
+                file_names,
+            )
         )
-        for submission in filtered
-    ]
 
     fmt = request.query_params.get("format", "csv")
     delimiter = "," if fmt == "csv" else "\t"
