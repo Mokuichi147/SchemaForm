@@ -26,22 +26,6 @@ from schemaform.webhook import is_valid_webhook_url
 router = APIRouter()
 
 
-def _recompute_calculated_api(
-    field_list: list[Any], data: dict[str, Any],
-) -> None:
-    """保存済みデータに対して計算フィールドの値を再計算する。"""
-    for field in field_list:
-        if field["type"] == "calculated" and field.get("formula"):
-            result = evaluate_formula(field["formula"], data)
-            if result is not None:
-                data[field["key"]] = result
-        elif field["type"] == "group" and not field.get("is_array"):
-            children = field.get("children") or []
-            group_data = data.get(field["key"])
-            if isinstance(group_data, dict):
-                _recompute_calculated_api(children, group_data)
-
-
 @router.get("/api/forms", tags=["api/forms"])
 async def api_list_forms(request: Request) -> JSONResponse:
     storage = request.app.state.storage
@@ -228,19 +212,16 @@ async def api_list_submissions(request: Request, form_id: str) -> JSONResponse:
             raise HTTPException(status_code=400, detail="cursorが不正です")
 
     page_items = filtered[:limit]
-    response_items = []
-    for item in page_items:
-        data = item.get("data_json", {})
-        _recompute_calculated_api(fields, data)
-        response_items.append(
-            {
-                "id": item["id"],
-                "form_id": item["form_id"],
-                "data_json": data,
-                "created_at": to_iso(item["created_at"]),
-                "updated_at": to_iso(item["updated_at"]) if item.get("updated_at") else None,
-            }
-        )
+    response_items = [
+        {
+            "id": item["id"],
+            "form_id": item["form_id"],
+            "data_json": item.get("data_json", {}),
+            "created_at": to_iso(item["created_at"]),
+            "updated_at": to_iso(item["updated_at"]) if item.get("updated_at") else None,
+        }
+        for item in page_items
+    ]
     headers: dict[str, str] = {}
     if len(page_items) == limit:
         last = page_items[-1]

@@ -8,7 +8,6 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 
-from schemaform.calculated import evaluate_formula
 from schemaform.fields import (
     clean_empty_recursive,
     expand_group_array_rows,
@@ -201,22 +200,6 @@ def sort_submissions(
     submissions.sort(key=lambda s: str(s.get("created_at") or ""), reverse=True)
 
 
-def _recompute_calculated(
-    field_list: list[dict[str, Any]], data: dict[str, Any],
-) -> None:
-    """保存済みデータに対して計算フィールドの値を再計算する。"""
-    for field in field_list:
-        if field["type"] == "calculated" and field.get("formula"):
-            result = evaluate_formula(field["formula"], data)
-            if result is not None:
-                data[field["key"]] = result
-        elif field["type"] == "group" and not field.get("is_array"):
-            children = field.get("children") or []
-            group_data = data.get(field["key"])
-            if isinstance(group_data, dict):
-                _recompute_calculated(children, group_data)
-
-
 def build_submission_row_values(
     data: dict[str, Any],
     display_columns: list[dict[str, Any]],
@@ -305,7 +288,6 @@ async def list_submissions(
     display_rows = []
     for item in page_items:
         data = item.get("data_json", {})
-        _recompute_calculated(fields, data)
         row_values = build_submission_row_values(
             data,
             display_columns,
@@ -439,6 +421,8 @@ async def update_submission(
             is_array = field.get("is_array", False)
 
             if field_type == "calculated":
+                raw_value = form_data.get(form_key)
+                target[key] = normalize_number(raw_value, False)
                 continue
 
             if field_type == "group":
@@ -531,22 +515,6 @@ async def update_submission(
     await collect_fields(fields, submission, "", old_data)
     submission = clean_empty_recursive(submission) or {}
 
-    def _compute_calculated_edit(
-        field_list: list[dict[str, Any]], data: dict[str, Any],
-    ) -> None:
-        for field in field_list:
-            if field["type"] == "calculated" and field.get("formula"):
-                result = evaluate_formula(field["formula"], data)
-                if result is not None:
-                    data[field["key"]] = result
-            elif field["type"] == "group" and not field.get("is_array"):
-                children = field.get("children") or []
-                group_data = data.get(field["key"])
-                if isinstance(group_data, dict):
-                    _compute_calculated_edit(children, group_data)
-
-    _compute_calculated_edit(fields, submission)
-
     validator = Draft7Validator(form["schema_json"])
     errors = sorted(validator.iter_errors(submission), key=lambda err: list(err.path))
     master_errors = validate_master_references(storage, fields, submission)
@@ -614,11 +582,9 @@ async def export_submissions(
     headers = [column["label"] for column in display_columns]
     rows = []
     for submission in filtered:
-        data = submission.get("data_json", {})
-        _recompute_calculated(fields, data)
         rows.append(
             build_submission_row_values(
-                data,
+                submission.get("data_json", {}),
                 display_columns,
                 master_lookup_by_field,
                 file_names,

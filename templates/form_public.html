@@ -108,6 +108,7 @@
         <div class="mt-1 w-full max-w-[10rem] rounded-md bg-slate-100/70 px-3 py-2 text-sm leading-relaxed text-slate-700 lg:mt-0" data-role="calculated-display" data-formula="{{ field.formula_raw | e }}" data-key="{{ form_name }}">
           <span class="text-slate-400">自動計算</span>
         </div>
+        <input type="hidden" name="{{ form_name }}" data-role="calculated-value" value="">
       </div>
     </div>
   </div>
@@ -1053,14 +1054,17 @@
       const formula = el.dataset.formula;
       if (!formula) return;
       const result = evaluateFormulaClient(formula, data);
+      const hiddenInput = el.parentElement.querySelector("[data-role='calculated-value']");
       if (result !== null) {
         const formatted = Number.isInteger(result) ? String(result) : result.toFixed(10).replace(/\.?0+$/, "");
         el.textContent = formatted;
         el.classList.remove("text-slate-400");
         el.classList.add("text-slate-700", "font-medium");
+        if (hiddenInput) hiddenInput.value = result;
       } else {
         el.innerHTML = '<span class="text-slate-400">自動計算</span>';
         el.classList.remove("font-medium");
+        if (hiddenInput) hiddenInput.value = "";
       }
     });
   }
