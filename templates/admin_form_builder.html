@@ -198,8 +198,9 @@
     <div data-role="calculated-config" class="mt-3 hidden">
       <div>
         <label class="text-xs text-slate-500">計算式</label>
-        <input data-field="formula" class="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm font-mono" placeholder="{price} * {quantity}" />
-        <p class="mt-1 text-xs text-slate-500">フィールドのキーを <code>{キー名}</code> で参照。配列には <code>sum({キー})</code> <code>avg({キー})</code> <code>count({キー})</code> <code>max({キー})</code> <code>min({キー})</code> が使えます。</p>
+        <input data-field="formula" class="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm font-mono" placeholder="{単価} * {数量}" />
+        <p class="mt-1 text-xs text-slate-500">フィールド名をクリックして挿入。配列には <code>sum()</code> <code>avg()</code> <code>count()</code> <code>max()</code> <code>min()</code> が使えます。</p>
+        <div data-role="formula-fields" class="mt-2 flex flex-wrap gap-1.5"></div>
       </div>
     </div>
 
@@ -632,6 +633,83 @@
     refreshMasterDisplayFieldOptions(row, selectedDisplayFields || []);
   }
 
+  function refreshFormulaFields(row) {
+    const container = row.querySelector('[data-role="formula-fields"]');
+    if (!container) return;
+    const type = row.querySelector('[data-field="type"]').value;
+    if (type !== "calculated") {
+      container.replaceChildren();
+      return;
+    }
+    const formulaInput = row.querySelector('[data-field="formula"]');
+    if (!formulaInput) return;
+
+    // 同階層のフィールド一覧を取得（自分自身を除く）
+    const parentContainer = row.parentElement;
+    if (!parentContainer) return;
+    const siblingRows = Array.from(parentContainer.querySelectorAll(":scope > .field-row"));
+    const myKey = row.querySelector('[data-field="key"]').value;
+
+    container.replaceChildren();
+    const numericTypes = new Set(["number", "integer", "calculated"]);
+    const arrayTypes = new Set(["number", "integer"]);
+
+    siblingRows.forEach((siblingRow) => {
+      const siblingKey = siblingRow.querySelector('[data-field="key"]').value;
+      if (siblingKey === myKey) return;
+      const siblingType = siblingRow.querySelector('[data-field="type"]').value;
+      const siblingLabel = siblingRow.querySelector('[data-field="label"]').value.trim();
+      const siblingIsArray = siblingRow.querySelector('[data-field="is_array"]').checked;
+      const displayName = siblingLabel || siblingKey;
+
+      if (numericTypes.has(siblingType) && !siblingIsArray) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "rounded border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs text-sky-700 hover:bg-sky-100";
+        btn.textContent = displayName;
+        btn.title = `{${displayName}} を挿入`;
+        btn.addEventListener("click", () => {
+          insertAtCursor(formulaInput, `{${displayName}}`);
+          updateFieldsJson();
+        });
+        container.appendChild(btn);
+      }
+
+      if (siblingIsArray && arrayTypes.has(siblingType)) {
+        ["sum", "avg", "count", "max", "min"].forEach((fn) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700 hover:bg-emerald-100";
+          btn.textContent = `${fn}(${displayName})`;
+          btn.title = `${fn}({${displayName}}) を挿入`;
+          btn.addEventListener("click", () => {
+            insertAtCursor(formulaInput, `${fn}({${displayName}})`);
+            updateFieldsJson();
+          });
+          container.appendChild(btn);
+        });
+      }
+    });
+
+    if (container.children.length === 0) {
+      const empty = document.createElement("span");
+      empty.className = "text-xs text-slate-400";
+      empty.textContent = "参照可能な数値フィールドがありません";
+      container.appendChild(empty);
+    }
+  }
+
+  function insertAtCursor(input, text) {
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? start;
+    const before = input.value.substring(0, start);
+    const after = input.value.substring(end);
+    input.value = before + text + after;
+    const newPos = start + text.length;
+    input.setSelectionRange(newPos, newPos);
+    input.focus();
+  }
+
   function applyVisibility(row) {
     const type = row.querySelector('[data-field="type"]').value;
     const isArray = row.querySelector('[data-field="is_array"]').checked;
@@ -672,6 +750,7 @@
     }
     refreshFormatOptions(row);
     syncFileExtensionPriority(row);
+    refreshFormulaFields(row);
     if (showMasterConfig) {
       refreshMasterLabelOptions(row);
       refreshMasterDisplayFieldOptions(
@@ -751,6 +830,13 @@
     refreshRowDepthStyles();
     const fields = readFieldsFromContainer(fieldList);
     fieldsInput.value = JSON.stringify(fields);
+    // 全ての計算フィールドの参照ボタンを更新
+    document.querySelectorAll('.field-row').forEach((row) => {
+      const typeInput = row.querySelector('[data-field="type"]');
+      if (typeInput && typeInput.value === "calculated") {
+        refreshFormulaFields(row);
+      }
+    });
   }
 
   function initSortable(container) {

@@ -4,9 +4,23 @@ import ast
 import re
 from typing import Any
 
+# 内部用: キーベースの参照パターン (評価時に使用)
 FIELD_REF_PATTERN = re.compile(r"\{([A-Za-z][A-Za-z0-9_.]*)\}")
 
+# ユーザー入力用: ラベル等あらゆる文字を許容する参照パターン
+DISPLAY_REF_PATTERN = re.compile(r"\{([^}]+)\}")
+
 AGGREGATE_FUNCTIONS = {"sum", "avg", "count", "max", "min"}
+
+# 内部用: キーベースの集約パターン
+AGGREGATE_CALL_PATTERN = re.compile(
+    r"(sum|avg|count|max|min)\(\{([A-Za-z][A-Za-z0-9_.]*)\}\)"
+)
+
+# ユーザー入力用: ラベルベースの集約パターン
+DISPLAY_AGGREGATE_PATTERN = re.compile(
+    r"(sum|avg|count|max|min)\(\{([^}]+)\}\)"
+)
 
 
 def extract_field_refs(formula: str) -> list[str]:
@@ -56,11 +70,6 @@ def _apply_aggregate(func_name: str, values: list[float]) -> float | None:
     if func_name == "min":
         return min(values)
     return None
-
-
-AGGREGATE_CALL_PATTERN = re.compile(
-    r"(sum|avg|count|max|min)\(\{([A-Za-z][A-Za-z0-9_.]*)\}\)"
-)
 
 
 def _substitute_aggregates(formula: str, data: dict[str, Any]) -> str:
@@ -137,7 +146,8 @@ def evaluate_formula(formula: str, data: dict[str, Any]) -> float | None:
     return _safe_eval(expr)
 
 
-def validate_formula(formula: str) -> list[str]:
+def validate_formula_syntax(formula: str) -> list[str]:
+    """キーベースに変換済みの計算式の構文を検証する。"""
     errors: list[str] = []
     if not formula or not formula.strip():
         errors.append("計算式が空です")
@@ -158,6 +168,89 @@ def validate_formula(formula: str) -> list[str]:
             return errors
 
     return errors
+
+
+def formula_labels_to_keys(
+    formula: str,
+    sibling_fields: list[dict[str, Any]],
+) -> tuple[str, list[str]]:
+    """ユーザーが入力したラベルベースの計算式をキーベースに変換する。
+
+    例: ``{単価} * {数量}`` → ``{price} * {qty}``
+    """
+    if not formula or not formula.strip():
+        return formula, []
+
+    label_to_key: dict[str, str] = {}
+    key_set: set[str] = set()
+    for field in sibling_fields:
+        label = field.get("label", "").strip()
+        key = field.get("key", "")
+        if label:
+            label_to_key[label] = key
+        if key:
+            key_set.add(key)
+
+    errors: list[str] = []
+
+    def _replace_aggregate(match: re.Match) -> str:
+        func_name = match.group(1)
+        ref = match.group(2).strip()
+        if ref in key_set:
+            return f"{func_name}({{{ref}}})"
+        if ref in label_to_key:
+            return f"{func_name}({{{label_to_key[ref]}}})"
+        errors.append(f"計算式のフィールド「{ref}」が見つかりません")
+        return match.group(0)
+
+    result = DISPLAY_AGGREGATE_PATTERN.sub(_replace_aggregate, formula)
+
+    def _replace_ref(match: re.Match) -> str:
+        ref = match.group(1).strip()
+        if ref in key_set:
+            return f"{{{ref}}}"
+        if ref in label_to_key:
+            return f"{{{label_to_key[ref]}}}"
+        errors.append(f"計算式のフィールド「{ref}」が見つかりません")
+        return match.group(0)
+
+    result = DISPLAY_REF_PATTERN.sub(_replace_ref, result)
+    return result, errors
+
+
+def formula_keys_to_labels(
+    formula: str,
+    sibling_fields: list[dict[str, Any]],
+) -> str:
+    """キーベースの計算式をラベルベースに変換する（表示用）。
+
+    例: ``{price} * {qty}`` → ``{単価} * {数量}``
+    """
+    if not formula or not formula.strip():
+        return formula
+
+    key_to_label: dict[str, str] = {}
+    for field in sibling_fields:
+        key = field.get("key", "")
+        label = field.get("label", "").strip()
+        if key and label:
+            key_to_label[key] = label
+
+    def _replace_aggregate(match: re.Match) -> str:
+        func_name = match.group(1)
+        ref = match.group(2)
+        label = key_to_label.get(ref, ref)
+        return f"{func_name}({{{label}}})"
+
+    result = AGGREGATE_CALL_PATTERN.sub(_replace_aggregate, formula)
+
+    def _replace_ref(match: re.Match) -> str:
+        ref = match.group(1)
+        label = key_to_label.get(ref, ref)
+        return f"{{{label}}}"
+
+    result = FIELD_REF_PATTERN.sub(_replace_ref, result)
+    return result
 
 
 def check_all_refs_required(

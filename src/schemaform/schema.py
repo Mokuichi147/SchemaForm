@@ -4,7 +4,11 @@ from typing import Any
 
 import orjson
 
-from schemaform.calculated import validate_formula
+from schemaform.calculated import (
+    formula_keys_to_labels,
+    formula_labels_to_keys,
+    validate_formula_syntax,
+)
 from schemaform.config import ALLOWED_TYPES, KEY_PATTERN
 from schemaform.file_formats import (
     normalize_allowed_extensions,
@@ -84,10 +88,6 @@ def parse_fields_json(fields_json: str) -> tuple[list[dict[str, Any]], list[str]
                 formula = str(raw.get("formula", "")).strip()
                 if not formula:
                     errors.append(f"{loc}: 計算式を指定してください")
-                else:
-                    formula_errors = validate_formula(formula)
-                    for fe in formula_errors:
-                        errors.append(f"{loc}: {fe}")
 
             if field_type not in ALLOWED_TYPES:
                 errors.append(f"{loc}: 種類が不正です ({field_type})")
@@ -147,6 +147,22 @@ def parse_fields_json(fields_json: str) -> tuple[list[dict[str, Any]], list[str]
 
     if not fields:
         errors.append("最低1つのフィールドが必要です")
+
+    def _resolve_formulas(field_list: list[dict[str, Any]]) -> None:
+        for field in field_list:
+            if field["type"] == "calculated" and field.get("formula"):
+                converted, conv_errors = formula_labels_to_keys(
+                    field["formula"], field_list,
+                )
+                errors.extend(conv_errors)
+                field["formula"] = converted
+                syntax_errors = validate_formula_syntax(converted)
+                for se in syntax_errors:
+                    errors.append(se)
+            if field["type"] == "group" and field.get("children"):
+                _resolve_formulas(field["children"])
+
+    _resolve_formulas(fields)
 
     return fields, errors
 
@@ -380,4 +396,16 @@ def fields_from_schema(schema: dict[str, Any], field_order: list[str]) -> list[d
                 "children": [],
             }
         )
+
+    def _display_formulas(field_list: list[dict[str, Any]]) -> None:
+        for field in field_list:
+            if field["type"] == "calculated" and field.get("formula"):
+                field["formula"] = formula_keys_to_labels(
+                    field["formula"], field_list,
+                )
+            if field["type"] == "group" and field.get("children"):
+                _display_formulas(field["children"])
+
+    _display_formulas(fields)
+
     return fields
