@@ -109,7 +109,7 @@
         {% endif %}
       </div>
       <div class="sf-field-input-col lg:col-span-9">
-        <div class="mt-1 w-full max-w-[10rem] rounded-md bg-slate-100/70 px-3 py-2 text-sm leading-relaxed text-slate-700 lg:mt-0">
+        <div class="mt-1 w-full max-w-[10rem] rounded-md bg-slate-100/70 px-3 py-2 text-sm leading-relaxed text-slate-700 lg:mt-0" data-role="calculated-display" data-formula="{{ field.formula | e }}" data-key="{{ form_name }}">
           {{ current_value if current_value is not none else "自動計算" }}
         </div>
       </div>
@@ -950,6 +950,170 @@
       addGroupItem({ animate: false });
     }
   }
+
+  // ---------- 計算フィールドのリアルタイム更新 ----------
+
+  function collectFormData(form) {
+    const data = {};
+    if (!form) return data;
+    const elements = form.querySelectorAll("input[name], select[name], textarea[name]");
+    elements.forEach((el) => {
+      const name = el.name;
+      if (!name) return;
+      if (el.type === "checkbox") {
+        if (!el.checked) return;
+      }
+      const parts = name.split(".");
+      let cursor = data;
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        const isLast = i === parts.length - 1;
+        const nextPart = parts[i + 1];
+        const nextIsIndex = nextPart !== undefined && /^\d+$/.test(nextPart);
+        if (isLast) {
+          if (part in cursor) {
+            if (!Array.isArray(cursor[part])) {
+              cursor[part] = [cursor[part]];
+            }
+            cursor[part].push(el.value);
+          } else {
+            cursor[part] = el.value;
+          }
+        } else {
+          if (nextIsIndex) {
+            if (!(part in cursor)) cursor[part] = [];
+            cursor = cursor[part];
+          } else if (/^\d+$/.test(part)) {
+            const idx = parseInt(part, 10);
+            while (cursor.length <= idx) cursor.push({});
+            if (typeof cursor[idx] !== "object" || cursor[idx] === null) cursor[idx] = {};
+            cursor = cursor[idx];
+          } else {
+            if (!(part in cursor) || typeof cursor[part] !== "object" || cursor[part] === null) {
+              cursor[part] = {};
+            }
+            cursor = cursor[part];
+          }
+        }
+      }
+    });
+    return data;
+  }
+
+  function resolveValue(data, dottedKey) {
+    const parts = dottedKey.split(".");
+    let current = data;
+    for (let i = 0; i < parts.length; i++) {
+      if (current == null) return undefined;
+      if (Array.isArray(current)) {
+        const remaining = parts.slice(i);
+        const results = [];
+        for (const item of current) {
+          let sub = item;
+          for (const subPart of remaining) {
+            if (sub != null && typeof sub === "object" && !Array.isArray(sub)) {
+              sub = sub[subPart];
+            } else {
+              sub = undefined;
+              break;
+            }
+          }
+          if (sub !== undefined) results.push(sub);
+        }
+        return results.length > 0 ? results : undefined;
+      }
+      if (typeof current === "object") {
+        current = current[parts[i]];
+      } else {
+        return undefined;
+      }
+    }
+    return current;
+  }
+
+  function collectNumericValues(value) {
+    if (value == null) return [];
+    if (Array.isArray(value)) {
+      const result = [];
+      for (const item of value) {
+        const n = parseFloat(item);
+        if (!isNaN(n)) result.push(n);
+      }
+      return result;
+    }
+    const n = parseFloat(value);
+    return isNaN(n) ? [] : [n];
+  }
+
+  function applyAggregate(funcName, values) {
+    if (funcName === "count") return values.length;
+    if (values.length === 0) return 0;
+    if (funcName === "sum") return values.reduce((a, b) => a + b, 0);
+    if (funcName === "avg") return values.reduce((a, b) => a + b, 0) / values.length;
+    if (funcName === "max") return Math.max(...values);
+    if (funcName === "min") return Math.min(...values);
+    return 0;
+  }
+
+  function evaluateFormulaClient(formula, data) {
+    if (!formula) return null;
+    let expr = formula.replace(/(sum|avg|count|max|min)\(\{([A-Za-z][A-Za-z0-9_.]*)\}\)/g, (_, func, ref) => {
+      const value = resolveValue(data, ref);
+      const nums = collectNumericValues(value);
+      return String(applyAggregate(func, nums));
+    });
+    expr = expr.replace(/\{([A-Za-z][A-Za-z0-9_.]*)\}/g, (_, ref) => {
+      const value = resolveValue(data, ref);
+      if (value == null) return "0";
+      const n = parseFloat(value);
+      return isNaN(n) ? "0" : String(n);
+    });
+    if (!/^[\d\s+\-*/%().eE]+$/.test(expr)) return null;
+    try {
+      const result = Function('"use strict"; return (' + expr + ')')();
+      if (typeof result === "number" && isFinite(result)) return result;
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  function updateCalculatedFields() {
+    const form = document.querySelector("form[method='post'][enctype='multipart/form-data']");
+    if (!form) return;
+    const data = collectFormData(form);
+    const displays = form.querySelectorAll("[data-role='calculated-display']");
+    displays.forEach((el) => {
+      const formula = el.dataset.formula;
+      if (!formula) return;
+      const result = evaluateFormulaClient(formula, data);
+      if (result !== null) {
+        const formatted = Number.isInteger(result) ? String(result) : result.toFixed(10).replace(/\.?0+$/, "");
+        el.textContent = formatted;
+        el.classList.remove("text-slate-400");
+        el.classList.add("text-slate-700", "font-medium");
+      } else {
+        el.innerHTML = '<span class="text-slate-400">自動計算</span>';
+        el.classList.remove("font-medium");
+      }
+    });
+  }
+
+  let calcTimer = 0;
+  function scheduleCalcUpdate() {
+    if (calcTimer) window.clearTimeout(calcTimer);
+    calcTimer = window.setTimeout(updateCalculatedFields, 120);
+  }
+
+  (function initCalculatedFieldWatcher() {
+    const form = document.querySelector("form[method='post'][enctype='multipart/form-data']");
+    if (!form) return;
+    form.addEventListener("input", scheduleCalcUpdate);
+    form.addEventListener("change", scheduleCalcUpdate);
+    updateCalculatedFields();
+  })();
+
+  // ---------- /計算フィールドのリアルタイム更新 ----------
 
   preventSubmitOnEnter(document.querySelector("form[method='post'][enctype='multipart/form-data']"));
   document.querySelectorAll("input[data-picker]").forEach(initPicker);
