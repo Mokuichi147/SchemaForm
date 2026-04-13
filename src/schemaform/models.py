@@ -32,6 +32,8 @@ class SubmissionModel(Base):
     id = Column(String, primary_key=True)
     form_id = Column(String, index=True)
     data_json = Column(Text)
+    user_id = Column(Integer, nullable=True, index=True)
+    username = Column(String, nullable=True)
     created_at = Column(DateTime)
     updated_at = Column(DateTime, nullable=True)
 

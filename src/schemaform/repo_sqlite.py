@@ -129,6 +129,8 @@ class SQLiteSubmissionRepo:
                 id=submission["id"],
                 form_id=submission["form_id"],
                 data_json=dumps_json(submission["data_json"]),
+                user_id=submission.get("user_id"),
+                username=submission.get("username"),
                 created_at=submission["created_at"],
             )
             session.add(row)
@@ -162,6 +164,8 @@ class SQLiteSubmissionRepo:
             "id": row.id,
             "form_id": row.form_id,
             "data_json": loads_json(row.data_json) or {},
+            "user_id": row.user_id,
+            "username": row.username,
             "created_at": row.created_at,
             "updated_at": row.updated_at,
         }
@@ -240,5 +244,13 @@ class SQLiteStorage:
             if "updated_at" not in sub_columns:
                 conn.execute(
                     text("ALTER TABLE submissions ADD COLUMN updated_at DATETIME")
+                )
+            if "user_id" not in sub_columns:
+                conn.execute(
+                    text("ALTER TABLE submissions ADD COLUMN user_id INTEGER")
+                )
+            if "username" not in sub_columns:
+                conn.execute(
+                    text("ALTER TABLE submissions ADD COLUMN username VARCHAR")
                 )
             conn.commit()

@@ -148,6 +148,8 @@ class JSONSubmissionRepo(JSONRepoBase):
             "id": submission["id"],
             "form_id": submission["form_id"],
             "data_json": submission["data_json"],
+            "user_id": submission.get("user_id"),
+            "username": submission.get("username"),
             "created_at": to_iso(submission["created_at"]),
         }
 
@@ -157,6 +159,8 @@ class JSONSubmissionRepo(JSONRepoBase):
             "id": record["id"],
             "form_id": record["form_id"],
             "data_json": record.get("data_json", {}),
+            "user_id": record.get("user_id"),
+            "username": record.get("username"),
             "created_at": parse_dt(record.get("created_at")),
             "updated_at": parse_dt(record.get("updated_at")) if record.get("updated_at") else None,
         }

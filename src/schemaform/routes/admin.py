@@ -18,8 +18,8 @@ from schemaform.webhook import is_valid_webhook_url
 router = APIRouter()
 
 
-def admin_guard(request: Request) -> None:
-    request.app.state.auth_provider.require_admin(request)
+async def admin_guard(request: Request) -> None:
+    await request.app.state.auth_provider.require_admin(request)
 
 
 def resolve_redirect_target(next_path: Any, default: str = "/admin/forms") -> str:

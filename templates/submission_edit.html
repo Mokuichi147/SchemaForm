@@ -268,7 +268,7 @@
       <h1 class="text-2xl font-semibold">送信データ編集</h1>
       <p class="text-sm text-slate-600">{{ form.name }} の送信データを編集します。</p>
     </div>
-    <a href="/admin/forms/{{ form.id }}/submissions" class="rounded border border-slate-300 px-3 py-2 text-sm">送信一覧に戻る</a>
+    <a href="{{ cancel_url or "/admin/forms/" ~ form.id ~ "/submissions" }}" class="rounded border border-slate-300 px-3 py-2 text-sm">送信一覧に戻る</a>
   </div>
 
   {% if errors %}
@@ -281,7 +281,7 @@
   </div>
   {% endif %}
 
-  <form method="post" class="mt-5 space-y-3" enctype="multipart/form-data">
+  <form method="post" action="{{ action_url or '' }}" class="mt-5 space-y-3" enctype="multipart/form-data">
     {% set sub_data = submission.data_json if submission else {} %}
     {% for field in fields %}
     {{ render_edit_field(field, "", sub_data, 0) }}
@@ -289,7 +289,7 @@
 
     <div class="flex gap-3">
       <button type="submit" class="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">保存</button>
-      <a href="/admin/forms/{{ form.id }}/submissions" class="rounded border border-slate-300 px-4 py-2 text-sm">キャンセル</a>
+      <a href="{{ cancel_url or "/admin/forms/" ~ form.id ~ "/submissions" }}" class="rounded border border-slate-300 px-4 py-2 text-sm">キャンセル</a>
     </div>
   </form>
 </div>

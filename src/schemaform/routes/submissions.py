@@ -37,8 +37,8 @@ from schemaform.utils import new_ulid, now_utc
 router = APIRouter()
 
 
-def admin_guard(request: Request) -> None:
-    request.app.state.auth_provider.require_admin(request)
+async def admin_guard(request: Request) -> None:
+    await request.app.state.auth_provider.require_admin(request)
 
 
 def build_submission_display_columns(

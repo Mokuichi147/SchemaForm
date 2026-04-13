@@ -236,10 +236,13 @@ async def submit_form(request: Request, public_id: str) -> HTMLResponse:
 
     submission_id = new_ulid()
     created_at = now_utc()
+    current_user = getattr(request.state, "current_user", None)
     submission_record = {
         "id": submission_id,
         "form_id": form["id"],
         "data_json": submission,
+        "user_id": current_user["id"] if current_user else None,
+        "username": current_user["username"] if current_user else None,
         "created_at": created_at,
     }
     storage.submissions.create_submission(submission_record)

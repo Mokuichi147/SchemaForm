@@ -122,6 +122,7 @@
             {% endif %}
           </a>
         </th>
+        <th class="px-4 py-3">操作</th>
         {% for column in display_columns %}
         <th class="px-4 py-3">
           <a href="?{{ build_query(query, sort=loop.index0|string, order=('desc' if sort == loop.index0|string and order == 'asc' else 'asc'), page=1) }}" class="group inline-flex items-center gap-1">
@@ -147,6 +148,18 @@
           <time class="js-local-dt" data-iso="{{ iso_dt(row.updated_at) }}">{{ format_dt(row.updated_at) }}</time>
           {% else %}
           -
+          {% endif %}
+        </td>
+        <td class="px-4 py-3">
+          {% if row.editable %}
+          <div class="flex gap-1">
+            <a href="/forms/{{ form.id }}/submissions/{{ row.id }}/edit" class="rounded border border-slate-300 px-2 py-1 text-xs">編集</a>
+            <form method="post" action="/forms/{{ form.id }}/submissions/{{ row.id }}/delete" class="inline" onsubmit="return confirm('削除してよろしいですか？');">
+              <button type="submit" class="rounded border border-rose-300 px-2 py-1 text-xs text-rose-600">削除</button>
+            </form>
+          </div>
+          {% else %}
+          <span class="text-xs text-slate-400">-</span>
           {% endif %}
         </td>
         {% for value in row["values"] %}
@@ -183,7 +196,7 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="{{ display_columns | length + 2 }}" class="px-4 py-6 text-center text-slate-500">該当データがありません。</td>
+        <td colspan="{{ display_columns | length + 3 }}" class="px-4 py-6 text-center text-slate-500">該当データがありません。</td>
       </tr>
       {% endfor %}
     </tbody>
