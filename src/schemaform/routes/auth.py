@@ -86,6 +86,77 @@ async def login(
     return response
 
 
+@router.get("/account/password", response_class=HTMLResponse, tags=["auth"])
+async def password_page(request: Request) -> HTMLResponse:
+    auth = request.app.state.auth_provider
+    await auth.require_login(request)
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        "account_password.html",
+        {"request": request, "errors": [], "notice": None},
+    )
+
+
+@router.post("/account/password", tags=["auth"], response_model=None)
+async def password_update(
+    request: Request,
+    current_password: str = Form(""),
+    new_password: str = Form(""),
+    new_password_confirm: str = Form(""),
+) -> HTMLResponse:
+    auth = request.app.state.auth_provider
+    user = await auth.require_login(request)
+    templates = request.app.state.templates
+
+    errors: list[str] = []
+    if not current_password or not new_password:
+        errors.append("現パスワードと新パスワードを入力してください")
+    if new_password and new_password != new_password_confirm:
+        errors.append("新パスワードと確認用パスワードが一致しません")
+    if new_password and len(new_password) < 8:
+        errors.append("新パスワードは 8 文字以上にしてください")
+    if new_password and new_password == current_password:
+        errors.append("新パスワードは現パスワードと異なるものにしてください")
+
+    change_password = getattr(auth, "change_password", None)
+    if change_password is None:
+        errors.append("パスワード変更はこのモードでは利用できません")
+
+    if errors:
+        return templates.TemplateResponse(
+            "account_password.html",
+            {"request": request, "errors": errors, "notice": None},
+            status_code=400,
+        )
+
+    ok = await change_password(
+        user["id"],
+        user["username"],
+        user.get("token", ""),
+        current_password,
+        new_password,
+    )
+    if not ok:
+        return templates.TemplateResponse(
+            "account_password.html",
+            {
+                "request": request,
+                "errors": ["現パスワードが正しくありません"],
+                "notice": None,
+            },
+            status_code=401,
+        )
+
+    return templates.TemplateResponse(
+        "account_password.html",
+        {
+            "request": request,
+            "errors": [],
+            "notice": "パスワードを変更しました",
+        },
+    )
+
+
 @router.post("/logout", tags=["auth"])
 async def logout(request: Request) -> RedirectResponse:
     auth = request.app.state.auth_provider

@@ -150,6 +150,26 @@ class UserPermissionAuthProvider:
         if not user.get("is_admin"):
             raise HTTPException(status_code=403, detail="管理者権限が必要です")
 
+    async def change_password(
+        self,
+        user_id: int,
+        username: str,
+        token: str,
+        current_password: str,
+        new_password: str,
+    ) -> bool:
+        """現パスワード検証後に新パスワードへ更新する。成功時 True。"""
+        verified = await self._db.users.authenticate(username, current_password)
+        if not verified:
+            return False
+        if self._is_relay:
+            result = await self._db.users.update(
+                user_id, token, password=new_password
+            )
+        else:
+            result = await self._db.users.update(user_id, password=new_password)
+        return result is not None
+
     async def bootstrap_admin_if_needed(self) -> tuple[str, str] | None:
         """ローカルDB かつ 管理者グループにユーザーがいない場合のみ自動作成する。"""
         import secrets
