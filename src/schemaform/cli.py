@@ -188,9 +188,16 @@ async def _create_admin(
         group = await db.groups.get_by_name(group_name)
         if group is None:
             group = await db.groups.create(
-                group_name, description="管理者グループ"
+                group_name, description="管理者グループ", is_admin=True
             )
             typer.echo(f"グループを作成しました: {group.name} (id={group.id})")
+        elif not getattr(group, "is_admin", False):
+            updated = await db.groups.update(group.id, is_admin=True)
+            if updated is not None:
+                group = updated
+                typer.echo(
+                    f"グループを管理者グループに昇格しました: {group.name} (id={group.id})"
+                )
 
         added = await db.groups.add_user(group.id, user.id)
         if added:
