@@ -754,7 +754,7 @@ requires-dist = [
     { name = "tinydb", specifier = ">=4.8.0" },
     { name = "typer", specifier = ">=0.12.0" },
     { name = "ulid-py", specifier = ">=1.1.0" },
-    { name = "user-permission", extras = ["fastapi", "relay"], specifier = ">=0.2.0" },
+    { name = "user-permission", extras = ["fastapi", "relay"], specifier = ">=0.3.0" },
     { name = "uvicorn", specifier = ">=0.30.0" },
 ]
 
@@ -878,16 +878,16 @@ wheels = [
 
 [[package]]
 name = "user-permission"
-version = "0.2.0"
+version = "0.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiosqlite" },
     { name = "pwdlib", extra = ["argon2"] },
     { name = "pyjwt" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c1/15/b2297fd520fb0753040bca17bca1d82bf0cc1e393e8bf46aa6a8dbd282bb/user_permission-0.2.0.tar.gz", hash = "sha256:fd58cac3cf1711754534487571a90837eecf5c47b904bd8a3799b0259b50c357", size = 15892, upload-time = "2026-04-12T15:42:14.732Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/93/d7/276cec637a08189e699eef3e0131ae4ad1b57ac605b796eba96b62442111/user_permission-0.3.0.tar.gz", hash = "sha256:56a93ce7e43d64e617efb7feebf6486f81da3e4a94a75f2eafbf3e66c4ca6175", size = 25640, upload-time = "2026-04-15T03:19:20.455Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/73/7d/3c3e2c45f6c12eb875483adb8e576f1ddd54f7811b4e466dd995cf1ddb76/user_permission-0.2.0-py3-none-any.whl", hash = "sha256:3761adcbb1f7ad362368f2c72e1ab02ca78b46c668c63416bed4586310587747", size = 21294, upload-time = "2026-04-12T15:42:16.07Z" },
+    { url = "https://files.pythonhosted.org/packages/08/b3/112a8f26296cb39ce3bdacc9e2c795dde3f3c421a09c76ae510acf01796e/user_permission-0.3.0-py3-none-any.whl", hash = "sha256:036b3436268623adb187f6d69ebe947efc93072130dfa84698daa47d47c441c7", size = 31828, upload-time = "2026-04-15T03:19:19.052Z" },
 ]
 
 [package.optional-dependencies]

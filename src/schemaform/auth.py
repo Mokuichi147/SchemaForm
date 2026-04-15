@@ -108,13 +108,15 @@ class UserPermissionAuthProvider:
         except Exception:
             return None
 
-    async def _fetch_groups(self, user_id: int, token: str) -> list[str]:
+    async def _fetch_groups(
+        self, user_id: int, token: str
+    ) -> list[tuple[str, bool]]:
         try:
             if self._is_relay:
                 groups = await self._db.groups.get_user_groups(user_id, token)
             else:
                 groups = await self._db.groups.get_user_groups(user_id)
-            return [g.name for g in groups]
+            return [(g.name, bool(getattr(g, "is_admin", False))) for g in groups]
         except Exception:
             return []
 
@@ -128,13 +130,17 @@ class UserPermissionAuthProvider:
             request.state.current_user = None
             return
         user_id, username = verified
-        groups = await self._fetch_groups(user_id, token)
+        group_info = await self._fetch_groups(user_id, token)
+        group_names = [name for name, _ in group_info]
+        is_admin = any(flag for _, flag in group_info) or (
+            self._admin_group in group_names
+        )
         request.state.current_user = {
             "id": user_id,
             "username": username,
             "token": token,
-            "groups": groups,
-            "is_admin": self._admin_group in groups,
+            "groups": group_names,
+            "is_admin": is_admin,
         }
 
     async def require_login(self, request: Request) -> dict[str, Any]:
@@ -180,8 +186,12 @@ class UserPermissionAuthProvider:
         group = await self._db.groups.get_by_name(self._admin_group)
         if group is None:
             group = await self._db.groups.create(
-                self._admin_group, description="管理者グループ"
+                self._admin_group, description="管理者グループ", is_admin=True
             )
+        elif not getattr(group, "is_admin", False):
+            updated = await self._db.groups.update(group.id, is_admin=True)
+            if updated is not None:
+                group = updated
         members = await self._db.groups.get_members(group.id)
         if members:
             return None
