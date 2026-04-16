@@ -289,12 +289,12 @@ def build_submission_raw_values(
     return result
 
 
-def collect_master_display_file_ids(
+def collect_submission_master_display_file_ids(
     submissions: list[dict[str, Any]],
     display_columns: list[dict[str, Any]],
     master_lookup_by_field: dict[str, dict[str, dict[str, Any]]],
 ) -> set[str]:
-    """参照フィールド越しに表示されるファイルの ID を収集する。"""
+    """送信一覧で参照フィールド越しに表示されるファイルの ID を収集する。"""
     ids: set[str] = set()
     file_columns = [
         column
@@ -347,7 +347,7 @@ async def list_submissions(
     display_columns, master_lookup_by_field = build_submission_display_columns(
         storage, fields
     )
-    file_ids |= collect_master_display_file_ids(
+    file_ids |= collect_submission_master_display_file_ids(
         submissions, display_columns, master_lookup_by_field
     )
     file_infos = resolve_file_infos(storage.files, file_ids)

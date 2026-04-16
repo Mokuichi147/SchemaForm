@@ -18,7 +18,7 @@ from schemaform.routes.submissions import (
     build_submission_display_columns,
     build_submission_raw_values,
     build_submission_row_values,
-    collect_master_display_file_ids,
+    collect_submission_master_display_file_ids,
     sort_submissions,
 )
 from schemaform.schema import fields_from_schema
@@ -94,7 +94,7 @@ async def list_submissions(request: Request, form_id: str) -> HTMLResponse:
     display_columns, master_lookup_by_field = build_submission_display_columns(
         storage, fields
     )
-    file_ids |= collect_master_display_file_ids(
+    file_ids |= collect_submission_master_display_file_ids(
         submissions, display_columns, master_lookup_by_field
     )
     file_infos = resolve_file_infos(storage.files, file_ids)
