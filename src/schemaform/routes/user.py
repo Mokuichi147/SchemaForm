@@ -12,11 +12,13 @@ from schemaform.fields import (
 from schemaform.filters import (
     apply_filters,
     collect_file_ids,
-    resolve_file_names,
+    resolve_file_infos,
 )
 from schemaform.routes.submissions import (
     build_submission_display_columns,
+    build_submission_raw_values,
     build_submission_row_values,
+    collect_master_display_file_ids,
     sort_submissions,
 )
 from schemaform.schema import fields_from_schema
@@ -88,17 +90,21 @@ async def list_submissions(request: Request, form_id: str) -> HTMLResponse:
         for expanded_data in expand_group_array_rows(fields, data):
             expanded_submissions.append({**submission, "data_json": expanded_data})
     file_ids = collect_file_ids(submissions, fields)
-    file_names = resolve_file_names(storage.files, file_ids)
+
+    display_columns, master_lookup_by_field = build_submission_display_columns(
+        storage, fields
+    )
+    file_ids |= collect_master_display_file_ids(
+        submissions, display_columns, master_lookup_by_field
+    )
+    file_infos = resolve_file_infos(storage.files, file_ids)
+    file_names = {fid: info["name"] for fid, info in file_infos.items()}
 
     filtered = apply_filters(
         expanded_submissions,
         fields,
         dict(request.query_params),
         file_names=file_names,
-    )
-
-    display_columns, master_lookup_by_field = build_submission_display_columns(
-        storage, fields
     )
 
     sort = request.query_params.get("sort", "created_at")
@@ -131,6 +137,9 @@ async def list_submissions(request: Request, form_id: str) -> HTMLResponse:
             master_lookup_by_field,
             file_names,
         )
+        raw_values = build_submission_raw_values(
+            data, display_columns, master_lookup_by_field
+        )
         display_rows.append(
             {
                 "id": item["id"],
@@ -139,6 +148,7 @@ async def list_submissions(request: Request, form_id: str) -> HTMLResponse:
                 "user_id": item.get("user_id"),
                 "username": item.get("username"),
                 "values": row_values,
+                "raw_values": raw_values,
             }
         )
 
@@ -164,6 +174,7 @@ async def list_submissions(request: Request, form_id: str) -> HTMLResponse:
             "display_columns": display_columns,
             "filter_fields": filter_fields,
             "rows": display_rows,
+            "file_infos": file_infos,
             "page": page,
             "page_size": page_size,
             "total": total,
@@ -200,6 +211,8 @@ async def edit_submission(
 
     fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
     enrich_master_options(storage, fields)
+    file_ids = collect_file_ids([submission], fields)
+    file_infos = resolve_file_infos(storage.files, file_ids)
     return templates.TemplateResponse(
         "submission_edit.html",
         {
@@ -207,6 +220,7 @@ async def edit_submission(
             "form": form,
             "fields": fields,
             "submission": submission,
+            "file_infos": file_infos,
             "errors": [],
             "cancel_url": f"/forms/{form_id}/submissions",
             "action_url": f"/forms/{form_id}/submissions/{submission_id}/edit",

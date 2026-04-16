@@ -175,7 +175,7 @@
                       {% elif display_item.type in ["enum", "master"] %}
                         {% set di_fw = "max-w-sm" %}
                       {% endif %}
-                      <div data-role="master-display-row" data-master-display-key="{{ display_item.key }}" class="hidden py-1 lg:py-1.5">
+                      <div data-role="master-display-row" data-master-display-key="{{ display_item.key }}" data-master-display-type="{{ display_item.type }}" class="hidden py-1 lg:py-1.5">
                         <div class="sf-field-row lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
                           <div class="lg:col-span-3">
                             <div class="block text-sm font-semibold leading-6">{{ display_item.label }}</div>
@@ -235,7 +235,7 @@
               {% elif display_item.type in ["enum", "master"] %}
                 {% set di_fw = "max-w-sm" %}
               {% endif %}
-              <div data-role="master-display-row" data-master-display-key="{{ display_item.key }}" class="hidden py-1 lg:py-1.5">
+              <div data-role="master-display-row" data-master-display-key="{{ display_item.key }}" data-master-display-type="{{ display_item.type }}" class="hidden py-1 lg:py-1.5">
                 <div class="sf-field-row lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
                   <div class="lg:col-span-3">
                     <div class="block text-sm font-semibold leading-6">{{ display_item.label }}</div>
@@ -360,7 +360,18 @@
 
 </style>
 
+<script id="sf-file-infos" type="application/json">{{ file_infos | default({}) | tojson }}</script>
+
 <script>
+  const SF_FILE_INFOS = (() => {
+    try {
+      const el = document.getElementById("sf-file-infos");
+      return el ? JSON.parse(el.textContent || "{}") : {};
+    } catch (_) {
+      return {};
+    }
+  })();
+
   function preventSubmitOnEnter(form) {
     if (!form) return;
     let allowSubmitByButton = false;
@@ -555,11 +566,75 @@
     return "";
   }
 
-  function renderMasterDisplayValue(valueEl, rawValue) {
+  function renderMasterFileEntry(container, fileId) {
+    const info = SF_FILE_INFOS[fileId] || null;
+    const name = info?.name || fileId;
+    const kind = info?.kind || "";
+    const href = `/files/${encodeURIComponent(fileId)}`;
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "space-y-1";
+
+    if (kind === "image") {
+      const img = document.createElement("img");
+      img.src = href;
+      img.alt = name;
+      img.loading = "lazy";
+      img.className = "max-h-40 max-w-xs rounded border border-slate-200 object-contain cursor-pointer";
+      img.dataset.lightbox = href;
+      img.dataset.lightboxKind = "image";
+      img.dataset.lightboxName = name;
+      wrapper.appendChild(img);
+    } else if (kind === "video") {
+      const thumb = document.createElement("div");
+      thumb.className = "max-h-48 max-w-sm flex items-center justify-center bg-slate-100 rounded border border-slate-200 cursor-pointer h-32 w-48";
+      thumb.dataset.lightbox = href;
+      thumb.dataset.lightboxKind = "video";
+      thumb.dataset.lightboxName = name;
+      thumb.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-slate-400" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
+      wrapper.appendChild(thumb);
+    } else if (kind === "audio") {
+      const audio = document.createElement("audio");
+      audio.src = href;
+      audio.controls = true;
+      audio.preload = "metadata";
+      audio.className = "w-full max-w-xs";
+      wrapper.appendChild(audio);
+    }
+
+    const link = document.createElement("a");
+    link.href = href;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.className = "block break-all text-xs text-slate-500 underline";
+    link.textContent = name;
+    wrapper.appendChild(link);
+
+    container.appendChild(wrapper);
+  }
+
+  function renderMasterFileValue(valueEl, rawValue) {
+    const ids = String(rawValue ?? "")
+      .split(",")
+      .map((token) => token.trim())
+      .filter((token) => token.length > 0);
+    if (ids.length === 0) return;
+    const wrap = document.createElement("div");
+    wrap.className = "flex flex-wrap gap-2";
+    ids.forEach((id) => renderMasterFileEntry(wrap, id));
+    valueEl.appendChild(wrap);
+  }
+
+  function renderMasterDisplayValue(valueEl, rawValue, type) {
     if (!valueEl) return;
     valueEl.replaceChildren();
     const value = String(rawValue ?? "").trim();
     if (!value) return;
+
+    if (type === "file") {
+      renderMasterFileValue(valueEl, value);
+      return;
+    }
 
     const parts = value
       .split(/,\s+/)
@@ -602,9 +677,10 @@
     let visibleCount = 0;
     rows.forEach((row) => {
       const key = row.dataset.masterDisplayKey || "";
+      const type = row.dataset.masterDisplayType || "";
       const value = String(displayMap[key] ?? "").trim();
       const valueEl = row.querySelector("[data-role='master-display-value']");
-      renderMasterDisplayValue(valueEl, value);
+      renderMasterDisplayValue(valueEl, value, type);
       const show = value.length > 0;
       row.classList.toggle("hidden", !show);
       if (show) {

@@ -207,3 +207,28 @@ def upload_matches_file_constraints(
     if normalize_allowed_extensions(allowed_extensions):
         return upload_matches_allowed_extensions(filename, allowed_extensions)
     return upload_matches_file_format(content_type, filename, file_format)
+
+
+def media_kind_for_file(content_type: object, filename: object) -> str:
+    """ブラウザ上で表示/再生できるメディア種別を返す。
+
+    該当しない場合は空文字を返す。
+    """
+    media_type = str(content_type or "").strip().lower()
+    if media_type.startswith("image/"):
+        return FILE_FORMAT_IMAGE
+    if media_type.startswith("video/"):
+        return FILE_FORMAT_VIDEO
+    if media_type.startswith("audio/"):
+        return FILE_FORMAT_AUDIO
+
+    extension = normalize_extension(Path(str(filename or "")).suffix)
+    if not extension:
+        return ""
+    if extension in IMAGE_EXTENSIONS:
+        return FILE_FORMAT_IMAGE
+    if extension in VIDEO_EXTENSIONS:
+        return FILE_FORMAT_VIDEO
+    if extension in AUDIO_EXTENSIONS:
+        return FILE_FORMAT_AUDIO
+    return ""

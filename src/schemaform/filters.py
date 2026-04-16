@@ -12,6 +12,7 @@ from schemaform.fields import (
     format_array_group_value,
     get_nested_value,
 )
+from schemaform.file_formats import media_kind_for_file
 from schemaform.protocols import FileRepository
 
 
@@ -66,13 +67,33 @@ def collect_file_ids(
     return ids
 
 
-def resolve_file_names(file_repo: FileRepository, file_ids: Iterable[str]) -> dict[str, str]:
-    mapping: dict[str, str] = {}
+def resolve_file_infos(
+    file_repo: FileRepository, file_ids: Iterable[str]
+) -> dict[str, dict[str, str]]:
+    """file_id → {name, content_type, kind} のマップを返す。
+
+    kind は "image"/"video"/"audio" もしくは空文字（ブラウザ上で表示/再生に適さない場合）。
+    """
+    mapping: dict[str, dict[str, str]] = {}
     for file_id in file_ids:
         file_meta = file_repo.get_file(file_id)
-        if file_meta:
-            mapping[file_id] = file_meta.get("original_name", "")
+        if not file_meta:
+            continue
+        name = str(file_meta.get("original_name", "") or "")
+        content_type = str(file_meta.get("content_type", "") or "")
+        mapping[file_id] = {
+            "name": name,
+            "content_type": content_type,
+            "kind": media_kind_for_file(content_type, name),
+        }
     return mapping
+
+
+def resolve_file_names(file_repo: FileRepository, file_ids: Iterable[str]) -> dict[str, str]:
+    return {
+        file_id: info["name"]
+        for file_id, info in resolve_file_infos(file_repo, file_ids).items()
+    }
 
 
 def value_to_text(value: Any, file_names: dict[str, str], use_file_names: bool) -> str:

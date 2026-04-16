@@ -23,6 +23,7 @@ from schemaform.filters import (
     collect_file_ids,
     normalize_number,
     parse_bool,
+    resolve_file_infos,
     resolve_file_names,
     value_to_text,
 )
@@ -88,6 +89,7 @@ def build_submission_display_columns(
                         "label": f"{field['flat_label']}.{item['label']}",
                         "field": field,
                         "display_key": item["key"],
+                        "display_type": item.get("type", ""),
                     }
                 )
 
@@ -235,6 +237,92 @@ def build_submission_row_values(
     return row_values
 
 
+def _resolve_master_display_raw(
+    raw_value: Any,
+    lookup: dict[str, dict[str, Any]],
+    display_key: str,
+) -> Any:
+    """参照フィールドの表示用ファイル値を生ID (またはID配列) で返す。"""
+
+    def resolve_one(value: Any) -> Any:
+        if value in (None, ""):
+            return None
+        row = lookup.get(str(value))
+        if not row:
+            return None
+        return (row.get("values") or {}).get(display_key)
+
+    if isinstance(raw_value, list):
+        items: list[Any] = []
+        for item in raw_value:
+            resolved = resolve_one(item)
+            if isinstance(resolved, list):
+                items.extend(resolved)
+            elif resolved not in (None, ""):
+                items.append(resolved)
+        return items
+    return resolve_one(raw_value)
+
+
+def build_submission_raw_values(
+    data: dict[str, Any],
+    display_columns: list[dict[str, Any]],
+    master_lookup_by_field: dict[str, dict[str, dict[str, Any]]] | None = None,
+) -> list[Any]:
+    """ファイルフィールドのプレビュー表示などで元の値が必要な箇所向けに、
+    列ごとの生の値（ID・配列など）を返す。"""
+    master_lookup_by_field = master_lookup_by_field or {}
+    result: list[Any] = []
+    for column in display_columns:
+        field = column["field"]
+        flat_key = field["flat_key"]
+        raw = get_nested_value(data, flat_key)
+        if (
+            column.get("kind") == "master_display"
+            and column.get("display_type") == "file"
+        ):
+            lookup = master_lookup_by_field.get(flat_key, {})
+            raw = _resolve_master_display_raw(
+                raw, lookup, str(column.get("display_key", ""))
+            )
+        result.append(raw)
+    return result
+
+
+def collect_master_display_file_ids(
+    submissions: list[dict[str, Any]],
+    display_columns: list[dict[str, Any]],
+    master_lookup_by_field: dict[str, dict[str, dict[str, Any]]],
+) -> set[str]:
+    """参照フィールド越しに表示されるファイルの ID を収集する。"""
+    ids: set[str] = set()
+    file_columns = [
+        column
+        for column in display_columns
+        if column.get("kind") == "master_display"
+        and column.get("display_type") == "file"
+    ]
+    if not file_columns:
+        return ids
+    for submission in submissions:
+        data = submission.get("data_json", {})
+        for column in file_columns:
+            flat_key = column["field"]["flat_key"]
+            lookup = master_lookup_by_field.get(flat_key, {})
+            raw = _resolve_master_display_raw(
+                get_nested_value(data, flat_key),
+                lookup,
+                str(column.get("display_key", "")),
+            )
+            if isinstance(raw, list):
+                for item in raw:
+                    if isinstance(item, str) and item:
+                        ids.add(item)
+            elif isinstance(raw, str) and raw:
+                ids.add(raw)
+    return ids
+
+
 @router.get(
     "/admin/forms/{form_id}/submissions", response_class=HTMLResponse, tags=["admin"]
 )
@@ -255,14 +343,18 @@ async def list_submissions(
         for expanded_data in expand_group_array_rows(fields, data):
             expanded_submissions.append({**submission, "data_json": expanded_data})
     file_ids = collect_file_ids(submissions, fields)
-    file_names = resolve_file_names(storage.files, file_ids)
-
-    filtered = apply_filters(
-        expanded_submissions, fields, dict(request.query_params), file_names=file_names
-    )
 
     display_columns, master_lookup_by_field = build_submission_display_columns(
         storage, fields
+    )
+    file_ids |= collect_master_display_file_ids(
+        submissions, display_columns, master_lookup_by_field
+    )
+    file_infos = resolve_file_infos(storage.files, file_ids)
+    file_names = {fid: info["name"] for fid, info in file_infos.items()}
+
+    filtered = apply_filters(
+        expanded_submissions, fields, dict(request.query_params), file_names=file_names
     )
 
     sort = request.query_params.get("sort", "created_at")
@@ -295,12 +387,16 @@ async def list_submissions(
             master_lookup_by_field,
             file_names,
         )
+        raw_values = build_submission_raw_values(
+            data, display_columns, master_lookup_by_field
+        )
         display_rows.append(
             {
                 "id": item["id"],
                 "created_at": item["created_at"],
                 "updated_at": item.get("updated_at"),
                 "values": row_values,
+                "raw_values": raw_values,
             }
         )
 
@@ -315,6 +411,7 @@ async def list_submissions(
             "display_columns": display_columns,
             "filter_fields": filter_fields,
             "rows": display_rows,
+            "file_infos": file_infos,
             "page": page,
             "page_size": page_size,
             "total": total,
@@ -369,6 +466,8 @@ async def edit_submission(
         raise HTTPException(status_code=404, detail="送信データが見つかりません")
     fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
     enrich_master_options(storage, fields)
+    file_ids = collect_file_ids([submission], fields)
+    file_infos = resolve_file_infos(storage.files, file_ids)
     return templates.TemplateResponse(
         "submission_edit.html",
         {
@@ -376,6 +475,7 @@ async def edit_submission(
             "form": form,
             "fields": fields,
             "submission": submission,
+            "file_infos": file_infos,
             "errors": [],
         },
     )
@@ -537,6 +637,8 @@ async def update_submission(
     master_errors = validate_master_references(storage, fields, submission)
     if errors or master_errors:
         messages = [f"{error.message}" for error in errors] + master_errors
+        file_ids = collect_file_ids([{**existing, "data_json": submission}], fields)
+        file_infos = resolve_file_infos(storage.files, file_ids)
         return templates.TemplateResponse(
             "submission_edit.html",
             {
@@ -544,6 +646,7 @@ async def update_submission(
                 "form": form,
                 "fields": fields,
                 "submission": {**existing, "data_json": submission},
+                "file_infos": file_infos,
                 "errors": messages,
             },
         )

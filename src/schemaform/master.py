@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from schemaform.fields import expand_group_array_rows
@@ -334,7 +335,7 @@ def _collect_candidate_fields(
             )
             continue
 
-        if field_type != "file" and full_key not in seen_keys:
+        if full_key not in seen_keys:
             candidates.append(
                 {
                     "key": full_key,
@@ -656,6 +657,42 @@ def enrich_master_options(storage: Any, fields: list[dict[str, Any]]) -> None:
                 }
             )
         field["master_options"] = options
+
+
+def collect_master_display_file_ids(fields: list[dict[str, Any]]) -> set[str]:
+    """参照フィールドの display 項目からファイル ID を収集する。"""
+    ids: set[str] = set()
+    for field in fields:
+        if field.get("type") == "group":
+            ids |= collect_master_display_file_ids(field.get("children") or [])
+            continue
+        if field.get("type") != "master":
+            continue
+        display_items = field.get("master_display_items") or []
+        file_keys = [
+            item.get("key")
+            for item in display_items
+            if item.get("type") == "file" and item.get("key")
+        ]
+        if not file_keys:
+            continue
+        for option in field.get("master_options") or []:
+            raw = option.get("display_json") or "{}"
+            try:
+                parsed = json.loads(raw)
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(parsed, dict):
+                continue
+            for key in file_keys:
+                value = parsed.get(key)
+                if not value:
+                    continue
+                for token in str(value).split(","):
+                    token = token.strip()
+                    if token:
+                        ids.add(token)
+    return ids
 
 
 def _extract_base_id(value: Any) -> str:

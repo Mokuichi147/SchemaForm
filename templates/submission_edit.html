@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_file_preview.html" import file_value as render_file_value %}
 {% block content %}
 
 {% macro get_value(data, key) %}{{ data.get(key, "") if data else "" }}{% endmacro %}
@@ -149,6 +150,7 @@
             <div class="mt-1 w-full {{ ns.fw }} lg:mt-0">
               {% if arr_values %}
               <div class="mb-2 text-xs text-slate-500">現在のファイル: {{ arr_values | length }}件 (新しいファイルを選択すると置き換えます)</div>
+              <div class="mb-2">{{ render_file_value(arr_values, file_infos) }}</div>
               {% endif %}
               <input type="file" name="{{ form_name }}" multiple class="w-full rounded border border-slate-300 px-2 py-2" {% if file_accept %}accept="{{ file_accept }}"{% endif %} />
             </div>
@@ -245,6 +247,7 @@
           <div class="mt-1 w-full {{ ns.fw }} lg:mt-0">
             {% if current_value %}
             <div class="mb-2 text-xs text-slate-500">現在のファイルあり (新しいファイルを選択すると置き換えます)</div>
+            <div class="mb-2">{{ render_file_value(current_value, file_infos) }}</div>
             {% endif %}
             <input type="file" name="{{ form_name }}" class="w-full rounded border border-slate-300 px-2 py-2" {% if file_accept %}accept="{{ file_accept }}"{% endif %} />
           </div>
