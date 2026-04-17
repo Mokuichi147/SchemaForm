@@ -101,5 +101,64 @@
     <main class="mx-auto max-w-6xl px-6 py-8">
       {% block content %}{% endblock %}
     </main>
+
+    <div id="lightbox-overlay" class="fixed inset-0 z-[100] hidden items-center justify-center bg-black/80 p-4" role="dialog" aria-modal="true">
+      <button type="button" id="lightbox-close" class="absolute right-4 top-4 z-10 rounded-full bg-black/50 px-3 py-1.5 text-sm text-white hover:bg-black/70" aria-label="閉じる">✕</button>
+      <a id="lightbox-download" href="#" class="absolute left-4 top-4 z-10 rounded-full bg-black/50 px-3 py-1.5 text-sm text-white hover:bg-black/70">ダウンロード</a>
+      <div id="lightbox-content" class="flex max-h-full max-w-full items-center justify-center"></div>
+    </div>
+    <script>
+      (() => {
+        const overlay = document.getElementById("lightbox-overlay");
+        const content = document.getElementById("lightbox-content");
+        const closeBtn = document.getElementById("lightbox-close");
+        const downloadLink = document.getElementById("lightbox-download");
+        if (!overlay || !content) return;
+
+        function open(src, kind, name) {
+          content.innerHTML = "";
+          downloadLink.href = src;
+          if (kind === "image") {
+            const img = document.createElement("img");
+            img.src = src;
+            img.alt = name || "";
+            img.className = "max-h-[90vh] max-w-[90vw] object-contain rounded";
+            content.appendChild(img);
+          } else if (kind === "video") {
+            const video = document.createElement("video");
+            video.src = src;
+            video.controls = true;
+            video.className = "max-h-[90vh] max-w-[90vw] rounded";
+            content.appendChild(video);
+          }
+          overlay.classList.remove("hidden");
+          overlay.classList.add("flex");
+          document.body.classList.add("overflow-hidden");
+        }
+
+        function close() {
+          overlay.classList.add("hidden");
+          overlay.classList.remove("flex");
+          document.body.classList.remove("overflow-hidden");
+          content.innerHTML = "";
+        }
+
+        closeBtn?.addEventListener("click", close);
+        overlay.addEventListener("click", (e) => {
+          if (e.target === overlay) close();
+        });
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && !overlay.classList.contains("hidden")) close();
+        });
+
+        document.addEventListener("click", (e) => {
+          const el = e.target.closest("[data-lightbox]");
+          if (!el) return;
+          e.preventDefault();
+          e.stopPropagation();
+          open(el.dataset.lightbox, el.dataset.lightboxKind, el.dataset.lightboxName);
+        });
+      })();
+    </script>
   </body>
 </html>

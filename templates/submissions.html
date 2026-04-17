@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_file_preview.html" import file_value as render_file_value %}
 {% block content %}
 <div class="flex flex-wrap items-center justify-between gap-3">
   <div>
@@ -159,7 +160,16 @@
         </td>
         {% for value in row["values"] %}
         {% set column = display_columns[loop.index0] %}
-        {% if column.kind == "default"
+        {% set raw_value = row.raw_values[loop.index0] if row.raw_values is defined else none %}
+        {% if column.kind == "default" and column.field.type == "file" and raw_value %}
+          <td class="px-4 py-3">
+            {{ render_file_value(raw_value, file_infos, "sm") }}
+          </td>
+        {% elif column.kind == "master_display" and column.display_type == "file" and raw_value %}
+          <td class="px-4 py-3">
+            {{ render_file_value(raw_value, file_infos, "sm") }}
+          </td>
+        {% elif column.kind == "default"
               and column.field.type == "string"
               and (
                 column.field.format == "url"

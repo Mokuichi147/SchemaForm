@@ -1,0 +1,66 @@
+{# ファイルフィールドの値をプレビュー付きで表示するためのマクロ集。
+
+file_infos は {file_id: {name, content_type, kind}} の辞書。
+kind は "image"/"video"/"audio" またはそれ以外 (空文字) で、
+ブラウザ上で直接表示/再生できる場合のみ指定される。 #}
+
+{% macro file_media_preview(file_id, info, size="md") -%}
+  {% set name = info.name or file_id %}
+  {% set kind = info.kind or "" %}
+  {% if size == "sm" %}
+    {% set img_class = "max-h-16 max-w-[8rem] rounded border border-slate-200 object-contain" %}
+    {% set video_class = "max-h-20 max-w-[10rem] rounded border border-slate-200" %}
+  {% else %}
+    {% set img_class = "max-h-40 max-w-xs rounded border border-slate-200 object-contain" %}
+    {% set video_class = "max-h-48 max-w-sm rounded border border-slate-200" %}
+  {% endif %}
+  {% if kind == "image" %}
+    <img src="/files/{{ file_id }}" alt="{{ name }}" loading="lazy" class="{{ img_class }} cursor-pointer" data-lightbox="/files/{{ file_id }}" data-lightbox-kind="image" data-lightbox-name="{{ name }}" />
+  {% elif kind == "video" %}
+    <div class="{{ video_class }} flex items-center justify-center bg-slate-100 cursor-pointer" data-lightbox="/files/{{ file_id }}" data-lightbox-kind="video" data-lightbox-name="{{ name }}">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-slate-400" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+    </div>
+  {% elif kind == "audio" %}
+    <audio src="/files/{{ file_id }}" controls preload="metadata" class="w-full max-w-xs"></audio>
+  {% endif %}
+{%- endmacro %}
+
+{% macro file_link(file_id, info) -%}
+  {% set name = info.name or file_id %}
+  <a href="/files/{{ file_id }}" target="_blank" rel="noopener noreferrer" class="break-all text-sky-700 underline">{{ name }}</a>
+{%- endmacro %}
+
+{% macro file_entry(file_id, file_infos, size="md") -%}
+  {% if not file_id %}{% else %}
+    {% set info = file_infos.get(file_id) if file_infos else none %}
+    {% if info %}
+      {% if info.kind %}
+        <div class="space-y-1">
+          {{ file_media_preview(file_id, info, size) }}
+          <div class="text-xs text-slate-500 break-all">{{ file_link(file_id, info) }}</div>
+        </div>
+      {% else %}
+        {{ file_link(file_id, info) }}
+      {% endif %}
+    {% else %}
+      <span class="text-slate-500">{{ file_id }}</span>
+    {% endif %}
+  {% endif %}
+{%- endmacro %}
+
+{% macro file_value(value, file_infos, size="md") -%}
+  {% if value is iterable and value is not string and value is not mapping %}
+    {% set items = value | list %}
+    {% if items %}
+      <div class="flex flex-wrap gap-2">
+        {% for item in items %}
+          {% if item %}
+          <div>{{ file_entry(item, file_infos, size) }}</div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% elif value %}
+    {{ file_entry(value, file_infos, size) }}
+  {% endif %}
+{%- endmacro %}

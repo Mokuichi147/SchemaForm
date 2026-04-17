@@ -10,8 +10,12 @@ from jsonschema import Draft7Validator
 from schemaform.calculated import evaluate_formula
 from schemaform.file_formats import upload_matches_file_constraints
 from schemaform.fields import clean_empty_recursive
-from schemaform.filters import normalize_number, parse_bool
-from schemaform.master import enrich_master_options, validate_master_references
+from schemaform.filters import normalize_number, parse_bool, resolve_file_infos
+from schemaform.master import (
+    collect_master_display_file_ids,
+    enrich_master_options,
+    validate_master_references,
+)
 from schemaform.schema import fields_from_schema
 from schemaform.utils import new_ulid, now_utc
 
@@ -68,6 +72,9 @@ async def public_form(request: Request, public_id: str) -> HTMLResponse:
         raise HTTPException(status_code=404, detail="フォームが見つかりません")
     fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
     enrich_master_options(storage, fields)
+    file_infos = resolve_file_infos(
+        storage.files, collect_master_display_file_ids(fields)
+    )
     inactive = form.get("status") != "active"
     errors = ["このフォームは停止中です"] if inactive else []
     return templates.TemplateResponse(
@@ -76,6 +83,7 @@ async def public_form(request: Request, public_id: str) -> HTMLResponse:
             "request": request,
             "form": form,
             "fields": fields,
+            "file_infos": file_infos,
             "errors": errors,
             "inactive": inactive,
         },
@@ -92,12 +100,16 @@ async def submit_form(request: Request, public_id: str) -> HTMLResponse:
     if form.get("status") != "active":
         fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
         enrich_master_options(storage, fields)
+        file_infos = resolve_file_infos(
+            storage.files, collect_master_display_file_ids(fields)
+        )
         return templates.TemplateResponse(
             "form_public.html",
             {
                 "request": request,
                 "form": form,
                 "fields": fields,
+                "file_infos": file_infos,
                 "errors": ["このフォームは停止中です"],
                 "inactive": True,
             },
@@ -223,12 +235,16 @@ async def submit_form(request: Request, public_id: str) -> HTMLResponse:
     master_errors = validate_master_references(storage, fields, submission)
     if errors or master_errors:
         messages = [f"{error.message}" for error in errors] + master_errors
+        file_infos = resolve_file_infos(
+            storage.files, collect_master_display_file_ids(fields)
+        )
         return templates.TemplateResponse(
             "form_public.html",
             {
                 "request": request,
                 "form": form,
                 "fields": fields,
+                "file_infos": file_infos,
                 "errors": messages,
                 "inactive": False,
             },
