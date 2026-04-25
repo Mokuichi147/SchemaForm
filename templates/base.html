@@ -73,17 +73,13 @@
   <body class="min-h-screen bg-slate-50 text-slate-900">
     <header class="border-b border-slate-200 bg-white">
       <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-        <a href="/forms" class="text-lg font-semibold">SchemaForm</a>
+        {% set auth_enabled = get_auth_enabled(request) %}
+        {% set current_user = get_current_user(request) %}
+        {% set is_admin_view = (not auth_enabled) or (current_user and current_user.is_admin) %}
+        <a href="{{ '/admin/forms' if is_admin_view else '/forms' }}" class="text-lg font-semibold">SchemaForm</a>
         <nav class="flex items-center gap-3 text-sm text-slate-600">
-          <a href="/forms" class="hover:text-slate-900">フォーム一覧</a>
-          {% set auth_enabled = get_auth_enabled(request) %}
-          {% set current_user = get_current_user(request) %}
-          {% if not auth_enabled or (current_user and current_user.is_admin) %}
-          <a href="/admin/forms" class="hover:text-slate-900">管理</a>
-          {% endif %}
           {% if auth_enabled %}
             {% if current_user %}
-            <span class="text-slate-400">|</span>
             <a href="/account" class="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100">
               {{ current_user.display_name or current_user.username }}
             </a>

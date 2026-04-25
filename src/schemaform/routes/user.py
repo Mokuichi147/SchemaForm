@@ -39,8 +39,11 @@ def _check_submission_owner(
         raise HTTPException(status_code=403, detail="この送信は編集できません")
 
 
-@router.get("/forms", response_class=HTMLResponse, tags=["user"])
-async def list_forms(request: Request) -> HTMLResponse:
+@router.get("/forms", tags=["user"], response_model=None)
+async def list_forms(request: Request) -> HTMLResponse | RedirectResponse:
+    current_user = getattr(request.state, "current_user", None)
+    if current_user and current_user.get("is_admin"):
+        return RedirectResponse("/admin/forms", status_code=303)
     storage = request.app.state.storage
     templates = request.app.state.templates
     forms = storage.forms.list_forms()
