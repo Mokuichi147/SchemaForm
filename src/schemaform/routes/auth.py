@@ -186,19 +186,61 @@ async def account_page(request: Request) -> HTMLResponse:
     templates = request.app.state.templates
     return templates.TemplateResponse(
         "account.html",
-        {"request": request, "user": user},
+        {"request": request, "user": user, "errors": [], "notice": None},
     )
 
 
-@router.get("/account/password", response_class=HTMLResponse, tags=["auth"])
-async def password_page(request: Request) -> HTMLResponse:
+@router.post("/account", tags=["auth"], response_model=None)
+async def account_update(
+    request: Request,
+    display_name: str = Form(""),
+) -> HTMLResponse:
     auth = request.app.state.auth_provider
-    await auth.require_login(request)
+    user = await auth.require_login(request)
     templates = request.app.state.templates
+
+    display_name = display_name.strip()
+    update = getattr(auth, "update_display_name", None)
+    if update is None:
+        return templates.TemplateResponse(
+            "account.html",
+            {
+                "request": request,
+                "user": user,
+                "errors": ["このモードではユーザー名の変更は利用できません"],
+                "notice": None,
+            },
+            status_code=400,
+        )
+
+    ok = await update(user["id"], user.get("token", ""), display_name)
+    if not ok:
+        return templates.TemplateResponse(
+            "account.html",
+            {
+                "request": request,
+                "user": user,
+                "errors": ["ユーザー名の変更に失敗しました"],
+                "notice": None,
+            },
+            status_code=400,
+        )
+
+    user = {**user, "display_name": display_name}
     return templates.TemplateResponse(
-        "account_password.html",
-        {"request": request, "errors": [], "notice": None},
+        "account.html",
+        {
+            "request": request,
+            "user": user,
+            "errors": [],
+            "notice": "ユーザー名を変更しました",
+        },
     )
+
+
+@router.get("/account/password", tags=["auth"], response_model=None)
+async def password_page(request: Request) -> RedirectResponse:
+    return RedirectResponse("/account", status_code=303)
 
 
 @router.post("/account/password", tags=["auth"], response_model=None)
@@ -228,8 +270,8 @@ async def password_update(
 
     if errors:
         return templates.TemplateResponse(
-            "account_password.html",
-            {"request": request, "errors": errors, "notice": None},
+            "account.html",
+            {"request": request, "user": user, "errors": errors, "notice": None},
             status_code=400,
         )
 
@@ -242,9 +284,10 @@ async def password_update(
     )
     if not ok:
         return templates.TemplateResponse(
-            "account_password.html",
+            "account.html",
             {
                 "request": request,
+                "user": user,
                 "errors": ["現パスワードが正しくありません"],
                 "notice": None,
             },
@@ -252,9 +295,10 @@ async def password_update(
         )
 
     return templates.TemplateResponse(
-        "account_password.html",
+        "account.html",
         {
             "request": request,
+            "user": user,
             "errors": [],
             "notice": "パスワードを変更しました",
         },

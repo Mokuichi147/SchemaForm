@@ -204,6 +204,23 @@ class UserPermissionAuthProvider:
         if not user.get("is_admin"):
             raise HTTPException(status_code=403, detail="管理者権限が必要です")
 
+    async def update_display_name(
+        self, user_id: int, token: str, display_name: str
+    ) -> bool:
+        """表示名（user-permission の display_name）を更新する。成功時 True。"""
+        try:
+            if self._is_relay:
+                result = await self._db.users.update(
+                    user_id, token, display_name=display_name
+                )
+            else:
+                result = await self._db.users.update(
+                    user_id, display_name=display_name
+                )
+        except Exception:
+            return False
+        return result is not None
+
     async def change_password(
         self,
         user_id: int,

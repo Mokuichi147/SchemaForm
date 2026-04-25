@@ -3,11 +3,25 @@
 <div class="mx-auto max-w-md">
   <h1 class="text-2xl font-semibold">ユーザー設定</h1>
 
+  {% if notice %}
+  <div class="mt-4 rounded border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-700">
+    {{ notice }}
+  </div>
+  {% endif %}
+
+  {% if errors %}
+  <div class="mt-4 rounded border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">
+    <ul class="list-disc space-y-1 pl-5">
+      {% for error in errors %}
+      <li>{{ error }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
   <dl class="mt-6 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 rounded-lg border border-slate-200 bg-white p-6 text-sm">
     <dt class="font-semibold text-slate-600">ユーザーID</dt>
     <dd>{{ user.username }}</dd>
-    <dt class="font-semibold text-slate-600">ユーザー名</dt>
-    <dd>{{ user.display_name or "—" }}</dd>
     <dt class="font-semibold text-slate-600">権限</dt>
     <dd>{% if user.is_admin %}管理者{% else %}一般ユーザー{% endif %}</dd>
     {% if user.groups %}
@@ -16,11 +30,45 @@
     {% endif %}
   </dl>
 
-  <div class="mt-6 space-y-2">
-    <a href="/account/password" class="block rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm hover:bg-slate-50">
-      パスワード変更
-    </a>
-  </div>
+  <form method="post" action="/account" class="mt-6 space-y-4 rounded-lg border border-slate-200 bg-white p-6">
+    <h2 class="text-sm font-semibold text-slate-700">ユーザー名の変更</h2>
+    <div>
+      <label class="text-xs font-semibold text-slate-600" for="display_name">ユーザー名</label>
+      <input id="display_name" name="display_name" value="{{ user.display_name or '' }}"
+             class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm" />
+      <p class="mt-1 text-xs text-slate-500">画面に表示される名前です。空欄にするとユーザーIDが表示されます。</p>
+    </div>
+    <div class="flex justify-end">
+      <button type="submit" class="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
+        ユーザー名を変更
+      </button>
+    </div>
+  </form>
+
+  <form method="post" action="/account/password" class="mt-6 space-y-4 rounded-lg border border-slate-200 bg-white p-6">
+    <h2 class="text-sm font-semibold text-slate-700">パスワードの変更</h2>
+    <div>
+      <label class="text-xs font-semibold text-slate-600" for="current_password">現パスワード</label>
+      <input id="current_password" name="current_password" type="password" autocomplete="current-password"
+             class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm" />
+    </div>
+    <div>
+      <label class="text-xs font-semibold text-slate-600" for="new_password">新パスワード</label>
+      <input id="new_password" name="new_password" type="password" minlength="8" autocomplete="new-password"
+             class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm" />
+      <p class="mt-1 text-xs text-slate-500">8 文字以上で入力してください。</p>
+    </div>
+    <div>
+      <label class="text-xs font-semibold text-slate-600" for="new_password_confirm">新パスワード（確認）</label>
+      <input id="new_password_confirm" name="new_password_confirm" type="password" minlength="8" autocomplete="new-password"
+             class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm" />
+    </div>
+    <div class="flex justify-end">
+      <button type="submit" class="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
+        パスワードを変更
+      </button>
+    </div>
+  </form>
 
   <div class="mt-6 flex justify-end">
     <form method="post" action="/logout" class="inline">
