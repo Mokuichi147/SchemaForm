@@ -179,6 +179,17 @@ async def signup(
     return response
 
 
+@router.get("/account", response_class=HTMLResponse, tags=["auth"])
+async def account_page(request: Request) -> HTMLResponse:
+    auth = request.app.state.auth_provider
+    user = await auth.require_login(request)
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        "account.html",
+        {"request": request, "user": user},
+    )
+
+
 @router.get("/account/password", response_class=HTMLResponse, tags=["auth"])
 async def password_page(request: Request) -> HTMLResponse:
     auth = request.app.state.auth_provider
