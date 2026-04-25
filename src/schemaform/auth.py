@@ -180,14 +180,14 @@ class UserPermissionAuthProvider:
             return
         user_id, username, display_name = verified
         group_info = await self._fetch_groups(user_id, token)
-        group_names = [name for name, _ in group_info]
-        is_admin = any(flag for _, flag in group_info)
+        groups = [{"name": name, "is_admin": flag} for name, flag in group_info]
+        is_admin = any(g["is_admin"] for g in groups)
         request.state.current_user = {
             "id": user_id,
             "username": username,
             "display_name": display_name,
             "token": token,
-            "groups": group_names,
+            "groups": groups,
             "is_admin": is_admin,
         }
 
