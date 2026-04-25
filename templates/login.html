@@ -2,7 +2,7 @@
 {% block content %}
 <div class="mx-auto max-w-md">
   <h1 class="text-2xl font-semibold">ログイン</h1>
-  <p class="mt-1 text-sm text-slate-600">ユーザー名とパスワードを入力してください。</p>
+  <p class="mt-1 text-sm text-slate-600">ユーザーIDとパスワードを入力してください。</p>
 
   {% if errors %}
   <div class="mt-4 rounded border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">
@@ -17,7 +17,7 @@
   <form method="post" action="/login" class="mt-6 space-y-4 rounded-lg border border-slate-200 bg-white p-6">
     <input type="hidden" name="next" value="{{ next }}" />
     <div>
-      <label class="text-xs font-semibold text-slate-600" for="username">ユーザー名</label>
+      <label class="text-xs font-semibold text-slate-600" for="username">ユーザーID</label>
       <input id="username" name="username" value="{{ username }}" required autofocus
              class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm" />
     </div>

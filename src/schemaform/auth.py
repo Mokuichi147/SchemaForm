@@ -35,7 +35,7 @@ class NoAuthProvider:
         return None
 
     async def require_login(self, request: Request) -> dict[str, Any]:
-        return {"id": None, "username": "", "is_admin": True}
+        return {"id": None, "username": "", "display_name": "", "is_admin": True}
 
     async def login(self, username: str, password: str) -> str | None:
         return None
@@ -116,7 +116,7 @@ class UserPermissionAuthProvider:
             )
             if created is None:
                 return False, (
-                    "このユーザー名は既に使用されているか、アカウント作成に失敗しました"
+                    "このユーザーIDは既に使用されているか、アカウント作成に失敗しました"
                 )
             token = await self._db.users.authenticate(username, password)
             if not token:
@@ -125,7 +125,7 @@ class UserPermissionAuthProvider:
 
         existing = await self._db.users.get_by_username(username)
         if existing is not None:
-            return False, "このユーザー名は既に使用されています"
+            return False, "このユーザーIDは既に使用されています"
         try:
             await self._db.users.create(
                 username, password, display_name=display_name or username
@@ -141,15 +141,19 @@ class UserPermissionAuthProvider:
 
     async def _verify_and_fetch_user(
         self, token: str
-    ) -> tuple[int, str] | None:
+    ) -> tuple[int, str, str] | None:
         try:
             if self._is_relay:
                 user = await self._db.verify_token(token)
                 if user is None:
                     return None
-                return (user.id, user.username)
+                return (user.id, user.username, user.display_name or "")
             payload = self._db.token_manager.verify_token(token)
-            return (int(payload["sub"]), str(payload.get("username", "")))
+            user_id = int(payload["sub"])
+            username = str(payload.get("username", ""))
+            user = await self._db.users.get_by_id(user_id)
+            display_name = user.display_name if user else ""
+            return (user_id, username, display_name or "")
         except Exception:
             return None
 
@@ -174,13 +178,14 @@ class UserPermissionAuthProvider:
         if verified is None:
             request.state.current_user = None
             return
-        user_id, username = verified
+        user_id, username, display_name = verified
         group_info = await self._fetch_groups(user_id, token)
         group_names = [name for name, _ in group_info]
         is_admin = any(flag for _, flag in group_info)
         request.state.current_user = {
             "id": user_id,
             "username": username,
+            "display_name": display_name,
             "token": token,
             "groups": group_names,
             "is_admin": is_admin,

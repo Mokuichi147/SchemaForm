@@ -85,7 +85,7 @@
             {% if current_user %}
             <span class="text-slate-400">|</span>
             <a href="/account" class="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100">
-              {{ current_user.username or current_user.id }}{% if current_user.is_admin %}（管理者）{% endif %}
+              {{ current_user.display_name or current_user.username }}{% if current_user.is_admin %}（管理者）{% endif %}
             </a>
             <form method="post" action="/logout" class="inline">
               <button type="submit" class="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100">ログアウト</button>

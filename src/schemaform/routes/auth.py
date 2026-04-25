@@ -55,7 +55,7 @@ async def login(
             {
                 "request": request,
                 "next": next_path,
-                "errors": ["ユーザー名とパスワードを入力してください"],
+                "errors": ["ユーザーIDとパスワードを入力してください"],
                 "username": username,
             },
             status_code=400,
@@ -68,7 +68,7 @@ async def login(
             {
                 "request": request,
                 "next": next_path,
-                "errors": ["ユーザー名またはパスワードが正しくありません"],
+                "errors": ["ユーザーIDまたはパスワードが正しくありません"],
                 "username": username,
             },
             status_code=401,
@@ -132,7 +132,7 @@ async def signup(
 
     errors: list[str] = []
     if not username:
-        errors.append("ユーザー名を入力してください")
+        errors.append("ユーザーIDを入力してください")
     if not password:
         errors.append("パスワードを入力してください")
     if password and len(password) < 8:
