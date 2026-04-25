@@ -109,6 +109,15 @@ def get_auth_enabled(request: Request) -> bool:
     return bool(settings and not settings.solo)
 
 
+def get_signup_enabled(request: Request) -> bool:
+    """セルフサインアップが有効かどうか（テンプレート用）。"""
+    settings: Settings | None = getattr(request.app.state, "settings", None)
+    auth = getattr(request.app.state, "auth_provider", None)
+    if settings is None or settings.solo or not settings.allow_signup:
+        return False
+    return bool(getattr(auth, "signup_supported", False))
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
     ensure_dirs(settings)
@@ -166,6 +175,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     templates.env.globals["build_query"] = build_query
     templates.env.globals["get_current_user"] = get_current_user
     templates.env.globals["get_auth_enabled"] = get_auth_enabled
+    templates.env.globals["get_signup_enabled"] = get_signup_enabled
 
     @app.middleware("http")
     async def load_current_user_middleware(request: Request, call_next):

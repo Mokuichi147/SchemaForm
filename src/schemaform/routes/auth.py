@@ -86,6 +86,99 @@ async def login(
     return response
 
 
+def _signup_enabled(request: Request) -> bool:
+    settings = getattr(request.app.state, "settings", None)
+    auth = request.app.state.auth_provider
+    if settings is None or not getattr(settings, "allow_signup", False):
+        return False
+    return bool(getattr(auth, "signup_supported", False))
+
+
+@router.get("/signup", response_class=HTMLResponse, tags=["auth"], response_model=None)
+async def signup_page(request: Request) -> HTMLResponse | RedirectResponse:
+    if not _signup_enabled(request):
+        return RedirectResponse("/login", status_code=303)
+    templates = request.app.state.templates
+    next_path = _safe_next(request.query_params.get("next"))
+    return templates.TemplateResponse(
+        "signup.html",
+        {
+            "request": request,
+            "next": next_path,
+            "errors": [],
+            "username": "",
+            "display_name": "",
+        },
+    )
+
+
+@router.post("/signup", tags=["auth"], response_model=None)
+async def signup(
+    request: Request,
+    username: str = Form(""),
+    display_name: str = Form(""),
+    password: str = Form(""),
+    password_confirm: str = Form(""),
+    next: str = Form("/forms"),
+) -> HTMLResponse | RedirectResponse:
+    if not _signup_enabled(request):
+        return RedirectResponse("/login", status_code=303)
+    auth = request.app.state.auth_provider
+    templates = request.app.state.templates
+    next_path = _safe_next(next)
+
+    username = username.strip()
+    display_name = display_name.strip()
+
+    errors: list[str] = []
+    if not username:
+        errors.append("ユーザー名を入力してください")
+    if not password:
+        errors.append("パスワードを入力してください")
+    if password and len(password) < 8:
+        errors.append("パスワードは 8 文字以上にしてください")
+    if password and password != password_confirm:
+        errors.append("パスワードと確認用パスワードが一致しません")
+
+    if errors:
+        return templates.TemplateResponse(
+            "signup.html",
+            {
+                "request": request,
+                "next": next_path,
+                "errors": errors,
+                "username": username,
+                "display_name": display_name,
+            },
+            status_code=400,
+        )
+
+    ok, payload = await auth.signup(username, password, display_name=display_name)
+    if not ok:
+        return templates.TemplateResponse(
+            "signup.html",
+            {
+                "request": request,
+                "next": next_path,
+                "errors": [payload or "アカウントの作成に失敗しました"],
+                "username": username,
+                "display_name": display_name,
+            },
+            status_code=400,
+        )
+
+    response = RedirectResponse(next_path, status_code=303)
+    response.set_cookie(
+        key=auth.cookie_name,
+        value=payload,
+        max_age=auth.token_hours * 3600,
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
 @router.get("/account/password", response_class=HTMLResponse, tags=["auth"])
 async def password_page(request: Request) -> HTMLResponse:
     auth = request.app.state.auth_provider

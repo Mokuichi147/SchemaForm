@@ -94,6 +94,51 @@ class UserPermissionAuthProvider:
             username, password, expires_delta=expires
         )
 
+    @property
+    def signup_supported(self) -> bool:
+        """セルフサインアップが利用可能かどうか。
+
+        ローカルDB は常に可。リレーは中央サーバーが ``POST /users`` を
+        無認証で公開しているため利用可能。
+        """
+        return True
+
+    async def signup(
+        self, username: str, password: str, display_name: str = ""
+    ) -> tuple[bool, str | None]:
+        """新規ユーザーを作成し、認証トークンを返す。
+
+        戻り値は (成功フラグ, トークン or エラーメッセージ)。
+        """
+        if self._is_relay:
+            created = await self._db.users.create(
+                username, password, display_name=display_name or username
+            )
+            if created is None:
+                return False, (
+                    "このユーザー名は既に使用されているか、アカウント作成に失敗しました"
+                )
+            token = await self._db.users.authenticate(username, password)
+            if not token:
+                return False, "アカウントは作成されましたが、ログインに失敗しました"
+            return True, token
+
+        existing = await self._db.users.get_by_username(username)
+        if existing is not None:
+            return False, "このユーザー名は既に使用されています"
+        try:
+            await self._db.users.create(
+                username, password, display_name=display_name or username
+            )
+        except Exception:
+            return False, "アカウントの作成に失敗しました"
+        token = await self._db.users.authenticate(
+            username, password, expires_delta=timedelta(hours=self._token_hours)
+        )
+        if not token:
+            return False, "アカウントは作成されましたが、ログインに失敗しました"
+        return True, token
+
     async def _verify_and_fetch_user(
         self, token: str
     ) -> tuple[int, str] | None:

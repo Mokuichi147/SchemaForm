@@ -49,6 +49,11 @@ class Settings:
             )
         except ValueError:
             self.user_permission_token_hours = 24
+        self.allow_signup = os.getenv("ALLOW_SIGNUP", "true").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
         self.host = os.getenv("HOST", "0.0.0.0")
         port_value = os.getenv("PORT", "8000")
         try:
