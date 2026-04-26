@@ -23,6 +23,8 @@ class FormModel(Base):
     webhook_on_delete = Column(Integer, default=0)
     webhook_on_edit = Column(Integer, default=0)
     creator_group_id = Column(Integer, nullable=True, index=True)
+    allow_view_others = Column(Integer, default=1)
+    allow_edit_submissions = Column(Integer, default=1)
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
 

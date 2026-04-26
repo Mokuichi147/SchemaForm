@@ -226,6 +226,8 @@ async def create_form(request: Request, _: Any = Depends(form_creator_guard)) ->
     webhook_on_submit = bool(form_data.get("webhook_on_submit"))
     webhook_on_delete = bool(form_data.get("webhook_on_delete"))
     webhook_on_edit = bool(form_data.get("webhook_on_edit"))
+    allow_view_others = bool(form_data.get("allow_view_others"))
+    allow_edit_submissions = bool(form_data.get("allow_edit_submissions"))
     storage.forms.create_form(
         {
             "id": form_id,
@@ -240,6 +242,8 @@ async def create_form(request: Request, _: Any = Depends(form_creator_guard)) ->
             "webhook_on_delete": webhook_on_delete,
             "webhook_on_edit": webhook_on_edit,
             "creator_group_id": creator_group_id,
+            "allow_view_others": allow_view_others,
+            "allow_edit_submissions": allow_edit_submissions,
             "created_at": now,
             "updated_at": now,
         }
@@ -350,6 +354,8 @@ async def update_form(
     webhook_on_submit = bool(form_data.get("webhook_on_submit"))
     webhook_on_delete = bool(form_data.get("webhook_on_delete"))
     webhook_on_edit = bool(form_data.get("webhook_on_edit"))
+    allow_view_others = bool(form_data.get("allow_view_others"))
+    allow_edit_submissions = bool(form_data.get("allow_edit_submissions"))
     updates = {
         "name": name,
         "description": description,
@@ -359,6 +365,8 @@ async def update_form(
         "webhook_on_submit": webhook_on_submit,
         "webhook_on_delete": webhook_on_delete,
         "webhook_on_edit": webhook_on_edit,
+        "allow_view_others": allow_view_others,
+        "allow_edit_submissions": allow_edit_submissions,
         "updated_at": now_utc(),
     }
     if is_admin:

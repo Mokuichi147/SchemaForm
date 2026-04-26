@@ -48,6 +48,10 @@ class SQLiteFormRepo:
                 webhook_on_delete=1 if form.get("webhook_on_delete") else 0,
                 webhook_on_edit=1 if form.get("webhook_on_edit") else 0,
                 creator_group_id=form.get("creator_group_id"),
+                allow_view_others=1 if form.get("allow_view_others", True) else 0,
+                allow_edit_submissions=1
+                if form.get("allow_edit_submissions", True)
+                else 0,
                 created_at=form["created_at"],
                 updated_at=form["updated_at"],
             )
@@ -62,7 +66,13 @@ class SQLiteFormRepo:
             for key, value in updates.items():
                 if key in {"schema_json", "field_order"}:
                     setattr(row, key, dumps_json(value))
-                elif key in {"webhook_on_submit", "webhook_on_delete", "webhook_on_edit"}:
+                elif key in {
+                    "webhook_on_submit",
+                    "webhook_on_delete",
+                    "webhook_on_edit",
+                    "allow_view_others",
+                    "allow_edit_submissions",
+                }:
                     setattr(row, key, 1 if value else 0)
                 else:
                     setattr(row, key, value)
@@ -101,6 +111,14 @@ class SQLiteFormRepo:
             "webhook_on_delete": bool(row.webhook_on_delete),
             "webhook_on_edit": bool(row.webhook_on_edit),
             "creator_group_id": row.creator_group_id,
+            "allow_view_others": bool(
+                row.allow_view_others if row.allow_view_others is not None else 1
+            ),
+            "allow_edit_submissions": bool(
+                row.allow_edit_submissions
+                if row.allow_edit_submissions is not None
+                else 1
+            ),
             "created_at": row.created_at,
             "updated_at": row.updated_at,
         }
@@ -275,6 +293,18 @@ class SQLiteStorage:
             if "creator_group_id" not in form_columns:
                 conn.execute(
                     text("ALTER TABLE forms ADD COLUMN creator_group_id INTEGER")
+                )
+            if "allow_view_others" not in form_columns:
+                conn.execute(
+                    text(
+                        "ALTER TABLE forms ADD COLUMN allow_view_others INTEGER DEFAULT 1"
+                    )
+                )
+            if "allow_edit_submissions" not in form_columns:
+                conn.execute(
+                    text(
+                        "ALTER TABLE forms ADD COLUMN allow_edit_submissions INTEGER DEFAULT 1"
+                    )
                 )
             result = conn.execute(text("PRAGMA table_info(submissions)"))
             sub_columns = {row[1] for row in result.fetchall()}

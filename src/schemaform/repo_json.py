@@ -102,6 +102,10 @@ class JSONFormRepo(JSONRepoBase):
             "webhook_on_delete": record.get("webhook_on_delete", False),
             "webhook_on_edit": record.get("webhook_on_edit", False),
             "creator_group_id": record.get("creator_group_id"),
+            "allow_view_others": bool(record.get("allow_view_others", True)),
+            "allow_edit_submissions": bool(
+                record.get("allow_edit_submissions", True)
+            ),
             "created_at": parse_dt(record.get("created_at")),
             "updated_at": parse_dt(record.get("updated_at")),
         }
