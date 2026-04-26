@@ -5,7 +5,12 @@
     <h1 class="text-2xl font-semibold">フォーム一覧</h1>
     <p class="text-sm text-slate-600">作成済みフォームを管理します。</p>
   </div>
-  <a href="/admin/forms/new" class="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white">新規フォーム</a>
+  <div class="flex items-center gap-2">
+    {% if get_auth_enabled(request) %}
+    <a href="/admin/groups" class="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100">グループ管理</a>
+    {% endif %}
+    <a href="/admin/forms/new" class="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white">新規フォーム</a>
+  </div>
 </div>
 
 <div class="mt-6 overflow-x-auto rounded-lg border border-slate-200 bg-white">

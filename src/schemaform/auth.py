@@ -241,6 +241,127 @@ class UserPermissionAuthProvider:
             result = await self._db.users.update(user_id, password=new_password)
         return result is not None
 
+    async def list_users(self, token: str) -> list[dict[str, Any]]:
+        if self._is_relay:
+            users = await self._db.users.list_all(token)
+        else:
+            users = await self._db.users.list_all()
+        return [
+            {
+                "id": u.id,
+                "username": u.username,
+                "display_name": u.display_name or "",
+            }
+            for u in users
+        ]
+
+    async def list_groups(self, token: str) -> list[dict[str, Any]]:
+        if self._is_relay:
+            groups = await self._db.groups.list_all(token)
+        else:
+            groups = await self._db.groups.list_all()
+        return [
+            {
+                "id": g.id,
+                "name": g.name,
+                "description": getattr(g, "description", "") or "",
+                "is_admin": bool(getattr(g, "is_admin", False)),
+            }
+            for g in groups
+        ]
+
+    async def get_group(
+        self, group_id: int, token: str
+    ) -> dict[str, Any] | None:
+        if self._is_relay:
+            g = await self._db.groups.get_by_id(group_id, token)
+        else:
+            g = await self._db.groups.get_by_id(group_id)
+        if g is None:
+            return None
+        return {
+            "id": g.id,
+            "name": g.name,
+            "description": getattr(g, "description", "") or "",
+            "is_admin": bool(getattr(g, "is_admin", False)),
+        }
+
+    async def create_group(
+        self, name: str, description: str, token: str
+    ) -> tuple[bool, str | None]:
+        try:
+            if self._is_relay:
+                res = await self._db.groups.create(name, description, token)
+            else:
+                res = await self._db.groups.create(name, description)
+        except Exception:
+            return False, "グループの作成に失敗しました"
+        if res is None:
+            return False, "グループの作成に失敗しました"
+        return True, None
+
+    async def update_group(
+        self,
+        group_id: int,
+        token: str,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+    ) -> bool:
+        kwargs: dict[str, Any] = {}
+        if name is not None:
+            kwargs["name"] = name
+        if description is not None:
+            kwargs["description"] = description
+        if not kwargs:
+            return True
+        try:
+            if self._is_relay:
+                res = await self._db.groups.update(group_id, token, **kwargs)
+            else:
+                res = await self._db.groups.update(group_id, **kwargs)
+        except Exception:
+            return False
+        return res is not None
+
+    async def get_group_members(
+        self, group_id: int, token: str
+    ) -> list[dict[str, Any]]:
+        if self._is_relay:
+            users = await self._db.groups.get_members(group_id, token)
+        else:
+            users = await self._db.groups.get_members(group_id)
+        return [
+            {
+                "id": u.id,
+                "username": u.username,
+                "display_name": u.display_name or "",
+            }
+            for u in users
+        ]
+
+    async def add_group_member(
+        self, group_id: int, user_id: int, token: str
+    ) -> bool:
+        try:
+            if self._is_relay:
+                return await self._db.groups.add_user(group_id, user_id, token)
+            return await self._db.groups.add_user(group_id, user_id)
+        except Exception:
+            return False
+
+    async def remove_group_member(
+        self, group_id: int, user_id: int, token: str
+    ) -> bool:
+        try:
+            if self._is_relay:
+                return await self._db.groups.remove_user(
+                    group_id, user_id, token
+                )
+            return await self._db.groups.remove_user(group_id, user_id)
+        except Exception:
+            return False
+
     async def bootstrap_admin_if_needed(self) -> tuple[str, str] | None:
         """ローカルDB かつ 管理者グループにユーザーがいない場合のみ自動作成する。"""
         import secrets
