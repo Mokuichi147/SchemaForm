@@ -110,6 +110,66 @@ def get_auth_enabled(request: Request) -> bool:
     return bool(settings and not settings.solo)
 
 
+def get_user_form_creator_group_ids(request: Request) -> list[int]:
+    """ユーザーが所属するフォーム作成権限グループのIDを返す。"""
+    storage = getattr(request.app.state, "storage", None)
+    repo = getattr(storage, "settings", None) if storage else None
+    if repo is None:
+        return []
+    allowed = set(repo.get_form_creator_groups())
+    if not allowed:
+        return []
+    user = getattr(request.state, "current_user", None)
+    if user is None:
+        return []
+    user_group_ids = {g.get("id") for g in (user.get("groups") or [])}
+    return sorted(allowed & user_group_ids)
+
+
+def can_edit_form(request: Request, form: dict | None) -> bool:
+    """フォームを編集/削除できるかどうか。"""
+    settings: Settings | None = getattr(request.app.state, "settings", None)
+    if settings is None:
+        return False
+    if settings.solo:
+        return True
+    user = getattr(request.state, "current_user", None)
+    if user is None:
+        return False
+    if user.get("is_admin"):
+        return True
+    if not form:
+        return False
+    creator_group_id = form.get("creator_group_id")
+    if creator_group_id is None:
+        return False
+    user_group_ids = {g.get("id") for g in (user.get("groups") or [])}
+    return creator_group_id in user_group_ids
+
+
+def can_create_form(request: Request) -> bool:
+    """フォーム作成権限を持つかどうか（管理者または許可グループ所属）。"""
+    settings: Settings | None = getattr(request.app.state, "settings", None)
+    if settings is None:
+        return False
+    if settings.solo:
+        return True
+    user = getattr(request.state, "current_user", None)
+    if user is None:
+        return False
+    if user.get("is_admin"):
+        return True
+    storage = getattr(request.app.state, "storage", None)
+    repo = getattr(storage, "settings", None) if storage else None
+    if repo is None:
+        return False
+    allowed = set(repo.get_form_creator_groups())
+    if not allowed:
+        return False
+    user_group_ids = {g.get("id") for g in (user.get("groups") or [])}
+    return bool(allowed & user_group_ids)
+
+
 def get_signup_enabled(request: Request) -> bool:
     """セルフサインアップが有効かどうか（テンプレート用）。"""
     settings: Settings | None = getattr(request.app.state, "settings", None)
@@ -177,6 +237,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     templates.env.globals["get_current_user"] = get_current_user
     templates.env.globals["get_auth_enabled"] = get_auth_enabled
     templates.env.globals["get_signup_enabled"] = get_signup_enabled
+    templates.env.globals["can_create_form"] = can_create_form
+    templates.env.globals["can_edit_form"] = can_edit_form
+    templates.env.globals["get_user_form_creator_group_ids"] = (
+        get_user_form_creator_group_ids
+    )
 
     @app.middleware("http")
     async def load_current_user_middleware(request: Request, call_next):

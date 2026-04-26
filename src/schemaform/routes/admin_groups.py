@@ -30,6 +30,10 @@ async def list_groups(
     user = await auth.require_login(request)
     token = user.get("token", "")
     groups = await auth.list_groups(token)
+    storage = request.app.state.storage
+    form_creator_ids = set(storage.settings.get_form_creator_groups())
+    for g in groups:
+        g["can_create_form"] = g["id"] in form_creator_ids
     templates = request.app.state.templates
     return templates.TemplateResponse(
         "admin_groups.html",
@@ -88,6 +92,11 @@ async def group_detail(
     group = await auth.get_group(group_id, token)
     if group is None:
         raise HTTPException(status_code=404, detail="グループが見つかりません")
+
+    storage = request.app.state.storage
+    group["can_create_form"] = group_id in set(
+        storage.settings.get_form_creator_groups()
+    )
 
     members = await auth.get_group_members(group_id, token)
     member_ids = {m["id"] for m in members}
@@ -167,6 +176,41 @@ async def add_member(
         )
     return RedirectResponse(
         f"/admin/groups/{group_id}?notice=メンバーを追加しました",
+        status_code=303,
+    )
+
+
+@router.post(
+    "/admin/groups/{group_id}/permissions",
+    tags=["admin"],
+    response_model=None,
+)
+async def update_permissions(
+    request: Request,
+    group_id: int,
+    can_create_form: str = Form(""),
+    _: Any = Depends(admin_guard),
+) -> RedirectResponse:
+    auth = request.app.state.auth_provider
+    _ensure_supported(auth)
+    user = await auth.require_login(request)
+    token = user.get("token", "")
+
+    group = await auth.get_group(group_id, token)
+    if group is None:
+        raise HTTPException(status_code=404, detail="グループが見つかりません")
+
+    storage = request.app.state.storage
+    current = set(storage.settings.get_form_creator_groups())
+    enable = can_create_form in ("1", "true", "on", "yes")
+    if enable:
+        current.add(group_id)
+    else:
+        current.discard(group_id)
+    storage.settings.set_form_creator_groups(sorted(current))
+
+    return RedirectResponse(
+        f"/admin/groups/{group_id}?notice=権限を更新しました",
         status_code=303,
     )
 

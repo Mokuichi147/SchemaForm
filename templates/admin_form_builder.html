@@ -44,6 +44,35 @@
         <textarea name="description" rows="3" class="mt-1 w-full rounded border border-slate-300 px-3 py-2">{{ form.description if form else '' }}</textarea>
       </div>
     </div>
+    {% set _u = get_current_user(request) %}
+    {% set _is_admin = _u and _u.is_admin %}
+    {% set _current_group = form.creator_group_id if form else None %}
+    {% if available_groups %}
+    <div class="mt-4">
+      <label class="text-sm font-semibold">作成グループ</label>
+      {% if _is_admin %}
+      <select name="creator_group_id" class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm md:max-w-md">
+        <option value="">なし（管理者のみ編集可能）</option>
+        {% for g in available_groups %}
+        <option value="{{ g.id }}" {% if _current_group == g.id %}selected{% endif %}>{{ g.name }}</option>
+        {% endfor %}
+      </select>
+      <p class="mt-1 text-xs text-slate-500">紐付けたグループのメンバーのみがこのフォームを編集できます。</p>
+      {% else %}
+        {% if available_groups | length == 1 %}
+        <input type="hidden" name="creator_group_id" value="{{ available_groups[0].id }}" />
+        <p class="mt-1 text-sm text-slate-700">{{ available_groups[0].name }}</p>
+        {% else %}
+        <select name="creator_group_id" required class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm md:max-w-md">
+          <option value="">選択してください</option>
+          {% for g in available_groups %}
+          <option value="{{ g.id }}" {% if _current_group == g.id %}selected{% endif %}>{{ g.name }}</option>
+          {% endfor %}
+        </select>
+        {% endif %}
+      {% endif %}
+    </div>
+    {% endif %}
   </div>
 
   <div>

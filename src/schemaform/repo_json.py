@@ -101,6 +101,7 @@ class JSONFormRepo(JSONRepoBase):
             "webhook_on_submit": record.get("webhook_on_submit", False),
             "webhook_on_delete": record.get("webhook_on_delete", False),
             "webhook_on_edit": record.get("webhook_on_edit", False),
+            "creator_group_id": record.get("creator_group_id"),
             "created_at": parse_dt(record.get("created_at")),
             "updated_at": parse_dt(record.get("updated_at")),
         }
@@ -202,9 +203,34 @@ class JSONFileRepo(JSONRepoBase):
         }
 
 
+class JSONSettingsRepo(JSONRepoBase):
+    def get(self, key: str) -> Any:
+        with self._db() as db:
+            item = db.table("settings").get(Query().key == key)
+        return item.get("value") if item else None
+
+    def set(self, key: str, value: Any) -> None:
+        with self._db() as db:
+            table = db.table("settings")
+            existing = table.get(Query().key == key)
+            if existing is None:
+                table.insert({"key": key, "value": value})
+            else:
+                table.update({"value": value}, Query().key == key)
+
+    def get_form_creator_groups(self) -> list[int]:
+        value = self.get("form_creator_groups")
+        return [int(v) for v in (value or [])]
+
+    def set_form_creator_groups(self, group_ids: list[int]) -> None:
+        normalized = sorted({int(g) for g in group_ids})
+        self.set("form_creator_groups", normalized)
+
+
 class JSONStorage:
     def __init__(self, path: Path) -> None:
         self._lock = FileLock(f"{path}.lock")
         self.forms = JSONFormRepo(path, self._lock)
         self.submissions = JSONSubmissionRepo(path, self._lock)
         self.files = JSONFileRepo(path, self._lock)
+        self.settings = JSONSettingsRepo(path, self._lock)

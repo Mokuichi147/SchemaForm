@@ -22,6 +22,55 @@ async def admin_guard(request: Request) -> None:
     await request.app.state.auth_provider.require_admin(request)
 
 
+async def form_creator_guard(request: Request) -> None:
+    """管理者またはフォーム作成権限グループに所属するユーザーを許可する。"""
+    from schemaform.app import can_create_form
+
+    auth = request.app.state.auth_provider
+    await auth.require_login(request)
+    if not can_create_form(request):
+        raise HTTPException(status_code=403, detail="フォーム作成権限がありません")
+
+
+async def _available_creator_groups(request: Request) -> list[dict[str, Any]]:
+    """フォームに紐付け可能なグループ一覧を返す（管理者は全フォーム作成グループ、
+    非管理者は自分が所属するフォーム作成グループのみ）。"""
+    auth = request.app.state.auth_provider
+    storage = request.app.state.storage
+    repo = getattr(storage, "settings", None)
+    if repo is None:
+        return []
+    allowed_ids = set(repo.get_form_creator_groups())
+    if not allowed_ids:
+        return []
+    user = getattr(request.state, "current_user", None)
+    if user is None:
+        return []
+    if user.get("is_admin"):
+        target_ids = allowed_ids
+    else:
+        user_group_ids = {g.get("id") for g in (user.get("groups") or [])}
+        target_ids = allowed_ids & user_group_ids
+    if not target_ids:
+        return []
+    list_groups = getattr(auth, "list_groups", None)
+    if list_groups is None:
+        return []
+    all_groups = await list_groups(user.get("token", ""))
+    return [
+        {"id": g["id"], "name": g["name"]}
+        for g in all_groups
+        if g["id"] in target_ids
+    ]
+
+
+def _ensure_form_editable(request: Request, form: dict | None) -> None:
+    from schemaform.app import can_edit_form
+
+    if not can_edit_form(request, form):
+        raise HTTPException(status_code=403, detail="このフォームを変更する権限がありません")
+
+
 def resolve_redirect_target(next_path: Any, default: str = "/admin/forms") -> str:
     candidate = str(next_path or "").strip()
     if not candidate:
@@ -63,7 +112,7 @@ async def home(request: Request) -> HTMLResponse:
 
 
 @router.get("/admin/forms", response_class=HTMLResponse, tags=["admin"])
-async def list_forms(request: Request, _: Any = Depends(admin_guard)) -> HTMLResponse:
+async def list_forms(request: Request, _: Any = Depends(form_creator_guard)) -> HTMLResponse:
     storage = request.app.state.storage
     templates = request.app.state.templates
     forms = storage.forms.list_forms()
@@ -89,10 +138,11 @@ async def list_forms(request: Request, _: Any = Depends(admin_guard)) -> HTMLRes
 
 
 @router.get("/admin/forms/new", response_class=HTMLResponse, tags=["admin"])
-async def new_form(request: Request, _: Any = Depends(admin_guard)) -> HTMLResponse:
+async def new_form(request: Request, _: Any = Depends(form_creator_guard)) -> HTMLResponse:
     storage = request.app.state.storage
     templates = request.app.state.templates
     master_forms, master_field_catalog = build_master_field_catalog(storage)
+    available_groups = await _available_creator_groups(request)
     return templates.TemplateResponse(
         "admin_form_builder.html",
         {
@@ -102,38 +152,68 @@ async def new_form(request: Request, _: Any = Depends(admin_guard)) -> HTMLRespo
             "fields_json": dumps_json([]),
             "master_forms_json": dumps_json(master_forms),
             "master_field_catalog_json": dumps_json(master_field_catalog),
+            "available_groups": available_groups,
             "errors": [],
         },
     )
 
 
 @router.post("/admin/forms", response_class=HTMLResponse, tags=["admin"])
-async def create_form(request: Request, _: Any = Depends(admin_guard)) -> HTMLResponse:
+async def create_form(request: Request, _: Any = Depends(form_creator_guard)) -> HTMLResponse:
     storage = request.app.state.storage
     templates = request.app.state.templates
     form_data = await request.form()
     name = str(form_data.get("name", "")).strip()
     description = str(form_data.get("description", "")).strip()
     fields_json = str(form_data.get("fields_json", ""))
+    creator_group_raw = str(form_data.get("creator_group_id", "")).strip()
 
     fields, errors = parse_fields_json(fields_json)
     master_forms, master_field_catalog = build_master_field_catalog(storage)
+    available_groups = await _available_creator_groups(request)
     if not name:
         errors.append("フォーム名は必須です")
 
-    if errors:
+    user = getattr(request.state, "current_user", None)
+    is_admin = bool(user and user.get("is_admin"))
+    available_ids = {g["id"] for g in available_groups}
+    creator_group_id: int | None = None
+    if creator_group_raw:
+        try:
+            creator_group_id = int(creator_group_raw)
+        except ValueError:
+            errors.append("作成グループの指定が不正です")
+        else:
+            if creator_group_id not in available_ids:
+                errors.append("選択したグループにフォームを作成する権限がありません")
+    if not is_admin and creator_group_id is None:
+        if len(available_ids) == 1:
+            creator_group_id = next(iter(available_ids))
+        else:
+            errors.append("作成グループを選択してください")
+
+    def _render(form_extra: dict[str, Any] | None = None) -> HTMLResponse:
+        base = {"name": name, "description": description}
+        if form_extra:
+            base.update(form_extra)
+        if creator_group_id is not None:
+            base["creator_group_id"] = creator_group_id
         return templates.TemplateResponse(
             "admin_form_builder.html",
             {
                 "request": request,
-                "form": {"name": name, "description": description},
+                "form": base,
                 "fields": fields,
                 "fields_json": dumps_json(fields),
                 "master_forms_json": dumps_json(master_forms),
                 "master_field_catalog_json": dumps_json(master_field_catalog),
+                "available_groups": available_groups,
                 "errors": errors,
             },
         )
+
+    if errors:
+        return _render()
 
     schema, field_order = schema_from_fields(fields)
     form_id = new_ulid()
@@ -142,18 +222,7 @@ async def create_form(request: Request, _: Any = Depends(admin_guard)) -> HTMLRe
     webhook_url = str(form_data.get("webhook_url", "")).strip()
     if webhook_url and not is_valid_webhook_url(webhook_url):
         errors.append("Webhook URLはhttp://またはhttps://で始まる有効なURLを指定してください")
-        return templates.TemplateResponse(
-            "admin_form_builder.html",
-            {
-                "request": request,
-                "form": {"name": name, "description": description, "webhook_url": webhook_url},
-                "fields": fields,
-                "fields_json": dumps_json(fields),
-                "master_forms_json": dumps_json(master_forms),
-                "master_field_catalog_json": dumps_json(master_field_catalog),
-                "errors": errors,
-            },
-        )
+        return _render({"webhook_url": webhook_url})
     webhook_on_submit = bool(form_data.get("webhook_on_submit"))
     webhook_on_delete = bool(form_data.get("webhook_on_delete"))
     webhook_on_edit = bool(form_data.get("webhook_on_edit"))
@@ -170,6 +239,7 @@ async def create_form(request: Request, _: Any = Depends(admin_guard)) -> HTMLRe
             "webhook_on_submit": webhook_on_submit,
             "webhook_on_delete": webhook_on_delete,
             "webhook_on_edit": webhook_on_edit,
+            "creator_group_id": creator_group_id,
             "created_at": now,
             "updated_at": now,
         }
@@ -179,17 +249,19 @@ async def create_form(request: Request, _: Any = Depends(admin_guard)) -> HTMLRe
 
 @router.get("/admin/forms/{form_id}", response_class=HTMLResponse, tags=["admin"])
 async def edit_form(
-    request: Request, form_id: str, _: Any = Depends(admin_guard)
+    request: Request, form_id: str, _: Any = Depends(form_creator_guard)
 ) -> HTMLResponse:
     storage = request.app.state.storage
     templates = request.app.state.templates
     form = storage.forms.get_form(form_id)
     if not form:
         raise HTTPException(status_code=404, detail="フォームが見つかりません")
+    _ensure_form_editable(request, form)
     fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
     master_forms, master_field_catalog = build_master_field_catalog(
         storage, current_form_id=form_id
     )
+    available_groups = await _available_creator_groups(request)
     return templates.TemplateResponse(
         "admin_form_builder.html",
         {
@@ -199,6 +271,7 @@ async def edit_form(
             "fields_json": dumps_json(fields),
             "master_forms_json": dumps_json(master_forms),
             "master_field_catalog_json": dumps_json(master_field_catalog),
+            "available_groups": available_groups,
             "errors": [],
         },
     )
@@ -206,13 +279,14 @@ async def edit_form(
 
 @router.post("/admin/forms/{form_id}", response_class=HTMLResponse, tags=["admin"])
 async def update_form(
-    request: Request, form_id: str, _: Any = Depends(admin_guard)
+    request: Request, form_id: str, _: Any = Depends(form_creator_guard)
 ) -> HTMLResponse:
     storage = request.app.state.storage
     templates = request.app.state.templates
     form = storage.forms.get_form(form_id)
     if not form:
         raise HTTPException(status_code=404, detail="フォームが見つかりません")
+    _ensure_form_editable(request, form)
 
     form_data = await request.form()
     name = str(form_data.get("name", "")).strip()
@@ -223,64 +297,83 @@ async def update_form(
     master_forms, master_field_catalog = build_master_field_catalog(
         storage, current_form_id=form_id
     )
+    available_groups = await _available_creator_groups(request)
     if not name:
         errors.append("フォーム名は必須です")
 
-    if errors:
+    user = getattr(request.state, "current_user", None)
+    is_admin = bool(user and user.get("is_admin"))
+    creator_group_id: int | None = form.get("creator_group_id")
+    if is_admin:
+        raw = str(form_data.get("creator_group_id", "")).strip()
+        if raw == "":
+            creator_group_id = None
+        else:
+            try:
+                new_id = int(raw)
+            except ValueError:
+                errors.append("作成グループの指定が不正です")
+            else:
+                allowed_ids = {g["id"] for g in available_groups}
+                if new_id not in allowed_ids:
+                    errors.append("選択したグループは利用できません")
+                else:
+                    creator_group_id = new_id
+
+    def _render(form_extra: dict[str, Any] | None = None) -> HTMLResponse:
+        base = {**form, "name": name, "description": description}
+        base["creator_group_id"] = creator_group_id
+        if form_extra:
+            base.update(form_extra)
         return templates.TemplateResponse(
             "admin_form_builder.html",
             {
                 "request": request,
-                "form": {**form, "name": name, "description": description},
+                "form": base,
                 "fields": fields,
                 "fields_json": dumps_json(fields),
                 "master_forms_json": dumps_json(master_forms),
                 "master_field_catalog_json": dumps_json(master_field_catalog),
+                "available_groups": available_groups,
                 "errors": errors,
             },
         )
+
+    if errors:
+        return _render()
 
     schema, field_order = schema_from_fields(fields)
     webhook_url = str(form_data.get("webhook_url", "")).strip()
     if webhook_url and not is_valid_webhook_url(webhook_url):
         errors.append("Webhook URLはhttp://またはhttps://で始まる有効なURLを指定してください")
-        return templates.TemplateResponse(
-            "admin_form_builder.html",
-            {
-                "request": request,
-                "form": {**form, "name": name, "description": description, "webhook_url": webhook_url},
-                "fields": fields,
-                "fields_json": dumps_json(fields),
-                "master_forms_json": dumps_json(master_forms),
-                "master_field_catalog_json": dumps_json(master_field_catalog),
-                "errors": errors,
-            },
-        )
+        return _render({"webhook_url": webhook_url})
     webhook_on_submit = bool(form_data.get("webhook_on_submit"))
     webhook_on_delete = bool(form_data.get("webhook_on_delete"))
     webhook_on_edit = bool(form_data.get("webhook_on_edit"))
-    updated = storage.forms.update_form(
-        form_id,
-        {
-            "name": name,
-            "description": description,
-            "schema_json": schema,
-            "field_order": field_order,
-            "webhook_url": webhook_url,
-            "webhook_on_submit": webhook_on_submit,
-            "webhook_on_delete": webhook_on_delete,
-            "webhook_on_edit": webhook_on_edit,
-            "updated_at": now_utc(),
-        },
-    )
+    updates = {
+        "name": name,
+        "description": description,
+        "schema_json": schema,
+        "field_order": field_order,
+        "webhook_url": webhook_url,
+        "webhook_on_submit": webhook_on_submit,
+        "webhook_on_delete": webhook_on_delete,
+        "webhook_on_edit": webhook_on_edit,
+        "updated_at": now_utc(),
+    }
+    if is_admin:
+        updates["creator_group_id"] = creator_group_id
+    updated = storage.forms.update_form(form_id, updates)
     return RedirectResponse(f"/admin/forms/{updated['id']}", status_code=303)
 
 
 @router.post("/admin/forms/{form_id}/publish", tags=["admin"])
 async def publish_form(
-    request: Request, form_id: str, _: Any = Depends(admin_guard)
+    request: Request, form_id: str, _: Any = Depends(form_creator_guard)
 ) -> RedirectResponse:
     storage = request.app.state.storage
+    form = storage.forms.get_form(form_id)
+    _ensure_form_editable(request, form)
     storage.forms.set_status(form_id, "active")
     target = resolve_redirect_target(request.query_params.get("next"))
     return RedirectResponse(target, status_code=303)
@@ -288,9 +381,11 @@ async def publish_form(
 
 @router.post("/admin/forms/{form_id}/stop", tags=["admin"])
 async def stop_form(
-    request: Request, form_id: str, _: Any = Depends(admin_guard)
+    request: Request, form_id: str, _: Any = Depends(form_creator_guard)
 ) -> RedirectResponse:
     storage = request.app.state.storage
+    form = storage.forms.get_form(form_id)
+    _ensure_form_editable(request, form)
     storage.forms.set_status(form_id, "inactive")
     target = resolve_redirect_target(request.query_params.get("next"))
     return RedirectResponse(target, status_code=303)
@@ -298,8 +393,10 @@ async def stop_form(
 
 @router.post("/admin/forms/{form_id}/delete", tags=["admin"])
 async def delete_form(
-    request: Request, form_id: str, _: Any = Depends(admin_guard)
+    request: Request, form_id: str, _: Any = Depends(form_creator_guard)
 ) -> RedirectResponse:
     storage = request.app.state.storage
+    form = storage.forms.get_form(form_id)
+    _ensure_form_editable(request, form)
     storage.forms.delete_form(form_id)
     return RedirectResponse("/admin/forms", status_code=303)

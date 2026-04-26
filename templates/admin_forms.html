@@ -6,7 +6,8 @@
     <p class="text-sm text-slate-600">作成済みフォームを管理します。</p>
   </div>
   <div class="flex items-center gap-2">
-    {% if get_auth_enabled(request) %}
+    {% set _u = get_current_user(request) %}
+    {% if get_auth_enabled(request) and _u and _u.is_admin %}
     <a href="/admin/groups" class="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100">グループ管理</a>
     {% endif %}
     <a href="/admin/forms/new" class="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white">新規フォーム</a>
@@ -53,25 +54,38 @@
     </thead>
     <tbody class="divide-y divide-slate-200">
       {% for form in forms %}
+      {% set _editable = can_edit_form(request, form) %}
       <tr>
         <td class="px-4 py-3 font-medium">
           <div class="whitespace-nowrap text-slate-900">{{ form.name }}</div>
           <div class="max-w-md whitespace-normal break-all text-xs text-slate-500">{{ form.description }}</div>
         </td>
         <td class="px-4 py-3">
-          {% if form.status == "active" %}
-          <form method="post" action="/admin/forms/{{ form.id }}/stop">
-            <button type="submit" class="whitespace-nowrap rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-800 hover:bg-emerald-200">公開中</button>
-          </form>
+          {% if _editable %}
+            {% if form.status == "active" %}
+            <form method="post" action="/admin/forms/{{ form.id }}/stop">
+              <button type="submit" class="whitespace-nowrap rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-800 hover:bg-emerald-200">公開中</button>
+            </form>
+            {% else %}
+            <form method="post" action="/admin/forms/{{ form.id }}/publish">
+              <button type="submit" class="whitespace-nowrap rounded-full bg-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-300">停止中</button>
+            </form>
+            {% endif %}
           {% else %}
-          <form method="post" action="/admin/forms/{{ form.id }}/publish">
-            <button type="submit" class="whitespace-nowrap rounded-full bg-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-300">停止中</button>
-          </form>
+            {% if form.status == "active" %}
+            <span class="whitespace-nowrap rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-800">公開中</span>
+            {% else %}
+            <span class="whitespace-nowrap rounded-full bg-slate-200 px-2 py-1 text-xs text-slate-700">停止中</span>
+            {% endif %}
           {% endif %}
         </td>
         <td class="px-4 py-3">
           <div class="flex flex-nowrap gap-2 whitespace-nowrap">
+            {% if _editable %}
             <a href="/admin/forms/{{ form.id }}" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs">編集</a>
+            {% else %}
+            <span class="whitespace-nowrap rounded border border-slate-200 px-2 py-1 text-xs text-slate-300">編集</span>
+            {% endif %}
             <a href="/f/{{ form.public_id }}" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs">入力</a>
             <a href="/admin/forms/{{ form.id }}/submissions" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs">一覧</a>
           </div>
@@ -80,9 +94,13 @@
           <time class="js-local-dt" data-iso="{{ iso_dt(form.updated_at) }}">{{ format_dt(form.updated_at) }}</time>
         </td>
         <td class="px-4 py-3">
+          {% if _editable %}
           <form method="post" action="/admin/forms/{{ form.id }}/delete" onsubmit="return confirm('このフォームを削除しますか？')">
             <button class="whitespace-nowrap rounded border border-rose-300 px-2 py-1 text-xs text-rose-600">削除</button>
           </form>
+          {% else %}
+          <span class="whitespace-nowrap rounded border border-slate-200 px-2 py-1 text-xs text-slate-300">削除</span>
+          {% endif %}
         </td>
       </tr>
       {% else %}

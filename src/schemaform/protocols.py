@@ -33,7 +33,18 @@ class FileRepository(Protocol):
     def get_file(self, file_id: str) -> dict[str, Any] | None: ...
 
 
+class SettingsRepository(Protocol):
+    def get(self, key: str) -> Any: ...
+
+    def set(self, key: str, value: Any) -> None: ...
+
+    def get_form_creator_groups(self) -> list[int]: ...
+
+    def set_form_creator_groups(self, group_ids: list[int]) -> None: ...
+
+
 class Storage(Protocol):
     forms: FormRepository
     submissions: SubmissionRepository
     files: FileRepository
+    settings: SettingsRepository

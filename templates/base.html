@@ -76,7 +76,8 @@
         {% set auth_enabled = get_auth_enabled(request) %}
         {% set current_user = get_current_user(request) %}
         {% set is_admin_view = (not auth_enabled) or (current_user and current_user.is_admin) %}
-        <a href="{{ '/admin/forms' if is_admin_view else '/forms' }}" class="text-lg font-semibold">SchemaForm</a>
+        {% set is_manager_view = is_admin_view or can_create_form(request) %}
+        <a href="{{ '/admin/forms' if is_manager_view else '/forms' }}" class="text-lg font-semibold">SchemaForm</a>
         <nav class="flex items-center gap-3 text-sm text-slate-600">
           {% if auth_enabled %}
             {% if current_user %}

@@ -159,13 +159,16 @@ class UserPermissionAuthProvider:
 
     async def _fetch_groups(
         self, user_id: int, token: str
-    ) -> list[tuple[str, bool]]:
+    ) -> list[tuple[int, str, bool]]:
         try:
             if self._is_relay:
                 groups = await self._db.groups.get_user_groups(user_id, token)
             else:
                 groups = await self._db.groups.get_user_groups(user_id)
-            return [(g.name, bool(getattr(g, "is_admin", False))) for g in groups]
+            return [
+                (int(g.id), g.name, bool(getattr(g, "is_admin", False)))
+                for g in groups
+            ]
         except Exception:
             return []
 
@@ -180,7 +183,10 @@ class UserPermissionAuthProvider:
             return
         user_id, username, display_name = verified
         group_info = await self._fetch_groups(user_id, token)
-        groups = [{"name": name, "is_admin": flag} for name, flag in group_info]
+        groups = [
+            {"id": gid, "name": name, "is_admin": flag}
+            for gid, name, flag in group_info
+        ]
         is_admin = any(g["is_admin"] for g in groups)
         request.state.current_user = {
             "id": user_id,

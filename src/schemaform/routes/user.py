@@ -41,8 +41,12 @@ def _check_submission_owner(
 
 @router.get("/forms", tags=["user"], response_model=None)
 async def list_forms(request: Request) -> HTMLResponse | RedirectResponse:
+    from schemaform.app import can_create_form
+
     current_user = getattr(request.state, "current_user", None)
-    if current_user and current_user.get("is_admin"):
+    if current_user and (
+        current_user.get("is_admin") or can_create_form(request)
+    ):
         return RedirectResponse("/admin/forms", status_code=303)
     storage = request.app.state.storage
     templates = request.app.state.templates

@@ -43,6 +43,7 @@
         <th class="px-4 py-3">グループ名</th>
         <th class="px-4 py-3">説明</th>
         <th class="px-4 py-3">種別</th>
+        <th class="px-4 py-3">権限</th>
       </tr>
     </thead>
     <tbody class="divide-y divide-slate-100">
@@ -59,9 +60,16 @@
           <span class="text-xs text-slate-500">一般</span>
           {% endif %}
         </td>
+        <td class="px-4 py-3">
+          {% if g.can_create_form %}
+          <span class="rounded bg-sky-100 px-2 py-0.5 text-xs text-sky-800">フォーム作成</span>
+          {% else %}
+          <span class="text-xs text-slate-400">-</span>
+          {% endif %}
+        </td>
       </tr>
       {% else %}
-      <tr><td colspan="3" class="px-4 py-6 text-center text-slate-400">グループがありません</td></tr>
+      <tr><td colspan="4" class="px-4 py-6 text-center text-slate-400">グループがありません</td></tr>
       {% endfor %}
     </tbody>
   </table>

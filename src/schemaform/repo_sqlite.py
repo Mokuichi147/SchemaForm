@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
-from schemaform.models import Base, FileModel, FormModel, SubmissionModel
+from schemaform.models import Base, FileModel, FormModel, SettingModel, SubmissionModel
 from schemaform.utils import dumps_json, loads_json, now_utc
 
 
@@ -47,6 +47,7 @@ class SQLiteFormRepo:
                 webhook_on_submit=1 if form.get("webhook_on_submit") else 0,
                 webhook_on_delete=1 if form.get("webhook_on_delete") else 0,
                 webhook_on_edit=1 if form.get("webhook_on_edit") else 0,
+                creator_group_id=form.get("creator_group_id"),
                 created_at=form["created_at"],
                 updated_at=form["updated_at"],
             )
@@ -99,6 +100,7 @@ class SQLiteFormRepo:
             "webhook_on_submit": bool(row.webhook_on_submit),
             "webhook_on_delete": bool(row.webhook_on_delete),
             "webhook_on_edit": bool(row.webhook_on_edit),
+            "creator_group_id": row.creator_group_id,
             "created_at": row.created_at,
             "updated_at": row.updated_at,
         }
@@ -205,6 +207,36 @@ class SQLiteFileRepo:
             }
 
 
+class SQLiteSettingsRepo:
+    def __init__(self, session_factory: sessionmaker) -> None:
+        self._Session = session_factory
+
+    def get(self, key: str) -> Any:
+        with self._Session() as session:
+            row = session.get(SettingModel, key)
+            if row is None or row.value is None:
+                return None
+            return loads_json(row.value)
+
+    def set(self, key: str, value: Any) -> None:
+        with self._Session() as session:
+            row = session.get(SettingModel, key)
+            payload = dumps_json(value)
+            if row is None:
+                session.add(SettingModel(key=key, value=payload))
+            else:
+                row.value = payload
+            session.commit()
+
+    def get_form_creator_groups(self) -> list[int]:
+        value = self.get("form_creator_groups")
+        return [int(v) for v in (value or [])]
+
+    def set_form_creator_groups(self, group_ids: list[int]) -> None:
+        normalized = sorted({int(g) for g in group_ids})
+        self.set("form_creator_groups", normalized)
+
+
 class SQLiteStorage:
     def __init__(self, db_path: Path) -> None:
         self._engine = create_engine(f"sqlite:///{db_path}", future=True)
@@ -214,6 +246,7 @@ class SQLiteStorage:
         self.forms = SQLiteFormRepo(self._Session)
         self.submissions = SQLiteSubmissionRepo(self._Session)
         self.files = SQLiteFileRepo(self._Session)
+        self.settings = SQLiteSettingsRepo(self._Session)
 
     def _migrate_add_webhook_columns(self) -> None:
         with self._engine.connect() as conn:
@@ -238,6 +271,10 @@ class SQLiteStorage:
                     text(
                         "ALTER TABLE forms ADD COLUMN webhook_on_edit INTEGER DEFAULT 0"
                     )
+                )
+            if "creator_group_id" not in form_columns:
+                conn.execute(
+                    text("ALTER TABLE forms ADD COLUMN creator_group_id INTEGER")
                 )
             result = conn.execute(text("PRAGMA table_info(submissions)"))
             sub_columns = {row[1] for row in result.fetchall()}
