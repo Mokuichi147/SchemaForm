@@ -11,6 +11,23 @@ from tinydb import Query, TinyDB
 from schemaform.utils import now_utc, parse_dt, to_iso
 
 
+def _normalize_group_ids(value: Any) -> list[int]:
+    if not value:
+        return []
+    result: list[int] = []
+    seen: set[int] = set()
+    for item in value:
+        try:
+            gid = int(item)
+        except (TypeError, ValueError):
+            continue
+        if gid in seen:
+            continue
+        seen.add(gid)
+        result.append(gid)
+    return sorted(result)
+
+
 class JSONRepoBase:
     def __init__(self, path: Path, lock: FileLock) -> None:
         self._path = path
@@ -80,6 +97,8 @@ class JSONFormRepo(JSONRepoBase):
         for key, value in form.items():
             if key in {"created_at", "updated_at"}:
                 record[key] = to_iso(value) if isinstance(value, datetime) else value
+            elif key == "publish_group_ids":
+                record[key] = _normalize_group_ids(value)
             else:
                 record[key] = value
         if not partial:
@@ -102,6 +121,9 @@ class JSONFormRepo(JSONRepoBase):
             "webhook_on_delete": record.get("webhook_on_delete", False),
             "webhook_on_edit": record.get("webhook_on_edit", False),
             "creator_group_id": record.get("creator_group_id"),
+            "publish_group_ids": _normalize_group_ids(
+                record.get("publish_group_ids")
+            ),
             "allow_view_others": bool(record.get("allow_view_others", True)),
             "allow_edit_submissions": bool(
                 record.get("allow_edit_submissions", True)

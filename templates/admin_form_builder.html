@@ -32,47 +32,92 @@
 </div>
 {% endif %}
 
-<form method="post" action="{% if form %}/admin/forms/{{ form.id }}{% else %}/admin/forms{% endif %}" class="mt-6 space-y-6">
-  <div>
-    <div class="grid gap-4 md:grid-cols-2">
-      <div>
-        <label class="text-sm font-semibold">フォーム名</label>
-        <input name="name" value="{{ form.name if form else '' }}" class="mt-1 w-full rounded border border-slate-300 px-3 py-2" required />
+<form method="post" action="{% if form %}/admin/forms/{{ form.id }}{% else %}/admin/forms{% endif %}" class="mt-6 space-y-3">
+  {% set _u = get_current_user(request) %}
+  {% set _is_admin = _u and _u.is_admin %}
+  {% set _current_group = form.creator_group_id if form else None %}
+  {% set _publish_ids = (form.publish_group_ids if form and form.publish_group_ids is defined else []) or [] %}
+
+  <div class="py-2 lg:py-3">
+    <div class="sf-field-row lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
+      <div class="lg:col-span-3">
+        <label class="block text-sm font-semibold leading-6">
+          フォーム名
+          <span class="text-rose-500">*</span>
+        </label>
       </div>
-      <div>
-        <label class="text-sm font-semibold">説明</label>
-        <textarea name="description" rows="3" class="mt-1 w-full rounded border border-slate-300 px-3 py-2">{{ form.description if form else '' }}</textarea>
+      <div class="sf-field-input-col lg:col-span-9">
+        <input name="name" value="{{ form.name if form else '' }}" class="mt-1 w-full max-w-md rounded border border-slate-300 px-2 py-2 text-sm lg:mt-0" required />
       </div>
     </div>
-    {% set _u = get_current_user(request) %}
-    {% set _is_admin = _u and _u.is_admin %}
-    {% set _current_group = form.creator_group_id if form else None %}
-    {% if available_groups %}
-    <div class="mt-4">
-      <label class="text-sm font-semibold">作成グループ</label>
-      {% if _is_admin %}
-      <select name="creator_group_id" class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm md:max-w-md">
-        <option value="">なし（管理者のみ編集可能）</option>
-        {% for g in available_groups %}
-        <option value="{{ g.id }}" {% if _current_group == g.id %}selected{% endif %}>{{ g.name }}</option>
-        {% endfor %}
-      </select>
-      <p class="mt-1 text-xs text-slate-500">紐付けたグループのメンバーのみがこのフォームを編集できます。</p>
-      {% else %}
-        {% if available_groups | length == 1 %}
-        <input type="hidden" name="creator_group_id" value="{{ available_groups[0].id }}" />
-        <p class="mt-1 text-sm text-slate-700">{{ available_groups[0].name }}</p>
-        {% else %}
-        <select name="creator_group_id" required class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm md:max-w-md">
-          <option value="">選択してください</option>
+  </div>
+
+  <div class="py-2 lg:py-3">
+    <div class="sf-field-row lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
+      <div class="lg:col-span-3">
+        <label class="block text-sm font-semibold leading-6">説明</label>
+      </div>
+      <div class="sf-field-input-col lg:col-span-9">
+        <textarea name="description" rows="4" class="mt-1 w-full rounded border border-slate-300 px-2 py-2 text-sm lg:mt-0">{{ form.description if form else '' }}</textarea>
+      </div>
+    </div>
+  </div>
+
+  {% if available_groups %}
+  <div class="py-2 lg:py-3">
+    <div class="sf-field-row lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
+      <div class="lg:col-span-3">
+        <label class="block text-sm font-semibold leading-6">
+          作成グループ
+          {% if not _is_admin and available_groups | length > 1 %}<span class="text-rose-500">*</span>{% endif %}
+        </label>
+        <div class="mt-0.5 break-words text-xs leading-relaxed text-slate-500">紐付けたグループのメンバーのみがこのフォームを編集できます。</div>
+      </div>
+      <div class="sf-field-input-col lg:col-span-9">
+        {% if _is_admin %}
+        <select name="creator_group_id" class="mt-1 w-full max-w-sm rounded border border-slate-300 px-2 py-2 text-sm lg:mt-0">
+          <option value="">なし（管理者のみ編集可能）</option>
           {% for g in available_groups %}
           <option value="{{ g.id }}" {% if _current_group == g.id %}selected{% endif %}>{{ g.name }}</option>
           {% endfor %}
         </select>
+        {% else %}
+          {% if available_groups | length == 1 %}
+          <input type="hidden" name="creator_group_id" value="{{ available_groups[0].id }}" />
+          <div class="mt-1 w-full max-w-sm rounded-md bg-slate-100/70 px-3 py-2 text-sm leading-relaxed text-slate-700 lg:mt-0">{{ available_groups[0].name }}</div>
+          {% else %}
+          <select name="creator_group_id" required class="mt-1 w-full max-w-sm rounded border border-slate-300 px-2 py-2 text-sm lg:mt-0">
+            <option value="">選択してください</option>
+            {% for g in available_groups %}
+            <option value="{{ g.id }}" {% if _current_group == g.id %}selected{% endif %}>{{ g.name }}</option>
+            {% endfor %}
+          </select>
+          {% endif %}
         {% endif %}
-      {% endif %}
+      </div>
     </div>
-    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="py-2 lg:py-3">
+    <div class="sf-field-row lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
+      <div class="lg:col-span-3">
+        <label class="block text-sm font-semibold leading-6">公開先グループ</label>
+        <div class="mt-0.5 break-words text-xs leading-relaxed text-slate-500">未選択の場合は全体公開（ログイン不要のユーザーも含む）。選択したグループのメンバーのみが入力ページと送信一覧を閲覧できます。</div>
+      </div>
+      <div class="sf-field-input-col lg:col-span-9">
+        {% if all_groups %}
+        <select name="publish_group_ids" multiple size="{{ [all_groups | length, 6] | min }}" class="mt-1 w-full max-w-sm rounded border border-slate-300 px-2 py-2 text-sm lg:mt-0">
+          {% for g in all_groups %}
+          <option value="{{ g.id }}" {% if g.id in _publish_ids %}selected{% endif %}>{{ g.name }}</option>
+          {% endfor %}
+        </select>
+        <p class="mt-1 text-xs text-slate-500">Ctrl（Mac は ⌘）+ クリックで複数選択できます。</p>
+        {% else %}
+        <div class="mt-1 w-full max-w-sm rounded-md bg-slate-100/70 px-3 py-2 text-sm leading-relaxed text-slate-700 lg:mt-0">利用可能なグループがありません（全体公開になります）。</div>
+        {% endif %}
+      </div>
+    </div>
   </div>
 
   <div>

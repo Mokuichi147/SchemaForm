@@ -53,7 +53,7 @@ def _check_submission_editable(
 
 @router.get("/forms", tags=["user"], response_model=None)
 async def list_forms(request: Request) -> HTMLResponse | RedirectResponse:
-    from schemaform.app import can_create_form
+    from schemaform.app import can_create_form, can_view_form
 
     current_user = getattr(request.state, "current_user", None)
     if current_user and (
@@ -64,7 +64,11 @@ async def list_forms(request: Request) -> HTMLResponse | RedirectResponse:
     templates = request.app.state.templates
     forms = storage.forms.list_forms()
 
-    active_forms = [f for f in forms if f.get("status") == "active"]
+    active_forms = [
+        f
+        for f in forms
+        if f.get("status") == "active" and can_view_form(request, f)
+    ]
 
     sort = request.query_params.get("sort", "name")
     order = request.query_params.get("order", "asc")
@@ -97,12 +101,19 @@ async def list_forms(request: Request) -> HTMLResponse | RedirectResponse:
 async def list_submissions(request: Request, form_id: str) -> HTMLResponse:
     storage = request.app.state.storage
     templates = request.app.state.templates
+    from schemaform.app import can_view_form
+
     form = storage.forms.get_form(form_id)
     if not form:
         raise HTTPException(status_code=404, detail="フォームが見つかりません")
 
     current_user = getattr(request.state, "current_user", None)
     is_admin = bool(current_user and current_user.get("is_admin"))
+    publish_ids = form.get("publish_group_ids") or []
+    if publish_ids and current_user is None:
+        await request.app.state.auth_provider.require_login(request)
+    if not can_view_form(request, form):
+        raise HTTPException(status_code=403, detail="このフォームを閲覧する権限がありません")
     if not form.get("allow_view_others", True) and not is_admin:
         await request.app.state.auth_provider.require_login(request)
 

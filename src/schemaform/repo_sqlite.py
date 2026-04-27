@@ -10,6 +10,23 @@ from schemaform.models import Base, FileModel, FormModel, SettingModel, Submissi
 from schemaform.utils import dumps_json, loads_json, now_utc
 
 
+def _normalize_group_ids(value: Any) -> list[int]:
+    if not value:
+        return []
+    result: list[int] = []
+    seen: set[int] = set()
+    for item in value:
+        try:
+            gid = int(item)
+        except (TypeError, ValueError):
+            continue
+        if gid in seen:
+            continue
+        seen.add(gid)
+        result.append(gid)
+    return sorted(result)
+
+
 class SQLiteFormRepo:
     def __init__(self, session_factory: sessionmaker) -> None:
         self._Session = session_factory
@@ -48,6 +65,9 @@ class SQLiteFormRepo:
                 webhook_on_delete=1 if form.get("webhook_on_delete") else 0,
                 webhook_on_edit=1 if form.get("webhook_on_edit") else 0,
                 creator_group_id=form.get("creator_group_id"),
+                publish_group_ids=dumps_json(
+                    _normalize_group_ids(form.get("publish_group_ids"))
+                ),
                 allow_view_others=1 if form.get("allow_view_others", True) else 0,
                 allow_edit_submissions=1
                 if form.get("allow_edit_submissions", True)
@@ -74,6 +94,8 @@ class SQLiteFormRepo:
                     "allow_edit_submissions",
                 }:
                     setattr(row, key, 1 if value else 0)
+                elif key == "publish_group_ids":
+                    setattr(row, key, dumps_json(_normalize_group_ids(value)))
                 else:
                     setattr(row, key, value)
             session.commit()
@@ -111,6 +133,9 @@ class SQLiteFormRepo:
             "webhook_on_delete": bool(row.webhook_on_delete),
             "webhook_on_edit": bool(row.webhook_on_edit),
             "creator_group_id": row.creator_group_id,
+            "publish_group_ids": _normalize_group_ids(
+                loads_json(row.publish_group_ids) if row.publish_group_ids else []
+            ),
             "allow_view_others": bool(
                 row.allow_view_others if row.allow_view_others is not None else 1
             ),
@@ -293,6 +318,10 @@ class SQLiteStorage:
             if "creator_group_id" not in form_columns:
                 conn.execute(
                     text("ALTER TABLE forms ADD COLUMN creator_group_id INTEGER")
+                )
+            if "publish_group_ids" not in form_columns:
+                conn.execute(
+                    text("ALTER TABLE forms ADD COLUMN publish_group_ids TEXT")
                 )
             if "allow_view_others" not in form_columns:
                 conn.execute(

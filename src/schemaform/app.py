@@ -147,6 +147,28 @@ def can_edit_form(request: Request, form: dict | None) -> bool:
     return creator_group_id in user_group_ids
 
 
+def can_view_form(request: Request, form: dict | None) -> bool:
+    """フォームの公開先（publish_group_ids）に基づいて閲覧可否を返す。
+    空リストは全体公開。管理者・編集権限者は常に閲覧可。"""
+    if not form:
+        return False
+    if can_edit_form(request, form):
+        return True
+    settings: Settings | None = getattr(request.app.state, "settings", None)
+    if settings is None:
+        return False
+    if settings.solo:
+        return True
+    publish_ids = form.get("publish_group_ids") or []
+    if not publish_ids:
+        return True
+    user = getattr(request.state, "current_user", None)
+    if user is None:
+        return False
+    user_group_ids = {g.get("id") for g in (user.get("groups") or [])}
+    return bool(set(publish_ids) & user_group_ids)
+
+
 def can_create_form(request: Request) -> bool:
     """フォーム作成権限を持つかどうか（管理者または許可グループ所属）。"""
     settings: Settings | None = getattr(request.app.state, "settings", None)
@@ -239,6 +261,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     templates.env.globals["get_signup_enabled"] = get_signup_enabled
     templates.env.globals["can_create_form"] = can_create_form
     templates.env.globals["can_edit_form"] = can_edit_form
+    templates.env.globals["can_view_form"] = can_view_form
     templates.env.globals["get_user_form_creator_group_ids"] = (
         get_user_form_creator_group_ids
     )

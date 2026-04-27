@@ -32,6 +32,46 @@ async def form_creator_guard(request: Request) -> None:
         raise HTTPException(status_code=403, detail="フォーム作成権限がありません")
 
 
+async def _list_all_groups(request: Request) -> list[dict[str, Any]]:
+    """認可済みユーザーで取得できる全グループ一覧（公開先選択用）。"""
+    auth = request.app.state.auth_provider
+    user = getattr(request.state, "current_user", None)
+    if user is None:
+        return []
+    list_groups = getattr(auth, "list_groups", None)
+    if list_groups is None:
+        return []
+    try:
+        groups = await list_groups(user.get("token", ""))
+    except Exception:
+        return []
+    return [{"id": g["id"], "name": g["name"]} for g in groups]
+
+
+def _parse_publish_group_ids(
+    raw_values: list[str], all_group_ids: set[int]
+) -> tuple[list[int], list[str]]:
+    errors: list[str] = []
+    result: list[int] = []
+    seen: set[int] = set()
+    for raw in raw_values:
+        s = str(raw or "").strip()
+        if not s:
+            continue
+        try:
+            gid = int(s)
+        except ValueError:
+            errors.append("公開先グループの指定が不正です")
+            continue
+        if gid in seen:
+            continue
+        if all_group_ids and gid not in all_group_ids:
+            continue
+        seen.add(gid)
+        result.append(gid)
+    return sorted(result), errors
+
+
 async def _available_creator_groups(request: Request) -> list[dict[str, Any]]:
     """フォームに紐付け可能なグループ一覧を返す（管理者は全フォーム作成グループ、
     非管理者は自分が所属するフォーム作成グループのみ）。"""
@@ -143,6 +183,7 @@ async def new_form(request: Request, _: Any = Depends(form_creator_guard)) -> HT
     templates = request.app.state.templates
     master_forms, master_field_catalog = build_master_field_catalog(storage)
     available_groups = await _available_creator_groups(request)
+    all_groups = await _list_all_groups(request)
     return templates.TemplateResponse(
         "admin_form_builder.html",
         {
@@ -153,6 +194,7 @@ async def new_form(request: Request, _: Any = Depends(form_creator_guard)) -> HT
             "master_forms_json": dumps_json(master_forms),
             "master_field_catalog_json": dumps_json(master_field_catalog),
             "available_groups": available_groups,
+            "all_groups": all_groups,
             "errors": [],
         },
     )
@@ -171,6 +213,12 @@ async def create_form(request: Request, _: Any = Depends(form_creator_guard)) ->
     fields, errors = parse_fields_json(fields_json)
     master_forms, master_field_catalog = build_master_field_catalog(storage)
     available_groups = await _available_creator_groups(request)
+    all_groups = await _list_all_groups(request)
+    publish_group_ids, publish_errors = _parse_publish_group_ids(
+        form_data.getlist("publish_group_ids"),
+        {g["id"] for g in all_groups},
+    )
+    errors.extend(publish_errors)
     if not name:
         errors.append("フォーム名は必須です")
 
@@ -198,6 +246,7 @@ async def create_form(request: Request, _: Any = Depends(form_creator_guard)) ->
             base.update(form_extra)
         if creator_group_id is not None:
             base["creator_group_id"] = creator_group_id
+        base["publish_group_ids"] = publish_group_ids
         return templates.TemplateResponse(
             "admin_form_builder.html",
             {
@@ -208,6 +257,7 @@ async def create_form(request: Request, _: Any = Depends(form_creator_guard)) ->
                 "master_forms_json": dumps_json(master_forms),
                 "master_field_catalog_json": dumps_json(master_field_catalog),
                 "available_groups": available_groups,
+                "all_groups": all_groups,
                 "errors": errors,
             },
         )
@@ -242,6 +292,7 @@ async def create_form(request: Request, _: Any = Depends(form_creator_guard)) ->
             "webhook_on_delete": webhook_on_delete,
             "webhook_on_edit": webhook_on_edit,
             "creator_group_id": creator_group_id,
+            "publish_group_ids": publish_group_ids,
             "allow_view_others": allow_view_others,
             "allow_edit_submissions": allow_edit_submissions,
             "created_at": now,
@@ -266,6 +317,7 @@ async def edit_form(
         storage, current_form_id=form_id
     )
     available_groups = await _available_creator_groups(request)
+    all_groups = await _list_all_groups(request)
     return templates.TemplateResponse(
         "admin_form_builder.html",
         {
@@ -276,6 +328,7 @@ async def edit_form(
             "master_forms_json": dumps_json(master_forms),
             "master_field_catalog_json": dumps_json(master_field_catalog),
             "available_groups": available_groups,
+            "all_groups": all_groups,
             "errors": [],
         },
     )
@@ -302,6 +355,12 @@ async def update_form(
         storage, current_form_id=form_id
     )
     available_groups = await _available_creator_groups(request)
+    all_groups = await _list_all_groups(request)
+    publish_group_ids, publish_errors = _parse_publish_group_ids(
+        form_data.getlist("publish_group_ids"),
+        {g["id"] for g in all_groups},
+    )
+    errors.extend(publish_errors)
     if not name:
         errors.append("フォーム名は必須です")
 
@@ -327,6 +386,7 @@ async def update_form(
     def _render(form_extra: dict[str, Any] | None = None) -> HTMLResponse:
         base = {**form, "name": name, "description": description}
         base["creator_group_id"] = creator_group_id
+        base["publish_group_ids"] = publish_group_ids
         if form_extra:
             base.update(form_extra)
         return templates.TemplateResponse(
@@ -339,6 +399,7 @@ async def update_form(
                 "master_forms_json": dumps_json(master_forms),
                 "master_field_catalog_json": dumps_json(master_field_catalog),
                 "available_groups": available_groups,
+                "all_groups": all_groups,
                 "errors": errors,
             },
         )
@@ -367,6 +428,7 @@ async def update_form(
         "webhook_on_edit": webhook_on_edit,
         "allow_view_others": allow_view_others,
         "allow_edit_submissions": allow_edit_submissions,
+        "publish_group_ids": publish_group_ids,
         "updated_at": now_utc(),
     }
     if is_admin:

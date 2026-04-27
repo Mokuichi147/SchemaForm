@@ -65,11 +65,19 @@ async def save_upload(
 
 @router.get("/f/{public_id}", response_class=HTMLResponse, tags=["public"])
 async def public_form(request: Request, public_id: str) -> HTMLResponse:
+    from schemaform.app import can_view_form
+
     storage = request.app.state.storage
     templates = request.app.state.templates
     form = storage.forms.get_form_by_public_id(public_id)
     if not form:
         raise HTTPException(status_code=404, detail="フォームが見つかりません")
+    publish_ids = form.get("publish_group_ids") or []
+    current_user = getattr(request.state, "current_user", None)
+    if publish_ids and current_user is None:
+        await request.app.state.auth_provider.require_login(request)
+    if not can_view_form(request, form):
+        raise HTTPException(status_code=403, detail="このフォームを閲覧する権限がありません")
     fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
     enrich_master_options(storage, fields)
     file_infos = resolve_file_infos(
@@ -92,11 +100,19 @@ async def public_form(request: Request, public_id: str) -> HTMLResponse:
 
 @router.post("/f/{public_id}", response_class=HTMLResponse, tags=["public"])
 async def submit_form(request: Request, public_id: str) -> HTMLResponse:
+    from schemaform.app import can_view_form
+
     storage = request.app.state.storage
     templates = request.app.state.templates
     form = storage.forms.get_form_by_public_id(public_id)
     if not form:
         raise HTTPException(status_code=404, detail="フォームが見つかりません")
+    publish_ids = form.get("publish_group_ids") or []
+    current_user = getattr(request.state, "current_user", None)
+    if publish_ids and current_user is None:
+        await request.app.state.auth_provider.require_login(request)
+    if not can_view_form(request, form):
+        raise HTTPException(status_code=403, detail="このフォームを送信する権限がありません")
     if form.get("status") != "active":
         fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
         enrich_master_options(storage, fields)
