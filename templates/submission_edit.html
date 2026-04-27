@@ -163,20 +163,20 @@
                   {% if field.type == "enum" %}
                   <div class="w-full space-y-1">
                     <select name="{{ form_name }}" data-choice-select="1" data-search-placeholder="選択肢を検索" class="w-full rounded border border-slate-300 px-2 py-2 text-sm">
+                      <option value="">選択してください</option>
                       {% for option in field.enum %}
                       <option value="{{ option }}">{{ option }}</option>
                       {% endfor %}
                     </select>
                   </div>
                   {% elif field.type == "master" %}
-                  <div class="w-full space-y-1" data-role="master-ref">
-                    <div class="{{ ns.fw }}">
-                      <select name="{{ form_name }}" data-role="master-select" data-choice-select="1" data-search-placeholder="参照データを検索" class="w-full rounded border border-slate-300 px-2 py-2 text-sm">
-                        {% for option in field.master_options or [] %}
-                        <option value="{{ option.value }}" data-master-display="{{ option.display_json | default('{}') | e }}">{{ option.label }}</option>
-                        {% endfor %}
-                      </select>
-                    </div>
+                  <div class="w-full {{ ns.fw }}" data-role="master-ref">
+                    <select name="{{ form_name }}" data-role="master-select" data-choice-select="1" data-search-placeholder="参照データを検索" class="w-full rounded border border-slate-300 px-2 py-2 text-sm">
+                      <option value="" data-master-display="{}">選択してください</option>
+                      {% for option in field.master_options or [] %}
+                      <option value="{{ option.value }}" data-master-display="{{ option.display_json | default('{}') | e }}">{{ option.label }}</option>
+                      {% endfor %}
+                    </select>
                   </div>
                   {% elif field.type == "boolean" %}
                   <select name="{{ form_name }}" class="w-full rounded border border-slate-300 px-2 py-2 text-sm">

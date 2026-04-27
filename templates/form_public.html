@@ -148,46 +148,52 @@
               <div class="space-y-2 array-items"></div>
               <button type="button" class="add-item mt-1 rounded border border-slate-300 px-3 py-1 text-xs" {% if inactive %}disabled{% endif %}>追加</button>
               <template>
-                <div class="flex items-start gap-2 array-item">
-                  {% if field.type == "enum" %}
-                  <div class="w-full space-y-1">
-                    <select name="{{ form_name }}" data-choice-select="1" data-search-placeholder="選択肢を検索" class="w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if inactive %}disabled{% endif %}>
-                      {% for option in field.enum %}
-                      <option value="{{ option }}">{{ option }}</option>
-                      {% endfor %}
-                    </select>
-                  </div>
-                  {% elif field.type == "master" %}
-                  <div class="w-full space-y-1" data-role="master-ref">
-                    <div class="{{ ns.fw }}">
+                {% if field.type == "master" %}
+                <div class="array-item space-y-1" data-role="master-ref">
+                  <div class="flex items-start gap-2">
+                    <div class="w-full {{ ns.fw }}">
                       <select name="{{ form_name }}" data-role="master-select" data-choice-select="1" data-search-placeholder="参照データを検索" class="w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if inactive %}disabled{% endif %}>
+                        <option value="" data-master-display="{}">選択してください</option>
                         {% for option in field.master_options or [] %}
                         <option value="{{ option.value }}" data-master-display="{{ option.display_json | default('{}') | e }}">{{ option.label }}</option>
                         {% endfor %}
                       </select>
                     </div>
-                    <div data-role="master-display" class="hidden mt-2 {{ group_container_class }}">
-                      <div class="space-y-1">
-                      {% for display_item in field.master_display_items or [] %}
-                      {% set di_fw = "max-w-md" %}
-                      {% if display_item.type in ["number", "integer", "boolean"] %}
-                        {% set di_fw = "max-w-[10rem]" %}
-                      {% elif display_item.type in ["enum", "master"] %}
-                        {% set di_fw = "max-w-sm" %}
-                      {% endif %}
-                      <div data-role="master-display-row" data-master-display-key="{{ display_item.key }}" data-master-display-type="{{ display_item.type }}" class="hidden py-1 lg:py-1.5">
-                        <div class="sf-field-row lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
-                          <div class="lg:col-span-3">
-                            <div class="block text-sm font-semibold leading-6">{{ display_item.label }}</div>
-                          </div>
-                          <div class="sf-field-input-col lg:col-span-9">
-                            <div data-role="master-display-value" class="mt-1 w-full {{ di_fw }} rounded-md bg-slate-100/70 px-3 py-2 text-sm leading-relaxed text-slate-700 break-words lg:mt-0"></div>
-                          </div>
+                    <button type="button" class="remove-item shrink-0 whitespace-nowrap rounded border border-rose-300 px-2 py-1 text-xs text-rose-600" {% if inactive %}disabled{% endif %}>削除</button>
+                  </div>
+                  <div data-role="master-display" class="hidden mt-2 {{ group_container_class }}">
+                    <div class="space-y-1">
+                    {% for display_item in field.master_display_items or [] %}
+                    {% set di_fw = "max-w-md" %}
+                    {% if display_item.type in ["number", "integer", "boolean"] %}
+                      {% set di_fw = "max-w-[10rem]" %}
+                    {% elif display_item.type in ["enum", "master"] %}
+                      {% set di_fw = "max-w-sm" %}
+                    {% endif %}
+                    <div data-role="master-display-row" data-master-display-key="{{ display_item.key }}" data-master-display-type="{{ display_item.type }}" class="hidden py-1 lg:py-1.5">
+                      <div class="sf-field-row lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
+                        <div class="lg:col-span-3">
+                          <div class="block text-sm font-semibold leading-6">{{ display_item.label }}</div>
+                        </div>
+                        <div class="sf-field-input-col lg:col-span-9">
+                          <div data-role="master-display-value" class="mt-1 w-full {{ di_fw }} rounded-md bg-slate-100/70 px-3 py-2 text-sm leading-relaxed text-slate-700 break-words lg:mt-0"></div>
                         </div>
                       </div>
-                      {% endfor %}
-                      </div>
                     </div>
+                    {% endfor %}
+                    </div>
+                  </div>
+                </div>
+                {% else %}
+                <div class="flex items-start gap-2 array-item">
+                  {% if field.type == "enum" %}
+                  <div class="w-full space-y-1">
+                    <select name="{{ form_name }}" data-choice-select="1" data-search-placeholder="選択肢を検索" class="w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if inactive %}disabled{% endif %}>
+                      <option value="">選択してください</option>
+                      {% for option in field.enum %}
+                      <option value="{{ option }}">{{ option }}</option>
+                      {% endfor %}
+                    </select>
                   </div>
                   {% elif field.type == "boolean" %}
                   <select name="{{ form_name }}" class="w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if inactive %}disabled{% endif %}>
@@ -203,6 +209,7 @@
                   {% endif %}
                   <button type="button" class="remove-item shrink-0 whitespace-nowrap rounded border border-rose-300 px-2 py-1 text-xs text-rose-600" {% if inactive %}disabled{% endif %}>削除</button>
                 </div>
+                {% endif %}
               </template>
             </div>
           {% endif %}
@@ -710,22 +717,82 @@
     const picker = block.dataset.picker;
     if (!template || !list || !addButton) return;
 
+    // 配列要素ごとに検索欄が並ぶと画面を占有するため、配列内の選択フィールドは
+    // ブロック上部の共有検索欄でまとめてフィルタリングする。
+    let sharedSearch = null;
+    const templateSelect = template.content.querySelector(
+      "select[data-choice-select='1']"
+    );
+    if (templateSelect) {
+      const optionCount = Array.from(templateSelect.options).filter(
+        (o) => o.value !== ""
+      ).length;
+      if (optionCount >= CHOICE_SEARCH_THRESHOLD) {
+        sharedSearch = document.createElement("input");
+        sharedSearch.type = "search";
+        sharedSearch.autocomplete = "off";
+        sharedSearch.spellcheck = false;
+        sharedSearch.placeholder =
+          templateSelect.dataset.searchPlaceholder || "検索";
+        sharedSearch.className =
+          "sf-choice-search mb-2 w-full rounded border border-slate-300 px-2 py-1 text-sm";
+        block.insertBefore(sharedSearch, list);
+        sharedSearch.addEventListener("input", () => {
+          list
+            .querySelectorAll("select[data-choice-select='1']")
+            .forEach((select) => applyChoiceFilter(select, sharedSearch));
+        });
+      }
+    }
+
+    function updateAddButtonState() {
+      if (!sharedSearch) return;
+      const hasUnselected = Array.from(
+        list.querySelectorAll("select[data-choice-select='1']")
+      ).some((select) => select.value === "");
+      addButton.disabled = hasUnselected;
+      addButton.classList.toggle("opacity-50", hasUnselected);
+      addButton.classList.toggle("cursor-not-allowed", hasUnselected);
+    }
+
     function addItem() {
       const node = template.content.firstElementChild.cloneNode(true);
       const removeButton = node.querySelector(".remove-item");
       if (removeButton) {
-        removeButton.addEventListener("click", () => node.remove());
+        removeButton.addEventListener("click", () => {
+          node.remove();
+          updateAddButtonState();
+        });
       }
       if (picker) {
         const input = node.querySelector("input[data-picker]");
         initPicker(input);
       }
+      if (sharedSearch) {
+        node
+          .querySelectorAll("select[data-choice-select='1']")
+          .forEach((select) => {
+            select._sfChoiceOptions = snapshotSelectOptions(select);
+            select.dataset.sfChoiceInit = "1";
+            select.addEventListener("change", updateAddButtonState);
+          });
+      }
       initChoiceSelectSearch(node);
       initMasterReference(node);
       list.appendChild(node);
+      if (sharedSearch) {
+        sharedSearch.value = "";
+        list
+          .querySelectorAll("select[data-choice-select='1']")
+          .forEach((select) => applyChoiceFilter(select, sharedSearch));
+      }
+      updateAddButtonState();
     }
 
-    addButton.addEventListener("click", addItem);
+    addButton.addEventListener("click", () => {
+      if (addButton.disabled) return;
+      addItem();
+    });
     addItem();
   }
 
