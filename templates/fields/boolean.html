@@ -1,0 +1,27 @@
+{% from "fields/_layout.html" import field_row %}
+
+{% macro render_boolean(field, form_name, current_value, inactive) %}
+{% call field_row(field) %}
+  {% if field.is_array %}
+    {% set arr_values = current_value if (current_value is iterable and current_value is not string and current_value is not mapping) else [] %}
+    <div class="array-field mt-1 w-full max-w-md lg:mt-0" data-key="{{ form_name }}" data-type="{{ field.type }}" data-picker="" data-initial="{{ arr_values | tojson_attr }}">
+      <div class="space-y-2 array-items"></div>
+      <button type="button" class="add-item mt-1 rounded border border-slate-300 px-3 py-1 text-xs" {% if inactive %}disabled{% endif %}>追加</button>
+      <template>
+        <div class="flex items-start gap-2 array-item">
+          <select name="{{ form_name }}" class="w-full rounded border border-slate-300 px-2 py-2 text-sm" {% if inactive %}disabled{% endif %}>
+            <option value="true">true</option>
+            <option value="false">false</option>
+          </select>
+          <button type="button" class="remove-item shrink-0 whitespace-nowrap rounded border border-rose-300 px-2 py-1 text-xs text-rose-600" {% if inactive %}disabled{% endif %}>削除</button>
+        </div>
+      </template>
+    </div>
+  {% else %}
+    <div class="mt-1 flex items-center gap-2">
+      <input type="checkbox" name="{{ form_name }}" value="true" class="h-4 w-4" {% if current_value %}checked{% endif %} {% if field.required %}required{% endif %} {% if inactive %}disabled{% endif %} />
+      <span class="text-sm text-slate-700">はい</span>
+    </div>
+  {% endif %}
+{% endcall %}
+{% endmacro %}

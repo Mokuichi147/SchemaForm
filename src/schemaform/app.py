@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 import markupsafe
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from schemaform.auth import LoginRequired, get_auth_provider
@@ -248,6 +249,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
     app.state.templates = templates
+
+    app.mount(
+        "/static",
+        StaticFiles(directory=str(BASE_DIR / "static")),
+        name="static",
+    )
 
     templates.env.filters["tojson_attr"] = _tojson_attr
     templates.env.globals["field_input_type"] = field_input_type

@@ -1,0 +1,38 @@
+{# 共通の row wrapper。ラベル + 入力欄カラム のグリッドを生成する。
+   呼び出し側は caller() で入力欄の中身を渡す。 #}
+{% macro field_row(field) %}
+<div class="py-2 lg:py-3">
+  <div class="sf-field-row lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
+    <div class="lg:col-span-3">
+      <label class="block text-sm font-semibold leading-6">
+        {{ field.label or field.key }}
+        {% if field.required %}
+        <span class="text-rose-500">*</span>
+        {% endif %}
+      </label>
+      {% if field.description %}
+      <div class="mt-0.5 break-words text-xs leading-relaxed text-slate-500">{{ field.description }}</div>
+      {% endif %}
+    </div>
+    <div class="sf-field-input-col lg:col-span-9">
+      {{ caller() }}
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+{# グループ用 row wrapper（タイトル + 子フィールドコンテナ）。 #}
+{% macro group_row(field) %}
+<div class="py-2 lg:py-3">
+  <div class="text-sm font-semibold leading-6 text-slate-700">
+    {{ field.label or field.key }}
+    {% if field.required %}
+    <span class="text-rose-500">*</span>
+    {% endif %}
+  </div>
+  {% if field.description %}
+  <div class="mt-1 text-xs leading-relaxed text-slate-500">{{ field.description }}</div>
+  {% endif %}
+  {{ caller() }}
+</div>
+{% endmacro %}

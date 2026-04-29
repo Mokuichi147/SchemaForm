@@ -1,0 +1,65 @@
+{# render_form_field の dispatcher。
+   フィールドの型に応じて templates/fields/ 配下の各ファイルへ振り分ける。 #}
+
+{% from "fields/group.html" import render_group %}
+{% from "fields/calculated.html" import render_calculated %}
+{% from "fields/string.html" import render_string %}
+{% from "fields/number.html" import render_number %}
+{% from "fields/integer.html" import render_integer %}
+{% from "fields/datetime.html" import render_datetime %}
+{% from "fields/boolean.html" import render_boolean %}
+{% from "fields/enum.html" import render_enum %}
+{% from "fields/master.html" import render_master %}
+{% from "fields/file.html" import render_file %}
+
+{% macro render_form_field(field, prefix, data=None, inactive=False, depth=0) %}
+{% set form_name = prefix ~ field.key %}
+{% set picker = field_picker(field) %}
+{% set file_accept = field_file_accept(field) %}
+{% set index_token = "__INDEX_D" ~ depth ~ "__" %}
+{% set depth_mod = depth % 6 %}
+{% if depth_mod == 0 %}
+  {% set indent_border_color = "border-slate-300" %}
+  {% set entry_bg_class = "bg-slate-50/40" %}
+{% elif depth_mod == 1 %}
+  {% set indent_border_color = "border-sky-300" %}
+  {% set entry_bg_class = "bg-sky-50" %}
+{% elif depth_mod == 2 %}
+  {% set indent_border_color = "border-emerald-300" %}
+  {% set entry_bg_class = "bg-emerald-50" %}
+{% elif depth_mod == 3 %}
+  {% set indent_border_color = "border-amber-300" %}
+  {% set entry_bg_class = "bg-amber-50" %}
+{% elif depth_mod == 4 %}
+  {% set indent_border_color = "border-rose-300" %}
+  {% set entry_bg_class = "bg-rose-50" %}
+{% else %}
+  {% set indent_border_color = "border-violet-300" %}
+  {% set entry_bg_class = "bg-violet-50" %}
+{% endif %}
+{% set group_container_class = "border-l-2 " ~ indent_border_color ~ " " ~ entry_bg_class ~ " pl-3 pr-0 pt-2 pb-0" %}
+{% set array_entry_class = group_container_class %}
+{% set current_value = data.get(field.key) if data else None %}
+
+{% if field.type == "group" %}
+  {{ render_group(field, form_name, current_value, inactive, depth, index_token, group_container_class, array_entry_class, render_form_field) }}
+{% elif field.type == "calculated" %}
+  {{ render_calculated(field, form_name, current_value) }}
+{% elif field.type == "enum" %}
+  {{ render_enum(field, form_name, current_value, inactive) }}
+{% elif field.type == "master" %}
+  {{ render_master(field, form_name, current_value, inactive, group_container_class) }}
+{% elif field.type == "boolean" %}
+  {{ render_boolean(field, form_name, current_value, inactive) }}
+{% elif field.type == "file" %}
+  {{ render_file(field, form_name, current_value, inactive, file_accept) }}
+{% elif field.type == "number" %}
+  {{ render_number(field, form_name, current_value, inactive) }}
+{% elif field.type == "integer" %}
+  {{ render_integer(field, form_name, current_value, inactive) }}
+{% elif field.type in ["datetime", "date", "time"] %}
+  {{ render_datetime(field, form_name, current_value, inactive, picker) }}
+{% else %}
+  {{ render_string(field, form_name, current_value, inactive) }}
+{% endif %}
+{% endmacro %}

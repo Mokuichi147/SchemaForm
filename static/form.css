@@ -1,0 +1,55 @@
+.array-group-entry {
+  will-change: transform, opacity;
+}
+
+.array-group-entry .sf-field-input-col {
+  padding-right: 0.5rem;
+}
+
+.group-page-dot {
+  height: 0.5rem;
+  width: 0.5rem;
+  border-radius: 9999px;
+  border: 1px solid rgb(148 163 184);
+  background-color: rgb(226 232 240);
+  transition: transform 150ms ease, background-color 150ms ease, border-color 150ms ease;
+}
+
+.group-page-dot:hover:not(:disabled) {
+  transform: scale(1.15);
+  border-color: rgb(71 85 105);
+}
+
+.group-page-dot.is-active {
+  border-color: rgb(71 85 105);
+  background-color: rgb(71 85 105);
+}
+
+.group-page-dot:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.add-group-item.sf-button-pop {
+  animation: sf-button-pop 180ms ease-out;
+}
+
+@keyframes sf-button-pop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+@media (min-width: 1024px) {
+  .sf-field-input-col {
+    min-width: 0;
+  }
+}
+
+/* iOS Safari の自動ズーム抑止: 入力文字サイズを 16px 以上にする */
+@supports (-webkit-touch-callout: none) {
+  .sf-choice-search {
+    font-size: 16px;
+    line-height: 1.4;
+  }
+}

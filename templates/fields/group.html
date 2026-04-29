@@ -1,0 +1,48 @@
+{% from "fields/_layout.html" import group_row %}
+
+{# 通常グループ + 配列グループ。
+   render_field は再帰呼び出しのために dispatcher の render_form_field を渡してもらう。 #}
+{% macro render_group(field, form_name, current_value, inactive, depth, index_token, group_container_class, array_entry_class, render_field) %}
+{% if field.is_array %}
+  {% set items = current_value if (current_value is iterable and current_value is not string and current_value is not mapping) else [] %}
+  {% call group_row(field) %}
+    <div class="array-group mt-2" data-prefix="{{ form_name }}" data-index-token="{{ index_token }}" data-initial-items="{{ items | tojson_attr }}">
+      <div data-role="group-dots" class="group-dot-list mb-2 flex min-h-[0.75rem] items-center gap-1.5"></div>
+      <div class="array-group-items"></div>
+      <div class="mt-2 space-y-1">
+        <div class="flex items-center gap-2">
+          <div class="flex flex-nowrap items-center gap-1.5">
+            <button type="button" class="group-prev rounded border border-slate-300 px-2 py-1 text-xs" {% if inactive %}disabled{% endif %}>前へ</button>
+            <span data-role="group-pagination" aria-live="polite" class="min-w-[2.5rem] text-center text-xs font-medium tabular-nums text-slate-600" title="0件目 / 全0件" aria-label="0件目 / 全0件">0/0</span>
+            <button type="button" class="group-next rounded border border-slate-300 px-2 py-1 text-xs" {% if inactive %}disabled{% endif %}>次へ</button>
+          </div>
+          <div class="ml-auto flex flex-nowrap items-center gap-1.5">
+            <button type="button" class="add-group-item rounded border border-slate-300 px-2 py-1 text-xs" {% if inactive %}disabled{% endif %}>追加</button>
+            <button type="button" class="remove-group-item-current whitespace-nowrap rounded border border-rose-300 px-2 py-1 text-xs text-rose-600" {% if inactive %}disabled{% endif %}>削除</button>
+          </div>
+        </div>
+      </div>
+      <template>
+        <div class="array-group-entry {{ array_entry_class }}">
+          <div class="space-y-2">
+            {% for child in field.children %}
+            {{ render_field(child, form_name ~ "." ~ index_token ~ ".", None, inactive, depth + 1) }}
+            {% endfor %}
+          </div>
+        </div>
+      </template>
+    </div>
+  {% endcall %}
+{% else %}
+  {% set group_data = current_value if current_value is mapping else {} %}
+  {% call group_row(field) %}
+    <div class="mt-2 {{ group_container_class }}">
+      <div class="space-y-3">
+        {% for child in field.children %}
+        {{ render_field(child, form_name ~ ".", group_data, inactive, depth + 1) }}
+        {% endfor %}
+      </div>
+    </div>
+  {% endcall %}
+{% endif %}
+{% endmacro %}

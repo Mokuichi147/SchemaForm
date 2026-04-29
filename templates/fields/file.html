@@ -1,0 +1,26 @@
+{% from "fields/_layout.html" import field_row %}
+{% from "_file_preview.html" import file_value as render_file_value %}
+
+{% macro render_file(field, form_name, current_value, inactive, file_accept) %}
+{% set fw = "max-w-md" %}
+{% call field_row(field) %}
+  {% if field.is_array %}
+    {% set arr_values = current_value if (current_value is iterable and current_value is not string and current_value is not mapping) else [] %}
+    <div class="mt-1 w-full {{ fw }} lg:mt-0">
+      {% if arr_values %}
+      <div class="mb-2 text-xs text-slate-500">現在のファイル: {{ arr_values | length }}件 (新しいファイルを選択すると置き換えます)</div>
+      <div class="mb-2">{{ render_file_value(arr_values, file_infos | default({})) }}</div>
+      {% endif %}
+      <input type="file" name="{{ form_name }}" multiple class="w-full rounded border border-slate-300 px-2 py-2" {% if file_accept %}accept="{{ file_accept }}"{% endif %} {% if inactive %}disabled{% endif %} />
+    </div>
+  {% else %}
+    <div class="mt-1 w-full {{ fw }} lg:mt-0">
+      {% if current_value %}
+      <div class="mb-2 text-xs text-slate-500">現在のファイルあり (新しいファイルを選択すると置き換えます)</div>
+      <div class="mb-2">{{ render_file_value(current_value, file_infos | default({})) }}</div>
+      {% endif %}
+      <input type="file" name="{{ form_name }}" class="w-full rounded border border-slate-300 px-2 py-2" {% if file_accept %}accept="{{ file_accept }}"{% endif %} {% if field.required and not current_value %}required{% endif %} {% if inactive %}disabled{% endif %} />
+    </div>
+  {% endif %}
+{% endcall %}
+{% endmacro %}
