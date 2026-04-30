@@ -124,10 +124,14 @@ class JSONFormRepo(JSONRepoBase):
             "publish_group_ids": _normalize_group_ids(
                 record.get("publish_group_ids")
             ),
-            "allow_view_others": bool(record.get("allow_view_others", True)),
-            "allow_edit_submissions": bool(
-                record.get("allow_edit_submissions", True)
+            "allow_view_others": bool(record.get("allow_view_others", False)),
+            "disallow_edit_submissions": bool(
+                record.get(
+                    "disallow_edit_submissions",
+                    not record.get("allow_edit_submissions", True),
+                )
             ),
+            "allow_anonymous": bool(record.get("allow_anonymous", False)),
             "created_at": parse_dt(record.get("created_at")),
             "updated_at": parse_dt(record.get("updated_at")),
         }

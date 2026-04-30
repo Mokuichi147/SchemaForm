@@ -73,8 +73,9 @@ async def public_form(request: Request, public_id: str) -> HTMLResponse:
     if not form:
         raise HTTPException(status_code=404, detail="フォームが見つかりません")
     publish_ids = form.get("publish_group_ids") or []
+    allow_anonymous = form.get("allow_anonymous", False)
     current_user = getattr(request.state, "current_user", None)
-    if publish_ids and current_user is None:
+    if (publish_ids or not allow_anonymous) and current_user is None:
         await request.app.state.auth_provider.require_login(request)
     if not can_view_form(request, form):
         raise HTTPException(status_code=403, detail="このフォームを閲覧する権限がありません")
@@ -108,8 +109,9 @@ async def submit_form(request: Request, public_id: str) -> HTMLResponse:
     if not form:
         raise HTTPException(status_code=404, detail="フォームが見つかりません")
     publish_ids = form.get("publish_group_ids") or []
+    allow_anonymous = form.get("allow_anonymous", False)
     current_user = getattr(request.state, "current_user", None)
-    if publish_ids and current_user is None:
+    if (publish_ids or not allow_anonymous) and current_user is None:
         await request.app.state.auth_provider.require_login(request)
     if not can_view_form(request, form):
         raise HTTPException(status_code=403, detail="このフォームを送信する権限がありません")

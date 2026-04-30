@@ -45,7 +45,7 @@ def _check_submission_editable(
     """フォームの設定で送信内容変更が無効化されている場合は 403。管理者は許可。"""
     if current_user and current_user.get("is_admin"):
         return
-    if not form.get("allow_edit_submissions", True):
+    if form.get("disallow_edit_submissions", False):
         raise HTTPException(
             status_code=403, detail="このフォームでは送信内容の変更は許可されていません"
         )
@@ -192,7 +192,7 @@ async def list_submissions(request: Request, form_id: str) -> HTMLResponse:
 
     total_pages = max(1, (total + page_size - 1) // page_size)
 
-    allow_edit = form.get("allow_edit_submissions", True)
+    allow_edit = not form.get("disallow_edit_submissions", False)
     for row in display_rows:
         owner_id = row.get("user_id")
         if current_user is None:

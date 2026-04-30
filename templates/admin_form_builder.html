@@ -102,20 +102,38 @@
   <div class="py-2 lg:py-3">
     <div class="sf-field-row lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
       <div class="lg:col-span-3">
-        <label class="block text-sm font-semibold leading-6">公開先グループ</label>
-        <div class="mt-0.5 break-words text-xs leading-relaxed text-slate-500">未選択の場合は全体公開（ログイン不要のユーザーも含む）。選択したグループのメンバーのみが入力ページと送信一覧を閲覧できます。</div>
+        <label class="block text-sm font-semibold leading-6">公開先</label>
+        <div class="mt-0.5 break-words text-xs leading-relaxed text-slate-500">未選択の場合はログイン済みの全ユーザーに公開。グループを選択するとそのメンバーのみ閲覧可能。「未ログイン」を選択するとログインしていないユーザーも閲覧・送信できます。</div>
       </div>
       <div class="sf-field-input-col lg:col-span-9">
-        {% if all_groups %}
-        <select name="publish_group_ids" multiple size="{{ [all_groups | length, 6] | min }}" class="mt-1 w-full max-w-sm rounded border border-slate-300 px-2 py-2 text-sm lg:mt-0">
+        <select name="publish_group_ids" multiple size="{{ [(all_groups | length) + 1, 6] | min }}" class="mt-1 w-full max-w-sm rounded border border-slate-300 px-2 py-2 text-sm lg:mt-0">
+          <option value="anonymous" {% if form and form.allow_anonymous %}selected{% endif %}>未ログイン</option>
           {% for g in all_groups %}
           <option value="{{ g.id }}" {% if g.id in _publish_ids %}selected{% endif %}>{{ g.name }}</option>
           {% endfor %}
         </select>
         <p class="mt-1 text-xs text-slate-500">Ctrl（Mac は ⌘）+ クリックで複数選択できます。</p>
-        {% else %}
-        <div class="mt-1 w-full max-w-sm rounded-md bg-slate-100/70 px-3 py-2 text-sm leading-relaxed text-slate-700 lg:mt-0">利用可能なグループがありません（全体公開になります）。</div>
-        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="py-2 lg:py-3">
+    <div class="sf-field-row lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
+      <div class="lg:col-span-3">
+        <label class="block text-sm font-semibold leading-6">送信内容の権限</label>
+        <div class="mt-0.5 break-words text-xs leading-relaxed text-slate-500">管理者には影響しません。</div>
+      </div>
+      <div class="sf-field-input-col lg:col-span-9">
+        <div class="flex flex-col gap-2">
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="allow_view_others" {% if form and form.allow_view_others %}checked{% endif %} />
+            他のユーザーの送信内容を閲覧可能にする
+          </label>
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="disallow_edit_submissions" {% if form and form.disallow_edit_submissions %}checked{% endif %} />
+            一度送信した内容を変更不可にする
+          </label>
+        </div>
       </div>
     </div>
   </div>
@@ -135,18 +153,6 @@
   <details class="mt-6 rounded border border-slate-200">
     <summary class="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">高度な設定</summary>
     <div class="space-y-4 border-t border-slate-200 px-4 py-4">
-      <div class="text-sm font-semibold text-slate-600">送信内容の権限</div>
-      <p class="text-xs text-slate-500">管理者には影響しません。</p>
-      <div class="flex flex-col gap-2">
-        <label class="flex items-center gap-2 text-sm">
-          <input type="checkbox" name="allow_view_others" {% if not form or form.allow_view_others %}checked{% endif %} />
-          他のユーザーの送信内容を閲覧可能にする
-        </label>
-        <label class="flex items-center gap-2 text-sm">
-          <input type="checkbox" name="allow_edit_submissions" {% if not form or form.allow_edit_submissions %}checked{% endif %} />
-          自身の送信内容の変更（編集・削除）を許可する
-        </label>
-      </div>
       <div class="text-sm font-semibold text-slate-600">Webhook設定</div>
       <div class="grid gap-4 md:grid-cols-2">
         <div>

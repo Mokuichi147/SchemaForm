@@ -68,10 +68,11 @@ class SQLiteFormRepo:
                 publish_group_ids=dumps_json(
                     _normalize_group_ids(form.get("publish_group_ids"))
                 ),
-                allow_view_others=1 if form.get("allow_view_others", True) else 0,
-                allow_edit_submissions=1
-                if form.get("allow_edit_submissions", True)
+                allow_view_others=1 if form.get("allow_view_others", False) else 0,
+                disallow_edit_submissions=1
+                if form.get("disallow_edit_submissions", False)
                 else 0,
+                allow_anonymous=1 if form.get("allow_anonymous", False) else 0,
                 created_at=form["created_at"],
                 updated_at=form["updated_at"],
             )
@@ -91,7 +92,8 @@ class SQLiteFormRepo:
                     "webhook_on_delete",
                     "webhook_on_edit",
                     "allow_view_others",
-                    "allow_edit_submissions",
+                    "disallow_edit_submissions",
+                    "allow_anonymous",
                 }:
                     setattr(row, key, 1 if value else 0)
                 elif key == "publish_group_ids":
@@ -137,12 +139,15 @@ class SQLiteFormRepo:
                 loads_json(row.publish_group_ids) if row.publish_group_ids else []
             ),
             "allow_view_others": bool(
-                row.allow_view_others if row.allow_view_others is not None else 1
+                row.allow_view_others if row.allow_view_others is not None else 0
             ),
-            "allow_edit_submissions": bool(
-                row.allow_edit_submissions
-                if row.allow_edit_submissions is not None
-                else 1
+            "disallow_edit_submissions": bool(
+                row.disallow_edit_submissions
+                if row.disallow_edit_submissions is not None
+                else 0
+            ),
+            "allow_anonymous": bool(
+                row.allow_anonymous if row.allow_anonymous is not None else 0
             ),
             "created_at": row.created_at,
             "updated_at": row.updated_at,
@@ -326,13 +331,35 @@ class SQLiteStorage:
             if "allow_view_others" not in form_columns:
                 conn.execute(
                     text(
-                        "ALTER TABLE forms ADD COLUMN allow_view_others INTEGER DEFAULT 1"
+                        "ALTER TABLE forms ADD COLUMN allow_view_others INTEGER DEFAULT 0"
                     )
                 )
-            if "allow_edit_submissions" not in form_columns:
+            if "disallow_edit_submissions" not in form_columns:
                 conn.execute(
                     text(
-                        "ALTER TABLE forms ADD COLUMN allow_edit_submissions INTEGER DEFAULT 1"
+                        "ALTER TABLE forms ADD COLUMN disallow_edit_submissions INTEGER DEFAULT 0"
+                    )
+                )
+                if "allow_edit_submissions" in form_columns:
+                    conn.execute(
+                        text(
+                            "UPDATE forms SET disallow_edit_submissions = "
+                            "CASE WHEN COALESCE(allow_edit_submissions, 1) = 0 "
+                            "THEN 1 ELSE 0 END"
+                        )
+                    )
+                    try:
+                        conn.execute(
+                            text(
+                                "ALTER TABLE forms DROP COLUMN allow_edit_submissions"
+                            )
+                        )
+                    except Exception:
+                        pass
+            if "allow_anonymous" not in form_columns:
+                conn.execute(
+                    text(
+                        "ALTER TABLE forms ADD COLUMN allow_anonymous INTEGER DEFAULT 0"
                     )
                 )
             result = conn.execute(text("PRAGMA table_info(submissions)"))

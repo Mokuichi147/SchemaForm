@@ -50,13 +50,17 @@ async def _list_all_groups(request: Request) -> list[dict[str, Any]]:
 
 def _parse_publish_group_ids(
     raw_values: list[str], all_group_ids: set[int]
-) -> tuple[list[int], list[str]]:
+) -> tuple[list[int], bool, list[str]]:
     errors: list[str] = []
     result: list[int] = []
     seen: set[int] = set()
+    allow_anonymous = False
     for raw in raw_values:
         s = str(raw or "").strip()
         if not s:
+            continue
+        if s == "anonymous":
+            allow_anonymous = True
             continue
         try:
             gid = int(s)
@@ -69,7 +73,7 @@ def _parse_publish_group_ids(
             continue
         seen.add(gid)
         result.append(gid)
-    return sorted(result), errors
+    return sorted(result), allow_anonymous, errors
 
 
 async def _available_creator_groups(request: Request) -> list[dict[str, Any]]:
@@ -214,7 +218,7 @@ async def create_form(request: Request, _: Any = Depends(form_creator_guard)) ->
     master_forms, master_field_catalog = build_master_field_catalog(storage)
     available_groups = await _available_creator_groups(request)
     all_groups = await _list_all_groups(request)
-    publish_group_ids, publish_errors = _parse_publish_group_ids(
+    publish_group_ids, allow_anonymous, publish_errors = _parse_publish_group_ids(
         form_data.getlist("publish_group_ids"),
         {g["id"] for g in all_groups},
     )
@@ -247,6 +251,7 @@ async def create_form(request: Request, _: Any = Depends(form_creator_guard)) ->
         if creator_group_id is not None:
             base["creator_group_id"] = creator_group_id
         base["publish_group_ids"] = publish_group_ids
+        base["allow_anonymous"] = allow_anonymous
         return templates.TemplateResponse(
             "admin_form_builder.html",
             {
@@ -277,7 +282,7 @@ async def create_form(request: Request, _: Any = Depends(form_creator_guard)) ->
     webhook_on_delete = bool(form_data.get("webhook_on_delete"))
     webhook_on_edit = bool(form_data.get("webhook_on_edit"))
     allow_view_others = bool(form_data.get("allow_view_others"))
-    allow_edit_submissions = bool(form_data.get("allow_edit_submissions"))
+    disallow_edit_submissions = bool(form_data.get("disallow_edit_submissions"))
     storage.forms.create_form(
         {
             "id": form_id,
@@ -294,7 +299,8 @@ async def create_form(request: Request, _: Any = Depends(form_creator_guard)) ->
             "creator_group_id": creator_group_id,
             "publish_group_ids": publish_group_ids,
             "allow_view_others": allow_view_others,
-            "allow_edit_submissions": allow_edit_submissions,
+            "disallow_edit_submissions": disallow_edit_submissions,
+            "allow_anonymous": allow_anonymous,
             "created_at": now,
             "updated_at": now,
         }
@@ -356,7 +362,7 @@ async def update_form(
     )
     available_groups = await _available_creator_groups(request)
     all_groups = await _list_all_groups(request)
-    publish_group_ids, publish_errors = _parse_publish_group_ids(
+    publish_group_ids, allow_anonymous, publish_errors = _parse_publish_group_ids(
         form_data.getlist("publish_group_ids"),
         {g["id"] for g in all_groups},
     )
@@ -387,6 +393,7 @@ async def update_form(
         base = {**form, "name": name, "description": description}
         base["creator_group_id"] = creator_group_id
         base["publish_group_ids"] = publish_group_ids
+        base["allow_anonymous"] = allow_anonymous
         if form_extra:
             base.update(form_extra)
         return templates.TemplateResponse(
@@ -416,7 +423,7 @@ async def update_form(
     webhook_on_delete = bool(form_data.get("webhook_on_delete"))
     webhook_on_edit = bool(form_data.get("webhook_on_edit"))
     allow_view_others = bool(form_data.get("allow_view_others"))
-    allow_edit_submissions = bool(form_data.get("allow_edit_submissions"))
+    disallow_edit_submissions = bool(form_data.get("disallow_edit_submissions"))
     updates = {
         "name": name,
         "description": description,
@@ -427,7 +434,8 @@ async def update_form(
         "webhook_on_delete": webhook_on_delete,
         "webhook_on_edit": webhook_on_edit,
         "allow_view_others": allow_view_others,
-        "allow_edit_submissions": allow_edit_submissions,
+        "disallow_edit_submissions": disallow_edit_submissions,
+        "allow_anonymous": allow_anonymous,
         "publish_group_ids": publish_group_ids,
         "updated_at": now_utc(),
     }
