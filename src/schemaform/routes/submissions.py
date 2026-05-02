@@ -3,7 +3,10 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
+from datetime import datetime
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
@@ -719,11 +722,20 @@ async def export_submissions(
     writer.writerows(rows)
 
     content_type = "text/csv" if fmt == "csv" else "text/tab-separated-values"
-    filename = f"submissions.{fmt}"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    raw_name = (form.get("name") or "submissions").strip() or "submissions"
+    safe_name = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "_", raw_name)
+    filename = f"{safe_name}_{timestamp}.{fmt}"
+    ascii_fallback = re.sub(r"[^A-Za-z0-9._-]+", "_", filename) or f"submissions.{fmt}"
     return PlainTextResponse(
         output.getvalue(),
         media_type=content_type,
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={
+            "Content-Disposition": (
+                f"attachment; filename=\"{ascii_fallback}\"; "
+                f"filename*=UTF-8''{quote(filename)}"
+            )
+        },
     )
 
 
