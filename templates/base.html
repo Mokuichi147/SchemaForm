@@ -2,7 +2,7 @@
 <html lang="ja">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <title>{{ title or "SchemaForm" }}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
@@ -67,6 +67,16 @@
       table th,
       table td {
         white-space: nowrap;
+      }
+
+      /* iOS Safari は font-size が 16px 未満の入力欄をフォーカス時にズームしてしまうため、
+         タッチデバイスでは入力系要素の最小フォントサイズを 16px に固定する。 */
+      @media (hover: none) and (pointer: coarse) {
+        input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+        select,
+        textarea {
+          font-size: 16px;
+        }
       }
     </style>
   </head>
