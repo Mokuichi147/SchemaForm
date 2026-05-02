@@ -190,6 +190,15 @@ def sort_submissions(
         )
         return
 
+    if sort == "username":
+        submissions.sort(
+            key=lambda s: (
+                s.get("_display_username") or s.get("username") or ""
+            ).lower(),
+            reverse=reverse,
+        )
+        return
+
     if sort.isdigit():
         col_idx = int(sort)
         if 0 <= col_idx < len(display_columns):
@@ -360,6 +369,29 @@ async def list_submissions(
         expanded_submissions, fields, dict(request.query_params), file_names=file_names
     )
 
+    user_display_map: dict[int, str] = {}
+    auth = request.app.state.auth_provider
+    current_user = getattr(request.state, "current_user", None)
+    list_users = getattr(auth, "list_users", None)
+    if list_users is not None:
+        try:
+            users = await list_users((current_user or {}).get("token", ""))
+        except Exception:
+            users = []
+        for u in users:
+            uid = u.get("id")
+            if uid is not None:
+                user_display_map[uid] = u.get("display_name") or u.get("username") or ""
+
+    def _resolve_user_label(item: dict[str, Any]) -> str:
+        uid = item.get("user_id")
+        if uid in user_display_map and user_display_map[uid]:
+            return user_display_map[uid]
+        return item.get("username") or ""
+
+    for item in filtered:
+        item["_display_username"] = _resolve_user_label(item)
+
     sort = request.query_params.get("sort", "created_at")
     order = request.query_params.get("order", "desc")
     sort_submissions(filtered, sort, order, display_columns, master_lookup_by_field)
@@ -398,6 +430,7 @@ async def list_submissions(
                 "id": item["id"],
                 "created_at": item["created_at"],
                 "updated_at": item.get("updated_at"),
+                "username": item.get("_display_username") or "",
                 "values": row_values,
                 "raw_values": raw_values,
             }
@@ -698,13 +731,45 @@ async def export_submissions(
         storage, fields
     )
 
+    user_display_map: dict[int, str] = {}
+    auth = request.app.state.auth_provider
+    current_user = getattr(request.state, "current_user", None)
+    list_users = getattr(auth, "list_users", None)
+    if list_users is not None:
+        try:
+            users = await list_users((current_user or {}).get("token", ""))
+        except Exception:
+            users = []
+        for u in users:
+            uid = u.get("id")
+            if uid is not None:
+                user_display_map[uid] = u.get("display_name") or u.get("username") or ""
+
+    for item in filtered:
+        uid = item.get("user_id")
+        item["_display_username"] = (
+            user_display_map.get(uid) if uid in user_display_map else None
+        ) or item.get("username") or ""
+
     sort = request.query_params.get("sort", "created_at")
     order = request.query_params.get("order", "desc")
     sort_submissions(filtered, sort, order, display_columns, master_lookup_by_field)
 
-    headers = [column["label"] for column in display_columns]
+    def _fmt(value: Any) -> str:
+        if isinstance(value, datetime):
+            return value.astimezone().strftime("%Y-%m-%d %H:%M")
+        return str(value or "")
+
+    headers = ["送信日時", "更新日時", "送信ユーザー"] + [
+        column["label"] for column in display_columns
+    ]
     rows = [
-        build_submission_row_values(
+        [
+            _fmt(submission.get("created_at")),
+            _fmt(submission.get("updated_at")),
+            submission.get("_display_username") or "",
+        ]
+        + build_submission_row_values(
             submission.get("data_json", {}),
             display_columns,
             master_lookup_by_field,

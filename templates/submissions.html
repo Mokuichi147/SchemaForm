@@ -130,6 +130,16 @@
             {% endif %}
           </a>
         </th>
+        <th class="px-4 py-3">
+          <a href="?{{ build_query(query, sort='username', order=('desc' if sort == 'username' and order == 'asc' else 'asc'), page=1) }}" class="group inline-flex items-center gap-1">
+            送信ユーザー
+            {% if sort == 'username' %}
+            <span class="text-slate-400">{{ '▲' if order == 'asc' else '▼' }}</span>
+            {% else %}
+            <span class="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity">▲</span>
+            {% endif %}
+          </a>
+        </th>
         {% for column in display_columns %}
         <th class="px-4 py-3">
           <a href="?{{ build_query(query, sort=loop.index0|string, order=('desc' if sort == loop.index0|string and order == 'asc' else 'asc'), page=1) }}" class="group inline-flex items-center gap-1">
@@ -158,6 +168,7 @@
           -
           {% endif %}
         </td>
+        <td class="px-4 py-3 text-slate-600">{{ row.username or '-' }}</td>
         {% for value in row["values"] %}
         {% set column = display_columns[loop.index0] %}
         {% set raw_value = row.raw_values[loop.index0] if row.raw_values is defined else none %}
@@ -209,7 +220,7 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="{{ display_columns | length + 3 }}" class="px-4 py-6 text-center text-slate-500">該当データがありません。</td>
+        <td colspan="{{ display_columns | length + 4 }}" class="px-4 py-6 text-center text-slate-500">該当データがありません。</td>
       </tr>
       {% endfor %}
     </tbody>
