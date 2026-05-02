@@ -114,7 +114,7 @@ def parse_fields_json(fields_json: str) -> tuple[list[dict[str, Any]], list[str]
 
             unique_items = (
                 bool(raw.get("unique_items"))
-                if field_type == "enum" and is_array
+                if field_type in {"enum", "master"} and is_array
                 else False
             )
 
@@ -239,7 +239,7 @@ def build_property(field: dict[str, Any]) -> dict[str, Any]:
     elif field["is_array"]:
         item_type = field.get("items_type") or "string"
         prop = {"type": "array", "items": build_item(item_type)}
-        if item_type == "enum" and field.get("unique_items"):
+        if item_type in {"enum", "master"} and field.get("unique_items"):
             prop["uniqueItems"] = True
     else:
         prop = build_item(field["type"])

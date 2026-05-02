@@ -822,7 +822,7 @@
     const showExpandRows = isGroup && isArray;
     row.querySelector('[data-role="enum"]').classList.toggle("hidden", !showEnum);
     const uniqueItemsLabel = row.querySelector('[data-role="unique-items"]');
-    const showUniqueItems = showEnum && isArray;
+    const showUniqueItems = (showEnum || showMasterConfig) && isArray;
     uniqueItemsLabel.classList.toggle("hidden", !showUniqueItems);
     uniqueItemsLabel.classList.toggle("flex", showUniqueItems);
     if (!showUniqueItems) {
@@ -895,7 +895,7 @@
       description: get("description").value.trim(),
       placeholder: get("placeholder").value.trim(),
       enum: enumValues,
-      unique_items: type === "enum" && isArray ? get("unique_items").checked : false,
+      unique_items: (type === "enum" || type === "master") && isArray ? get("unique_items").checked : false,
       min: get("min").value.trim(),
       max: get("max").value.trim(),
       format: get("format").value,
