@@ -106,13 +106,25 @@
         <div class="mt-0.5 break-words text-xs leading-relaxed text-slate-500">未選択の場合はログイン済みの全ユーザーに公開。グループを選択するとそのメンバーのみ閲覧可能。「未ログイン」を選択するとログインしていないユーザーも閲覧・送信できます。</div>
       </div>
       <div class="sf-field-input-col lg:col-span-9">
-        <select name="publish_group_ids" multiple size="{{ [(all_groups | length) + 1, 6] | min }}" class="mt-1 w-full max-w-sm rounded border border-slate-300 px-2 py-2 text-sm lg:mt-0">
-          <option value="anonymous" {% if form and form.allow_anonymous %}selected{% endif %}>未ログイン</option>
-          {% for g in all_groups %}
-          <option value="{{ g.id }}" {% if g.id in _publish_ids %}selected{% endif %}>{{ g.name }}</option>
-          {% endfor %}
-        </select>
-        <p class="mt-1 text-xs text-slate-500">Ctrl（Mac は ⌘）+ クリックで複数選択できます。</p>
+        {% set _initial_targets = (['anonymous'] if (form and form.allow_anonymous) else []) + _publish_ids %}
+        <div class="array-field mt-1 w-full max-w-sm lg:mt-0" data-key="publish_group_ids" data-type="enum" data-picker="" data-unique="1" data-initial="{{ _initial_targets | tojson_attr }}">
+          <div class="space-y-2 array-items"></div>
+          <button type="button" class="add-item mt-1 rounded border border-slate-300 px-3 py-1 text-xs">追加</button>
+          <template>
+            <div class="flex items-start gap-2 array-item">
+              <div class="w-full space-y-1">
+                <select name="publish_group_ids" data-choice-select="1" data-search-placeholder="公開先を検索" class="w-full rounded border border-slate-300 px-2 py-2 text-sm">
+                  <option value="">選択してください</option>
+                  <option value="anonymous">未ログイン</option>
+                  {% for g in all_groups %}
+                  <option value="{{ g.id }}">{{ g.name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <button type="button" class="remove-item shrink-0 whitespace-nowrap rounded border border-rose-300 px-2 py-1 text-xs text-rose-600">削除</button>
+            </div>
+          </template>
+        </div>
       </div>
     </div>
   </div>
@@ -373,6 +385,7 @@
   </div>
 </div>
 
+<script src="{{ static_url('form.js') }}"></script>
 <script id="fields-data" type="application/json">{{ fields_json | safe }}</script>
 <script id="master-forms-data" type="application/json">{{ master_forms_json | default('[]') | safe }}</script>
 <script id="master-fields-data" type="application/json">{{ master_field_catalog_json | default('{}') | safe }}</script>
