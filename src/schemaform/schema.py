@@ -112,6 +112,12 @@ def parse_fields_json(fields_json: str) -> tuple[list[dict[str, Any]], list[str]
             if (field_type == "enum" or items_type == "enum") and not enum_values:
                 errors.append(f"{loc}: enumは値を指定してください")
 
+            unique_items = (
+                bool(raw.get("unique_items"))
+                if field_type == "enum" and is_array
+                else False
+            )
+
             min_raw = str(raw.get("min", "")).strip()
             max_raw = str(raw.get("max", "")).strip()
             min_value = float(min_raw) if min_raw else None
@@ -126,6 +132,7 @@ def parse_fields_json(fields_json: str) -> tuple[list[dict[str, Any]], list[str]
                     "description": str(raw.get("description", "")).strip(),
                     "placeholder": str(raw.get("placeholder", "")).strip(),
                     "enum": enum_values,
+                    "unique_items": unique_items,
                     "min": min_value,
                     "max": max_value,
                     "format": format_value,
@@ -232,6 +239,8 @@ def build_property(field: dict[str, Any]) -> dict[str, Any]:
     elif field["is_array"]:
         item_type = field.get("items_type") or "string"
         prop = {"type": "array", "items": build_item(item_type)}
+        if item_type == "enum" and field.get("unique_items"):
+            prop["uniqueItems"] = True
     else:
         prop = build_item(field["type"])
 
@@ -329,6 +338,7 @@ def fields_from_schema(schema: dict[str, Any], field_order: list[str]) -> list[d
                     "description": prop.get("description", ""),
                     "placeholder": "",
                     "enum": [],
+                    "unique_items": False,
                     "min": None,
                     "max": None,
                     "format": "",
@@ -371,6 +381,7 @@ def fields_from_schema(schema: dict[str, Any], field_order: list[str]) -> list[d
                 "description": prop.get("description", ""),
                 "placeholder": prop.get("x-placeholder", ""),
                 "enum": target.get("enum", []),
+                "unique_items": bool(prop.get("uniqueItems")) if is_array else False,
                 "min": target.get("minimum"),
                 "max": target.get("maximum"),
                 "format": (

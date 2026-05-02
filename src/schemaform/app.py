@@ -256,7 +256,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         name="static",
     )
 
+    def static_url(path: str) -> str:
+        clean = path.lstrip("/")
+        file_path = BASE_DIR / "static" / clean
+        try:
+            version = int(file_path.stat().st_mtime)
+        except OSError:
+            version = 0
+        return f"/static/{clean}?v={version}"
+
     templates.env.filters["tojson_attr"] = _tojson_attr
+    templates.env.globals["static_url"] = static_url
     templates.env.globals["field_input_type"] = field_input_type
     templates.env.globals["field_picker"] = field_picker
     templates.env.globals["field_file_accept"] = field_file_accept

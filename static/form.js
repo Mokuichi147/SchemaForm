@@ -132,15 +132,17 @@
     return option;
   }
 
-  function applyChoiceFilter(select, searchInput) {
+  function applyChoiceFilter(select, searchInput, excludedValues) {
     const allOptions = select._sfChoiceOptions || [];
     if (allOptions.length === 0) return;
     const query = (searchInput?.value || "").trim().toLowerCase();
     const selectedValue = select.value;
+    const excluded = excludedValues || null;
     const filtered = allOptions.filter((meta) => {
       const isPlaceholder = meta.value === "";
       if (isPlaceholder) return true;
       if (selectedValue !== "" && meta.value === selectedValue) return true;
+      if (excluded && excluded.has(meta.value)) return false;
       if (!query) return true;
       return meta.text.toLowerCase().includes(query);
     });
@@ -344,6 +346,7 @@
     const list = block.querySelector(".array-items");
     const addButton = block.querySelector(".add-item");
     const picker = block.dataset.picker;
+    const isUnique = block.dataset.unique === "1";
     let initialData = [];
     try { initialData = JSON.parse(block.dataset.initial || "[]"); } catch (_) { initialData = []; }
     if (!Array.isArray(initialData)) initialData = [];
@@ -365,9 +368,20 @@
         sharedSearch.disabled = addButton.disabled;
         block.insertBefore(sharedSearch, list);
         sharedSearch.addEventListener("input", () => {
-          list
-            .querySelectorAll("select[data-choice-select='1']")
-            .forEach((select) => applyChoiceFilter(select, sharedSearch));
+          const selects = Array.from(
+            list.querySelectorAll("select[data-choice-select='1']")
+          );
+          const taken = isUnique
+            ? new Set(selects.map((s) => s.value).filter((v) => v !== ""))
+            : null;
+          selects.forEach((select) => {
+            let excluded = null;
+            if (taken) {
+              excluded = new Set(taken);
+              if (select.value) excluded.delete(select.value);
+            }
+            applyChoiceFilter(select, sharedSearch, excluded);
+          });
         });
       }
     }
@@ -381,6 +395,20 @@
       addButton.disabled = hasUnselected;
       addButton.classList.toggle("opacity-50", hasUnselected);
       addButton.classList.toggle("cursor-not-allowed", hasUnselected);
+    }
+
+    function refreshUniqueOptions() {
+      if (!isUnique) return;
+      const selects = Array.from(list.querySelectorAll("select[data-choice-select='1']"));
+      const taken = new Set(
+        selects.map((s) => s.value).filter((v) => v !== "")
+      );
+      selects.forEach((select) => {
+        const own = select.value;
+        const excluded = new Set(taken);
+        if (own) excluded.delete(own);
+        applyChoiceFilter(select, sharedSearch, excluded);
+      });
     }
 
     if (addButton.disabled) {
@@ -408,11 +436,16 @@
         const input = node.querySelector("input[data-picker]");
         initPicker(input);
       }
-      if (sharedSearch) {
+      if (sharedSearch || isUnique) {
         node.querySelectorAll("select[data-choice-select='1']").forEach((select) => {
-          select._sfChoiceOptions = snapshotSelectOptions(select);
+          if (!select._sfChoiceOptions) {
+            select._sfChoiceOptions = snapshotSelectOptions(select);
+          }
           select.dataset.sfChoiceInit = "1";
-          select.addEventListener("change", updateAddButtonState);
+          select.addEventListener("change", () => {
+            updateAddButtonState();
+            refreshUniqueOptions();
+          });
         });
       }
       initChoiceSelectSearch(node);
@@ -424,7 +457,16 @@
           .querySelectorAll("select[data-choice-select='1']")
           .forEach((select) => applyChoiceFilter(select, sharedSearch));
       }
+      refreshUniqueOptions();
       updateAddButtonState();
+    }
+
+    if (isUnique) {
+      list.addEventListener("click", (event) => {
+        if (event.target.closest(".remove-item")) {
+          setTimeout(refreshUniqueOptions, 0);
+        }
+      });
     }
 
     addButton.addEventListener("click", () => {
