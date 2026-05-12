@@ -352,10 +352,15 @@
     if (!Array.isArray(initialData)) initialData = [];
     if (!template || !list || !addButton) return;
 
+    const templateSelect = template.content.querySelector("select[data-choice-select='1']");
+    if (templateSelect) {
+      initSelectBadgeArrayField(block, template, list, addButton, initialData);
+      return;
+    }
+
     // 配列要素ごとに検索欄が並ぶと画面を占有するため、配列内の選択フィールドは
     // ブロック上部の共有検索欄でまとめてフィルタリングする。
     let sharedSearch = null;
-    const templateSelect = template.content.querySelector("select[data-choice-select='1']");
     if (templateSelect) {
       const optionCount = Array.from(templateSelect.options).filter((o) => o.value !== "").length;
       if (optionCount >= CHOICE_SEARCH_THRESHOLD) {
@@ -479,6 +484,273 @@
     } else {
       addItem();
     }
+  }
+
+  function initSelectBadgeArrayField(block, template, list, addButton, initialData) {
+    const templateSelect = template.content.querySelector("select[data-choice-select='1']");
+    if (!templateSelect) return;
+    const name = templateSelect.name;
+    const isUnique = block.dataset.unique === "1";
+    const isDisabled = addButton.disabled || templateSelect.disabled;
+    const isMasterSelect = templateSelect.dataset.role === "master-select";
+    const allOptions = snapshotSelectOptions(templateSelect);
+    const selectableOptions = allOptions.filter((meta) => meta.value !== "");
+    const selectedValues = [];
+
+    list.className = isMasterSelect
+      ? "mt-2 space-y-2 array-items"
+      : "mt-2 flex flex-wrap gap-2 array-items";
+
+    const control = document.createElement("div");
+    control.className = "space-y-1";
+
+    const controlRow = document.createElement("div");
+    controlRow.className = "flex items-center gap-2";
+
+    const selectWrap = document.createElement("div");
+    const templateSelectWrapClass = templateSelect.parentElement?.className || "w-full";
+    selectWrap.className = templateSelectWrapClass;
+
+    let searchInput = null;
+    if (selectableOptions.length >= CHOICE_SEARCH_THRESHOLD) {
+      const searchWrap = document.createElement("div");
+      searchWrap.className = templateSelectWrapClass;
+      searchInput = document.createElement("input");
+      searchInput.type = "search";
+      searchInput.autocomplete = "off";
+      searchInput.spellcheck = false;
+      searchInput.placeholder = templateSelect.dataset.searchPlaceholder || "検索";
+      searchInput.className = "sf-choice-search w-full rounded border border-slate-300 px-2 py-1 text-sm";
+      searchInput.disabled = isDisabled;
+      searchWrap.appendChild(searchInput);
+      control.appendChild(searchWrap);
+    }
+
+    const select = templateSelect.cloneNode(true);
+    select.dataset.sfChoiceInit = "1";
+    select.value = "";
+    if (!select.querySelector("option[value='']")) {
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "選択してください";
+      select.prepend(placeholder);
+    }
+    selectWrap.appendChild(select);
+    controlRow.appendChild(selectWrap);
+
+    addButton.parentElement?.insertBefore(control, list);
+    control.appendChild(controlRow);
+    controlRow.appendChild(addButton);
+    addButton.classList.remove("py-1", "text-xs", "mt-1");
+    addButton.classList.add("shrink-0", "py-2", "text-sm", "self-center");
+
+    const currentPreview = document.createElement("div");
+    currentPreview.className = "hidden mt-2";
+    control.appendChild(currentPreview);
+
+    function selectedSet() {
+      return new Set(selectedValues.map((value) => String(value)));
+    }
+
+    function getOptionLabel(value) {
+      return selectableOptions.find((meta) => String(meta.value) === String(value))?.text || String(value);
+    }
+
+    function syncOptions() {
+      const selected = selectedSet();
+      const current = select.value;
+      const query = (searchInput?.value || "").trim().toLowerCase();
+      const options = allOptions.filter((meta) => {
+        if (meta.value === "") return true;
+        if (isUnique && selected.has(String(meta.value))) return false;
+        if (!query) return true;
+        return meta.text.toLowerCase().includes(query);
+      });
+      select.replaceChildren(...options.map((meta) => buildSelectOption(meta)));
+      if (current && (!isUnique || !selected.has(String(current)))) {
+        select.value = current;
+      } else {
+        select.value = "";
+      }
+      const hasOptions = options.some((meta) => meta.value !== "");
+      addButton.disabled = isDisabled || !select.value || !hasOptions;
+      addButton.classList.toggle("opacity-50", addButton.disabled);
+      addButton.classList.toggle("cursor-not-allowed", addButton.disabled);
+      select.disabled = isDisabled || !hasOptions;
+      renderCurrentPreview();
+    }
+
+    const masterDisplayItems = Array.from(
+      template.content.querySelectorAll("[data-role='master-display-row']")
+    ).map((row) => ({
+      key: row.dataset.masterDisplayKey || "",
+      type: row.dataset.masterDisplayType || "",
+      label: row.querySelector(".block")?.textContent?.trim() || "",
+    }));
+
+    function getOptionMeta(value) {
+      return selectableOptions.find((meta) => String(meta.value) === String(value)) || null;
+    }
+
+    function buildMasterDetails(value) {
+      const meta = getOptionMeta(value);
+      const displayMap = parseMasterDisplay(meta);
+      const detailRows = masterDisplayItems
+        .map((item) => ({ ...item, value: String(displayMap[item.key] ?? "").trim() }))
+        .filter((item) => item.value.length > 0);
+      if (detailRows.length === 0) return null;
+
+      const details = document.createElement("div");
+      details.className = "mt-1 grid gap-1";
+      detailRows.forEach((item) => {
+        const row = document.createElement("div");
+        row.className = "grid grid-cols-[minmax(5.5rem,8rem)_minmax(0,1fr)] items-start gap-2 text-xs";
+
+        const label = document.createElement("div");
+        label.className = "truncate font-semibold leading-6 text-slate-500";
+        label.textContent = item.label;
+        row.appendChild(label);
+
+        const valueEl = document.createElement("div");
+        valueEl.className = "min-w-0 rounded bg-slate-100/70 px-2 py-1 leading-relaxed text-slate-700 break-words";
+        renderMasterDisplayValue(valueEl, item.value, item.type);
+        row.appendChild(valueEl);
+
+        details.appendChild(row);
+      });
+      return details;
+    }
+
+    function buildMasterBadgeNode(value, includeHiddenInput) {
+      const node = document.createElement("div");
+      node.className = "array-item max-w-md rounded border border-slate-200 bg-white px-2 py-1.5";
+
+      if (includeHiddenInput) {
+        const hidden = document.createElement("input");
+        hidden.type = "hidden";
+        hidden.name = name;
+        hidden.value = String(value);
+        node.appendChild(hidden);
+      }
+
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "inline-flex max-w-full items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700 hover:border-rose-300 hover:text-rose-700 disabled:hover:border-slate-300 disabled:hover:text-slate-700";
+      item.dataset.value = String(value);
+      item.title = "クリックして削除";
+      item.disabled = isDisabled || !includeHiddenInput;
+
+      const label = document.createElement("span");
+      label.className = "truncate";
+      label.textContent = getOptionLabel(value);
+      item.appendChild(label);
+
+      const mark = document.createElement("span");
+      mark.setAttribute("aria-hidden", "true");
+      mark.textContent = "×";
+      item.appendChild(mark);
+
+      if (includeHiddenInput) {
+        item.addEventListener("click", () => {
+          if (isDisabled) return;
+          const index = selectedValues.findIndex((selected) => String(selected) === String(value));
+          if (index >= 0) {
+            selectedValues.splice(index, 1);
+            renderBadges();
+            syncOptions();
+          }
+        });
+      }
+
+      node.appendChild(item);
+      const details = buildMasterDetails(value);
+      if (details) {
+        node.appendChild(details);
+      }
+      return node;
+    }
+
+    function renderCurrentPreview() {
+      if (!isMasterSelect) return;
+      currentPreview.replaceChildren();
+      if (!select.value) {
+        currentPreview.classList.add("hidden");
+        return;
+      }
+      const node = buildMasterBadgeNode(select.value, false);
+      currentPreview.appendChild(node);
+      currentPreview.classList.remove("hidden");
+    }
+
+    function renderBadges() {
+      list.replaceChildren();
+      selectedValues.forEach((value) => {
+        if (isMasterSelect) {
+          list.appendChild(buildMasterBadgeNode(value, true));
+          return;
+        }
+
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "inline-flex max-w-full items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700 hover:border-rose-300 hover:text-rose-700 disabled:hover:border-slate-300 disabled:hover:text-slate-700";
+        item.dataset.value = String(value);
+        item.title = "クリックして削除";
+        item.disabled = isDisabled;
+
+        const label = document.createElement("span");
+        label.className = "truncate";
+        label.textContent = getOptionLabel(value);
+        item.appendChild(label);
+
+        const mark = document.createElement("span");
+        mark.setAttribute("aria-hidden", "true");
+        mark.textContent = "×";
+        item.appendChild(mark);
+
+        const hidden = document.createElement("input");
+        hidden.type = "hidden";
+        hidden.name = name;
+        hidden.value = String(value);
+        item.appendChild(hidden);
+
+        item.addEventListener("click", () => {
+          if (isDisabled) return;
+          const index = selectedValues.findIndex((selected) => String(selected) === String(value));
+          if (index >= 0) {
+            selectedValues.splice(index, 1);
+            renderBadges();
+            syncOptions();
+          }
+        });
+        list.appendChild(item);
+      });
+    }
+
+    function addSelectedValue(value) {
+      const stringValue = String(value || "");
+      if (!stringValue || (isUnique && selectedSet().has(stringValue))) return;
+      if (!selectableOptions.some((meta) => String(meta.value) === stringValue)) return;
+      selectedValues.push(stringValue);
+      renderBadges();
+      syncOptions();
+    }
+
+    select.addEventListener("change", () => {
+      syncOptions();
+    });
+    searchInput?.addEventListener("input", () => {
+      syncOptions();
+    });
+
+    addButton.addEventListener("click", () => {
+      if (addButton.disabled) return;
+      addSelectedValue(select.value);
+      select.value = "";
+      syncOptions();
+    });
+
+    initialData.forEach((value) => addSelectedValue(value));
+    syncOptions();
   }
 
   function initArrayGroupBlock(block) {
