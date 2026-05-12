@@ -18,6 +18,21 @@ from schemaform.webhook import is_valid_webhook_url
 router = APIRouter()
 
 
+def _normalize_group_options(groups: list[Any]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for g in groups:
+        if isinstance(g, dict):
+            group_id = g.get("id")
+            name = g.get("name")
+        else:
+            group_id = getattr(g, "id", None)
+            name = getattr(g, "name", None)
+        if group_id is None or name is None:
+            continue
+        result.append({"id": int(group_id), "name": str(name)})
+    return result
+
+
 async def admin_guard(request: Request) -> None:
     await request.app.state.auth_provider.require_admin(request)
 
@@ -36,31 +51,54 @@ async def _list_all_groups(request: Request) -> list[dict[str, Any]]:
     """認可済みユーザーで取得できる全グループ一覧（公開先選択用）。"""
     auth = request.app.state.auth_provider
     user = getattr(request.state, "current_user", None)
-    if user is None:
-        return []
     list_groups = getattr(auth, "list_groups", None)
-    if list_groups is None:
+    if list_groups is not None:
+        try:
+            groups = await list_groups(user.get("token", "") if user else "")
+        except Exception:
+            groups = []
+        if groups:
+            return _normalize_group_options(groups)
+
+    settings = getattr(request.app.state, "settings", None)
+    if settings is None or str(settings.user_permission_db).startswith(
+        ("http://", "https://")
+    ):
         return []
     try:
-        groups = await list_groups(user.get("token", ""))
+        from user_permission import Database
+
+        db = Database(
+            settings.user_permission_db, secret=str(settings.user_permission_secret)
+        )
+        await db.connect()
+        try:
+            groups = await db.groups.list_all()
+        finally:
+            await db.close()
     except Exception:
         return []
-    return [{"id": g["id"], "name": g["name"]} for g in groups]
+    return _normalize_group_options(groups)
 
 
 def _parse_publish_group_ids(
-    raw_values: list[str], all_group_ids: set[int]
+    publish_scope: str, raw_values: list[str], all_group_ids: set[int]
 ) -> tuple[list[int], bool, list[str]]:
     errors: list[str] = []
+    scope = str(publish_scope or "authenticated").strip()
+    if scope not in {"public", "authenticated", "groups"}:
+        errors.append("公開範囲の指定が不正です")
+        scope = "authenticated"
+    if scope == "public":
+        return [], True, errors
+    if scope == "authenticated":
+        return [], False, errors
+
     result: list[int] = []
     seen: set[int] = set()
-    allow_anonymous = False
     for raw in raw_values:
         s = str(raw or "").strip()
         if not s:
-            continue
-        if s == "anonymous":
-            allow_anonymous = True
             continue
         try:
             gid = int(s)
@@ -73,7 +111,9 @@ def _parse_publish_group_ids(
             continue
         seen.add(gid)
         result.append(gid)
-    return sorted(result), allow_anonymous, errors
+    if not result:
+        errors.append("公開範囲をグループ限定にする場合はグループを選択してください")
+    return sorted(result), False, errors
 
 
 async def _available_creator_groups(request: Request) -> list[dict[str, Any]]:
@@ -219,6 +259,7 @@ async def create_form(request: Request, _: Any = Depends(form_creator_guard)) ->
     available_groups = await _available_creator_groups(request)
     all_groups = await _list_all_groups(request)
     publish_group_ids, allow_anonymous, publish_errors = _parse_publish_group_ids(
+        str(form_data.get("publish_scope", "")),
         form_data.getlist("publish_group_ids"),
         {g["id"] for g in all_groups},
     )
@@ -363,6 +404,7 @@ async def update_form(
     available_groups = await _available_creator_groups(request)
     all_groups = await _list_all_groups(request)
     publish_group_ids, allow_anonymous, publish_errors = _parse_publish_group_ids(
+        str(form_data.get("publish_scope", "")),
         form_data.getlist("publish_group_ids"),
         {g["id"] for g in all_groups},
     )

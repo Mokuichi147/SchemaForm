@@ -37,6 +37,7 @@
   {% set _is_admin = _u and _u.is_admin %}
   {% set _current_group = form.creator_group_id if form else None %}
   {% set _publish_ids = (form.publish_group_ids if form and form.publish_group_ids is defined else []) or [] %}
+  {% set _publish_scope = 'public' if (form and form.allow_anonymous) else ('groups' if _publish_ids else 'authenticated') %}
 
   <div class="py-2 lg:py-3">
     <div class="sf-field-row lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
@@ -102,28 +103,50 @@
   <div class="py-2 lg:py-3">
     <div class="sf-field-row lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
       <div class="lg:col-span-3">
-        <label class="block text-sm font-semibold leading-6">公開先</label>
-        <div class="mt-0.5 break-words text-xs leading-relaxed text-slate-500">未選択の場合はログイン済みの全ユーザーに公開。グループを選択するとそのメンバーのみ閲覧可能。「未ログイン」を選択するとログインしていないユーザーも閲覧・送信できます。</div>
+        <label class="block text-sm font-semibold leading-6">公開範囲</label>
+        <div class="mt-0.5 break-words text-xs leading-relaxed text-slate-500">誰が入力ページを閲覧・送信できるかを選択します。</div>
       </div>
       <div class="sf-field-input-col lg:col-span-9">
-        {% set _initial_targets = (['anonymous'] if (form and form.allow_anonymous) else []) + _publish_ids %}
-        <div class="array-field mt-1 w-full max-w-sm lg:mt-0" data-key="publish_group_ids" data-type="enum" data-picker="" data-unique="1" data-initial="{{ _initial_targets | tojson_attr }}">
-          <div class="space-y-2 array-items"></div>
-          <button type="button" class="add-item mt-1 rounded border border-slate-300 px-3 py-1 text-xs">追加</button>
-          <template>
-            <div class="flex items-start gap-2 array-item">
-              <div class="w-full space-y-1">
-                <select name="publish_group_ids" data-choice-select="1" data-search-placeholder="公開先を検索" class="w-full rounded border border-slate-300 px-2 py-2 text-sm">
-                  <option value="">選択してください</option>
-                  <option value="anonymous">未ログイン</option>
-                  {% for g in all_groups %}
-                  <option value="{{ g.id }}">{{ g.name }}</option>
-                  {% endfor %}
-                </select>
-              </div>
-              <button type="button" class="remove-item shrink-0 whitespace-nowrap rounded border border-rose-300 px-2 py-1 text-xs text-rose-600">削除</button>
+        <div class="mt-1 w-full max-w-xl space-y-2 lg:mt-0" data-role="publish-scope">
+          <label class="flex cursor-pointer items-start gap-2 text-sm leading-5">
+            <input type="radio" name="publish_scope" value="public" class="mt-1" {% if _publish_scope == 'public' %}checked{% endif %} />
+            <span class="font-semibold text-slate-900">すべての人</span>
+          </label>
+
+          <label class="flex cursor-pointer items-start gap-2 text-sm leading-5">
+            <input type="radio" name="publish_scope" value="authenticated" class="mt-1" {% if _publish_scope == 'authenticated' %}checked{% endif %} />
+            <span class="font-semibold text-slate-900">ログイン済みユーザーのみ</span>
+          </label>
+
+          <label class="flex cursor-pointer items-start gap-2 text-sm leading-5">
+            <input type="radio" name="publish_scope" value="groups" class="mt-1" {% if _publish_scope == 'groups' %}checked{% endif %} />
+            <span class="font-semibold text-slate-900">選択したグループのみ</span>
+          </label>
+
+          <div class="{% if _publish_scope != 'groups' %}hidden {% endif %}max-w-md rounded border border-slate-200 bg-slate-50 px-3 py-2" data-role="publish-groups">
+            <div class="text-xs font-semibold text-slate-600">公開するグループ</div>
+            {% if all_groups %}
+            <div class="array-field mt-2 w-full" data-key="publish_group_ids" data-type="enum" data-picker="" data-unique="1" data-initial="{{ _publish_ids | tojson_attr }}">
+              <div class="space-y-2 array-items"></div>
+              <button type="button" class="add-item mt-1 rounded border border-slate-300 bg-white px-3 py-1 text-xs">追加</button>
+              <template>
+                <div class="flex items-start gap-2 array-item">
+                  <div class="w-full space-y-1">
+                    <select name="publish_group_ids" data-choice-select="1" data-search-placeholder="グループを検索" class="w-full rounded border border-slate-300 bg-white px-2 py-2 text-sm">
+                      <option value="">選択してください</option>
+                      {% for g in all_groups %}
+                      <option value="{{ g.id }}">{{ g.name }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <button type="button" class="remove-item shrink-0 whitespace-nowrap rounded border border-rose-300 bg-white px-2 py-1 text-xs text-rose-600">削除</button>
+                </div>
+              </template>
             </div>
-          </template>
+            {% else %}
+            <div class="mt-2 text-sm text-slate-500">選択できるグループがありません。</div>
+            {% endif %}
+          </div>
         </div>
       </div>
     </div>
@@ -390,6 +413,19 @@
 <script id="master-forms-data" type="application/json">{{ master_forms_json | default('[]') | safe }}</script>
 <script id="master-fields-data" type="application/json">{{ master_field_catalog_json | default('{}') | safe }}</script>
 <script>
+  const publishScope = document.querySelector('[data-role="publish-scope"]');
+  if (publishScope) {
+    const groupPanel = publishScope.querySelector('[data-role="publish-groups"]');
+    const updatePublishGroups = () => {
+      const selected = publishScope.querySelector('input[name="publish_scope"]:checked');
+      groupPanel?.classList.toggle("hidden", selected?.value !== "groups");
+    };
+    publishScope.querySelectorAll('input[name="publish_scope"]').forEach((input) => {
+      input.addEventListener("change", updatePublishGroups);
+    });
+    updatePublishGroups();
+  }
+
   const fieldList = document.getElementById("field-list");
   const template = document.getElementById("field-row-template");
   const addButton = document.getElementById("add-field");
