@@ -53,12 +53,10 @@ def _check_submission_editable(
 
 @router.get("/forms", tags=["user"], response_model=None)
 async def list_forms(request: Request) -> HTMLResponse | RedirectResponse:
-    from schemaform.app import can_create_form, can_view_form
+    from schemaform.app import can_view_form
 
     current_user = getattr(request.state, "current_user", None)
-    if current_user and (
-        current_user.get("is_admin") or can_create_form(request)
-    ):
+    if current_user and current_user.get("is_admin"):
         return RedirectResponse("/admin/forms", status_code=303)
     storage = request.app.state.storage
     templates = request.app.state.templates
