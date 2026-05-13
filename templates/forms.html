@@ -48,6 +48,9 @@
         </td>
         <td class="px-4 py-3">
           <div class="flex flex-nowrap gap-2 whitespace-nowrap">
+            {% if can_edit_form(request, form) %}
+            <a href="/admin/forms/{{ form.id }}" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs">編集</a>
+            {% endif %}
             <a href="/f/{{ form.public_id }}" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs">入力</a>
             <a href="/forms/{{ form.id }}/submissions" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs">一覧</a>
           </div>

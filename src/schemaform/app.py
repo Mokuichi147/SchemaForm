@@ -155,6 +155,14 @@ def can_view_form(request: Request, form: dict | None) -> bool:
         return False
     if can_edit_form(request, form):
         return True
+    return can_input_form(request, form)
+
+
+def can_input_form(request: Request, form: dict | None) -> bool:
+    """フォームの公開範囲設定に基づいて、入力（送信）可否を返す。
+    編集権限の有無は考慮しない。"""
+    if not form:
+        return False
     settings: Settings | None = getattr(request.app.state, "settings", None)
     if settings is None:
         return False
@@ -279,6 +287,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     templates.env.globals["can_create_form"] = can_create_form
     templates.env.globals["can_edit_form"] = can_edit_form
     templates.env.globals["can_view_form"] = can_view_form
+    templates.env.globals["can_input_form"] = can_input_form
     templates.env.globals["get_user_form_creator_group_ids"] = (
         get_user_form_creator_group_ids
     )
