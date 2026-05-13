@@ -14,6 +14,10 @@
 
 <div class="mt-6 overflow-x-auto rounded-lg border border-slate-200 bg-white">
   <table class="min-w-full divide-y divide-slate-200 text-sm">
+    {% set has_any_editable = namespace(value=false) %}
+    {% for form in forms %}
+      {% if can_edit_form(request, form) %}{% set has_any_editable.value = true %}{% endif %}
+    {% endfor %}
     <thead class="bg-slate-100 text-left">
       <tr>
         <th class="px-4 py-3">
@@ -26,6 +30,9 @@
             {% endif %}
           </a>
         </th>
+        {% if has_any_editable.value %}
+        <th class="px-4 py-3">状態</th>
+        {% endif %}
         <th class="px-4 py-3">ページ遷移</th>
         <th class="px-4 py-3">
           <a href="?sort=updated_at&order={{ 'desc' if sort == 'updated_at' and order == 'asc' else 'asc' }}" class="group inline-flex items-center gap-1">
@@ -41,15 +48,41 @@
     </thead>
     <tbody class="divide-y divide-slate-200">
       {% for form in forms %}
+      {% set _editable = can_edit_form(request, form) %}
       <tr>
         <td class="px-4 py-3 font-medium">
           <div class="whitespace-nowrap text-slate-900">{{ form.name }}</div>
           <div class="max-w-md whitespace-normal break-all text-xs text-slate-500">{{ form.description }}</div>
         </td>
+        {% if has_any_editable.value %}
+        <td class="px-4 py-3">
+          {% if _editable %}
+            {% if form.status == "active" %}
+            <form method="post" action="/admin/forms/{{ form.id }}/stop?next=/forms">
+              <button type="submit" class="whitespace-nowrap rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-800 hover:bg-emerald-200">公開中</button>
+            </form>
+            {% else %}
+            <form method="post" action="/admin/forms/{{ form.id }}/publish?next=/forms">
+              <button type="submit" class="whitespace-nowrap rounded-full bg-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-300">停止中</button>
+            </form>
+            {% endif %}
+          {% else %}
+            {% if form.status == "active" %}
+            <span class="whitespace-nowrap rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-800">公開中</span>
+            {% else %}
+            <span class="whitespace-nowrap rounded-full bg-slate-200 px-2 py-1 text-xs text-slate-700">停止中</span>
+            {% endif %}
+          {% endif %}
+        </td>
+        {% endif %}
         <td class="px-4 py-3">
           <div class="flex flex-nowrap gap-2 whitespace-nowrap">
-            {% if can_edit_form(request, form) %}
-            <a href="/admin/forms/{{ form.id }}" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs">編集</a>
+            {% if has_any_editable.value %}
+              {% if _editable %}
+              <a href="/admin/forms/{{ form.id }}" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs">編集</a>
+              {% else %}
+              <span class="whitespace-nowrap rounded border border-slate-200 px-2 py-1 text-xs text-slate-300">編集</span>
+              {% endif %}
             {% endif %}
             <a href="/f/{{ form.public_id }}" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs">入力</a>
             <a href="/forms/{{ form.id }}/submissions" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs">一覧</a>
@@ -61,7 +94,7 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="3" class="px-4 py-6 text-center text-slate-500">公開中のフォームがありません。</td>
+        <td colspan="{{ 4 if has_any_editable.value else 3 }}" class="px-4 py-6 text-center text-slate-500">公開中のフォームがありません。</td>
       </tr>
       {% endfor %}
     </tbody>
