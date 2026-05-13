@@ -45,6 +45,21 @@ async def admin_guard(request: Request) -> None:
     await request.app.state.auth_provider.require_admin(request)
 
 
+async def form_editor_guard(request: Request, form_id: str) -> None:
+    """フォームの作成グループに所属するユーザー（または管理者）を許可する。"""
+    from schemaform.app import can_edit_form
+
+    await request.app.state.auth_provider.require_login(request)
+    storage = request.app.state.storage
+    form = storage.forms.get_form(form_id)
+    if not form:
+        raise HTTPException(status_code=404, detail="フォームが見つかりません")
+    if not can_edit_form(request, form):
+        raise HTTPException(
+            status_code=403, detail="このフォームを管理する権限がありません"
+        )
+
+
 def build_submission_display_columns(
     storage: Any, fields: list[dict[str, Any]]
 ) -> tuple[list[dict[str, Any]], dict[str, dict[str, dict[str, Any]]]]:
@@ -339,7 +354,7 @@ def collect_submission_master_display_file_ids(
     "/admin/forms/{form_id}/submissions", response_class=HTMLResponse, tags=["admin"]
 )
 async def list_submissions(
-    request: Request, form_id: str, _: Any = Depends(admin_guard)
+    request: Request, form_id: str, _: Any = Depends(form_editor_guard)
 ) -> HTMLResponse:
     storage = request.app.state.storage
     templates = request.app.state.templates
@@ -463,7 +478,7 @@ async def list_submissions(
     "/admin/forms/{form_id}/submissions/{submission_id}/delete", tags=["admin"]
 )
 async def delete_submission(
-    request: Request, form_id: str, submission_id: str, _: Any = Depends(admin_guard)
+    request: Request, form_id: str, submission_id: str, _: Any = Depends(form_editor_guard)
 ) -> RedirectResponse:
     storage = request.app.state.storage
     form = storage.forms.get_form(form_id)
@@ -490,7 +505,7 @@ async def delete_submission(
     tags=["admin"],
 )
 async def edit_submission(
-    request: Request, form_id: str, submission_id: str, _: Any = Depends(admin_guard)
+    request: Request, form_id: str, submission_id: str, _: Any = Depends(form_editor_guard)
 ) -> HTMLResponse:
     storage = request.app.state.storage
     templates = request.app.state.templates
@@ -523,7 +538,7 @@ async def edit_submission(
     tags=["admin"],
 )
 async def update_submission(
-    request: Request, form_id: str, submission_id: str, _: Any = Depends(admin_guard)
+    request: Request, form_id: str, submission_id: str, _: Any = Depends(form_editor_guard)
 ) -> HTMLResponse:
     from jsonschema import Draft7Validator
 
@@ -708,7 +723,7 @@ async def update_submission(
 
 @router.get("/admin/forms/{form_id}/export", tags=["admin"])
 async def export_submissions(
-    request: Request, form_id: str, _: Any = Depends(admin_guard)
+    request: Request, form_id: str, _: Any = Depends(form_editor_guard)
 ) -> PlainTextResponse:
     storage = request.app.state.storage
     form = storage.forms.get_form(form_id)
@@ -857,7 +872,7 @@ def _convert_cell_value(raw: str, field: dict[str, Any]) -> Any:
     "/admin/forms/{form_id}/import", tags=["admin"]
 )
 async def import_submissions(
-    request: Request, form_id: str, _: Any = Depends(admin_guard)
+    request: Request, form_id: str, _: Any = Depends(form_editor_guard)
 ) -> RedirectResponse:
     from jsonschema import Draft7Validator
 

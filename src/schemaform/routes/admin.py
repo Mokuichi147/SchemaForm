@@ -197,9 +197,16 @@ async def home(request: Request) -> HTMLResponse:
 
 @router.get("/admin/forms", response_class=HTMLResponse, tags=["admin"])
 async def list_forms(request: Request, _: Any = Depends(form_creator_guard)) -> HTMLResponse:
+    from schemaform.app import can_edit_form
+
     storage = request.app.state.storage
     templates = request.app.state.templates
     forms = storage.forms.list_forms()
+
+    current_user = getattr(request.state, "current_user", None)
+    is_admin = bool(current_user and current_user.get("is_admin"))
+    if not is_admin:
+        forms = [f for f in forms if can_edit_form(request, f)]
 
     sort = request.query_params.get("sort", "name")
     order = request.query_params.get("order", "asc")
