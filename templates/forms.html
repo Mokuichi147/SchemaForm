@@ -84,7 +84,11 @@
               <span class="whitespace-nowrap rounded border border-slate-200 px-2 py-1 text-xs text-slate-300">編集</span>
               {% endif %}
             {% endif %}
+            {% if can_input_form(request, form) and form.status == "active" %}
             <a href="/f/{{ form.public_id }}" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs">入力</a>
+            {% else %}
+            <span class="whitespace-nowrap rounded border border-slate-200 px-2 py-1 text-xs text-slate-300">入力</span>
+            {% endif %}
             <a href="/forms/{{ form.id }}/submissions" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs">一覧</a>
           </div>
         </td>

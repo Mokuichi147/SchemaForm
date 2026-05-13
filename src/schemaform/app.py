@@ -169,9 +169,12 @@ def can_input_form(request: Request, form: dict | None) -> bool:
     if settings.solo:
         return True
     publish_ids = form.get("publish_group_ids") or []
-    if not publish_ids:
-        return True
+    allow_anonymous = bool(form.get("allow_anonymous", False))
     user = getattr(request.state, "current_user", None)
+    if not publish_ids:
+        if allow_anonymous:
+            return True
+        return user is not None
     if user is None:
         return False
     user_group_ids = {g.get("id") for g in (user.get("groups") or [])}
