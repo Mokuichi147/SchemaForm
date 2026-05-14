@@ -50,7 +50,7 @@ def _check_submission_editable(
 
 @router.get("/forms", tags=["user"], response_model=None)
 async def list_forms(request: Request) -> HTMLResponse:
-    from schemaform.app import can_create_form, can_edit_form, can_input_form
+    from schemaform.app import can_edit_form, can_input_form
 
     storage = request.app.state.storage
     templates = request.app.state.templates
@@ -58,10 +58,9 @@ async def list_forms(request: Request) -> HTMLResponse:
 
     current_user = getattr(request.state, "current_user", None)
     is_admin = bool(current_user and current_user.get("is_admin"))
-    is_manager_view = is_admin or can_create_form(request)
 
-    if is_manager_view:
-        visible_forms = forms if is_admin else [f for f in forms if can_edit_form(request, f)]
+    if is_admin:
+        visible_forms = list(forms)
     else:
         visible_forms = [
             f
@@ -82,7 +81,7 @@ async def list_forms(request: Request) -> HTMLResponse:
         visible_forms.sort(
             key=lambda f: str(f.get("updated_at") or ""), reverse=reverse
         )
-    elif sort == "status" and is_manager_view:
+    elif sort == "status" and is_admin:
         visible_forms.sort(key=lambda f: f.get("status") or "", reverse=reverse)
     else:
         sort = "name"
@@ -90,7 +89,7 @@ async def list_forms(request: Request) -> HTMLResponse:
             key=lambda f: (f.get("name") or "").lower(), reverse=reverse
         )
 
-    template_name = "admin_forms.html" if is_manager_view else "forms.html"
+    template_name = "admin_forms.html" if is_admin else "forms.html"
     return templates.TemplateResponse(
         template_name,
         {
