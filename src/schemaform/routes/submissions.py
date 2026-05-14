@@ -350,20 +350,23 @@ def collect_submission_master_display_file_ids(
     return ids
 
 
-@router.get(
-    "/admin/forms/{form_id}/submissions", response_class=HTMLResponse, tags=["admin"]
-)
-async def list_submissions(
-    request: Request, form_id: str, _: Any = Depends(form_editor_guard)
-) -> HTMLResponse:
+async def build_submission_list_context(
+    request: Request,
+    form_id: str,
+    *,
+    include_user_display_map: bool,
+    filter_user_id: int | None = None,
+) -> dict[str, Any]:
+    """共通の送信一覧コンテキストを構築する。"""
     storage = request.app.state.storage
-    templates = request.app.state.templates
     form = storage.forms.get_form(form_id)
     if not form:
         raise HTTPException(status_code=404, detail="フォームが見つかりません")
 
     fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
     submissions = storage.submissions.list_submissions(form_id)
+    if filter_user_id is not None:
+        submissions = [s for s in submissions if s.get("user_id") == filter_user_id]
     expanded_submissions: list[dict[str, Any]] = []
     for submission in submissions:
         data = submission.get("data_json", {})
@@ -384,28 +387,31 @@ async def list_submissions(
         expanded_submissions, fields, dict(request.query_params), file_names=file_names
     )
 
-    user_display_map: dict[int, str] = {}
-    auth = request.app.state.auth_provider
-    current_user = getattr(request.state, "current_user", None)
-    list_users = getattr(auth, "list_users", None)
-    if list_users is not None:
-        try:
-            users = await list_users((current_user or {}).get("token", ""))
-        except Exception:
-            users = []
-        for u in users:
-            uid = u.get("id")
-            if uid is not None:
-                user_display_map[uid] = u.get("display_name") or u.get("username") or ""
+    if include_user_display_map:
+        user_display_map: dict[int, str] = {}
+        auth = request.app.state.auth_provider
+        current_user = getattr(request.state, "current_user", None)
+        list_users = getattr(auth, "list_users", None)
+        if list_users is not None:
+            try:
+                users = await list_users((current_user or {}).get("token", ""))
+            except Exception:
+                users = []
+            for u in users:
+                uid = u.get("id")
+                if uid is not None:
+                    user_display_map[uid] = (
+                        u.get("display_name") or u.get("username") or ""
+                    )
 
-    def _resolve_user_label(item: dict[str, Any]) -> str:
-        uid = item.get("user_id")
-        if uid in user_display_map and user_display_map[uid]:
-            return user_display_map[uid]
-        return item.get("username") or ""
+        def _resolve_user_label(item: dict[str, Any]) -> str:
+            uid = item.get("user_id")
+            if uid in user_display_map and user_display_map[uid]:
+                return user_display_map[uid]
+            return item.get("username") or ""
 
-    for item in filtered:
-        item["_display_username"] = _resolve_user_label(item)
+        for item in filtered:
+            item["_display_username"] = _resolve_user_label(item)
 
     sort = request.query_params.get("sort", "created_at")
     order = request.query_params.get("order", "desc")
@@ -440,106 +446,44 @@ async def list_submissions(
         raw_values = build_submission_raw_values(
             data, display_columns, master_lookup_by_field
         )
-        display_rows.append(
-            {
-                "id": item["id"],
-                "created_at": item["created_at"],
-                "updated_at": item.get("updated_at"),
-                "username": item.get("_display_username") or "",
-                "values": row_values,
-                "raw_values": raw_values,
-            }
-        )
+        row = {
+            "id": item["id"],
+            "created_at": item["created_at"],
+            "updated_at": item.get("updated_at"),
+            "user_id": item.get("user_id"),
+            "username": (
+                item.get("_display_username")
+                if include_user_display_map
+                else item.get("username")
+            )
+            or "",
+            "values": row_values,
+            "raw_values": raw_values,
+        }
+        display_rows.append(row)
 
     total_pages = max(1, (total + page_size - 1) // page_size)
 
-    return templates.TemplateResponse(
-        "submissions.html",
-        {
-            "request": request,
-            "form": form,
-            "fields": fields,
-            "display_columns": display_columns,
-            "filter_fields": filter_fields,
-            "rows": display_rows,
-            "file_infos": file_infos,
-            "page": page,
-            "page_size": page_size,
-            "total": total,
-            "total_pages": total_pages,
-            "query": dict(request.query_params),
-            "sort": sort,
-            "order": order,
-        },
-    )
+    return {
+        "form": form,
+        "fields": fields,
+        "display_columns": display_columns,
+        "filter_fields": filter_fields,
+        "rows": display_rows,
+        "file_infos": file_infos,
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": total_pages,
+        "query": dict(request.query_params),
+        "sort": sort,
+        "order": order,
+    }
 
 
-@router.post(
-    "/admin/forms/{form_id}/submissions/{submission_id}/delete", tags=["admin"]
-)
-async def delete_submission(
-    request: Request, form_id: str, submission_id: str, _: Any = Depends(form_editor_guard)
-) -> RedirectResponse:
-    storage = request.app.state.storage
-    form = storage.forms.get_form(form_id)
-    submission_data = storage.submissions.get_submission(submission_id)
-
-    storage.submissions.delete_submission(submission_id)
-
-    if (
-        form
-        and submission_data
-        and form.get("webhook_url")
-        and form.get("webhook_on_delete")
-    ):
-        from schemaform.webhook import send_webhook
-
-        await send_webhook(form["webhook_url"], "delete", form, submission_data)
-
-    return RedirectResponse(f"/admin/forms/{form_id}/submissions", status_code=303)
-
-
-@router.get(
-    "/admin/forms/{form_id}/submissions/{submission_id}/edit",
-    response_class=HTMLResponse,
-    tags=["admin"],
-)
-async def edit_submission(
-    request: Request, form_id: str, submission_id: str, _: Any = Depends(form_editor_guard)
-) -> HTMLResponse:
-    storage = request.app.state.storage
-    templates = request.app.state.templates
-    form = storage.forms.get_form(form_id)
-    if not form:
-        raise HTTPException(status_code=404, detail="フォームが見つかりません")
-    submission = storage.submissions.get_submission(submission_id)
-    if not submission or submission["form_id"] != form_id:
-        raise HTTPException(status_code=404, detail="送信データが見つかりません")
-    fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
-    enrich_master_options(storage, fields)
-    file_ids = collect_file_ids([submission], fields)
-    file_infos = resolve_file_infos(storage.files, file_ids)
-    return templates.TemplateResponse(
-        "submission_edit.html",
-        {
-            "request": request,
-            "form": form,
-            "fields": fields,
-            "submission": submission,
-            "file_infos": file_infos,
-            "errors": [],
-        },
-    )
-
-
-@router.post(
-    "/admin/forms/{form_id}/submissions/{submission_id}/edit",
-    response_class=HTMLResponse,
-    tags=["admin"],
-)
-async def update_submission(
-    request: Request, form_id: str, submission_id: str, _: Any = Depends(form_editor_guard)
-) -> HTMLResponse:
+async def perform_update_submission(
+    request: Request, form_id: str, submission_id: str
+) -> HTMLResponse | RedirectResponse:
     from jsonschema import Draft7Validator
 
     from schemaform.routes.public import save_upload
@@ -718,10 +662,10 @@ async def update_submission(
 
         await send_webhook(form["webhook_url"], "edit", form, updated)
 
-    return RedirectResponse(f"/admin/forms/{form_id}/submissions", status_code=303)
+    return RedirectResponse(f"/forms/{form_id}/submissions", status_code=303)
 
 
-@router.get("/admin/forms/{form_id}/export", tags=["admin"])
+@router.get("/forms/{form_id}/export", tags=["admin"])
 async def export_submissions(
     request: Request, form_id: str, _: Any = Depends(form_editor_guard)
 ) -> PlainTextResponse:
@@ -869,7 +813,7 @@ def _convert_cell_value(raw: str, field: dict[str, Any]) -> Any:
 
 
 @router.post(
-    "/admin/forms/{form_id}/import", tags=["admin"]
+    "/forms/{form_id}/import", tags=["admin"]
 )
 async def import_submissions(
     request: Request, form_id: str, _: Any = Depends(form_editor_guard)
@@ -959,7 +903,7 @@ async def import_submissions(
         )
         imported_count += 1
 
-    return RedirectResponse(f"/admin/forms/{form_id}/submissions", status_code=303)
+    return RedirectResponse(f"/forms/{form_id}/submissions", status_code=303)
 
 
 @router.get("/healthz", tags=["system"])

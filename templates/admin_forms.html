@@ -10,7 +10,7 @@
     {% if get_auth_enabled(request) and _u and _u.is_admin %}
     <a href="/admin/groups" class="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100">グループ管理</a>
     {% endif %}
-    <a href="/admin/forms/new" class="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white">新規フォーム</a>
+    <a href="/forms/new" class="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white">新規フォーム</a>
   </div>
 </div>
 
@@ -63,11 +63,11 @@
         <td class="px-4 py-3">
           {% if _editable %}
             {% if form.status == "active" %}
-            <form method="post" action="/admin/forms/{{ form.id }}/stop">
+            <form method="post" action="/forms/{{ form.id }}/stop">
               <button type="submit" class="whitespace-nowrap rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-800 hover:bg-emerald-200">公開中</button>
             </form>
             {% else %}
-            <form method="post" action="/admin/forms/{{ form.id }}/publish">
+            <form method="post" action="/forms/{{ form.id }}/publish">
               <button type="submit" class="whitespace-nowrap rounded-full bg-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-300">停止中</button>
             </form>
             {% endif %}
@@ -82,12 +82,12 @@
         <td class="px-4 py-3">
           <div class="flex flex-nowrap gap-2 whitespace-nowrap">
             {% if _editable %}
-            <a href="/admin/forms/{{ form.id }}" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs">編集</a>
+            <a href="/forms/{{ form.id }}" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs">編集</a>
             {% else %}
             <span class="whitespace-nowrap rounded border border-slate-200 px-2 py-1 text-xs text-slate-300">編集</span>
             {% endif %}
             <a href="/f/{{ form.public_id }}" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs">入力</a>
-            <a href="/admin/forms/{{ form.id }}/submissions" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs">一覧</a>
+            <a href="/forms/{{ form.id }}/submissions" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs">一覧</a>
           </div>
         </td>
         <td class="px-4 py-3 text-slate-600">
@@ -95,7 +95,7 @@
         </td>
         <td class="px-4 py-3">
           {% if _editable %}
-          <form method="post" action="/admin/forms/{{ form.id }}/delete" onsubmit="return confirm('このフォームを削除しますか？')">
+          <form method="post" action="/forms/{{ form.id }}/delete" onsubmit="return confirm('このフォームを削除しますか？')">
             <button class="whitespace-nowrap rounded border border-rose-300 px-2 py-1 text-xs text-rose-600">削除</button>
           </form>
           {% else %}

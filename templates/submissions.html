@@ -8,13 +8,13 @@
   </div>
   <div class="flex gap-2">
     <button type="button" id="open-filter-modal" class="rounded border border-slate-300 px-3 py-2 text-sm">フィルター</button>
-    <form id="import-form" method="post" action="/admin/forms/{{ form.id }}/import" enctype="multipart/form-data" class="inline">
+    <form id="import-form" method="post" action="/forms/{{ form.id }}/import" enctype="multipart/form-data" class="inline">
       <input type="file" id="import-file-input" name="file" accept=".csv,.tsv" required class="hidden" />
       <button type="button" id="open-import-modal" class="rounded border border-slate-300 px-3 py-2 text-sm">取り込み</button>
     </form>
     <a href="/f/{{ form.public_id }}" class="rounded border border-slate-300 px-3 py-2 text-sm">入力ページ</a>
-    <a href="/admin/forms/{{ form.id }}/export?{{ build_query(query, format='csv', page=None) }}" class="rounded border border-slate-300 px-3 py-2 text-sm">CSV</a>
-    <a href="/admin/forms/{{ form.id }}/export?{{ build_query(query, format='tsv', page=None) }}" class="rounded border border-slate-300 px-3 py-2 text-sm">TSV</a>
+    <a href="/forms/{{ form.id }}/export?{{ build_query(query, format='csv', page=None) }}" class="rounded border border-slate-300 px-3 py-2 text-sm">CSV</a>
+    <a href="/forms/{{ form.id }}/export?{{ build_query(query, format='tsv', page=None) }}" class="rounded border border-slate-300 px-3 py-2 text-sm">TSV</a>
   </div>
 </div>
 
@@ -98,7 +98,7 @@
 
       <div class="mt-4 flex gap-2 border-t border-slate-200 pt-4">
         <button type="submit" class="rounded bg-slate-900 px-3 py-2 text-sm font-semibold text-white">検索</button>
-        <a href="/admin/forms/{{ form.id }}/submissions" class="rounded border border-slate-300 px-3 py-2 text-sm">リセット</a>
+        <a href="/forms/{{ form.id }}/submissions" class="rounded border border-slate-300 px-3 py-2 text-sm">リセット</a>
         <button type="button" data-action="close-filter-modal" class="ml-auto rounded border border-slate-300 px-3 py-2 text-sm">閉じる</button>
       </div>
     </form>
@@ -211,8 +211,8 @@
         {% endfor %}
         <td class="px-4 py-3">
           <div class="flex gap-1">
-            <a href="/admin/forms/{{ form.id }}/submissions/{{ row.id }}/edit" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs text-slate-700">編集</a>
-            <form method="post" action="/admin/forms/{{ form.id }}/submissions/{{ row.id }}/delete">
+            <a href="/forms/{{ form.id }}/submissions/{{ row.id }}/edit" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs text-slate-700">編集</a>
+            <form method="post" action="/forms/{{ form.id }}/submissions/{{ row.id }}/delete">
               <button class="whitespace-nowrap rounded border border-rose-300 px-2 py-1 text-xs text-rose-600">削除</button>
             </form>
           </div>

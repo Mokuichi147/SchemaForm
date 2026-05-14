@@ -8,16 +8,16 @@
   {% if form %}
   <div class="flex flex-wrap gap-2 text-sm">
     {% if form.status == "active" %}
-    <form method="post" action="/admin/forms/{{ form.id }}/stop?next=/admin/forms/{{ form.id }}">
+    <form method="post" action="/forms/{{ form.id }}/stop?next=/forms/{{ form.id }}">
       <button type="submit" class="whitespace-nowrap rounded-full bg-emerald-100 px-3 py-1 text-emerald-800 hover:bg-emerald-200">公開中</button>
     </form>
     {% else %}
-    <form method="post" action="/admin/forms/{{ form.id }}/publish?next=/admin/forms/{{ form.id }}">
+    <form method="post" action="/forms/{{ form.id }}/publish?next=/forms/{{ form.id }}">
       <button type="submit" class="whitespace-nowrap rounded-full bg-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-300">停止中</button>
     </form>
     {% endif %}
     <a href="/f/{{ form.public_id }}" class="rounded border border-slate-300 px-3 py-1">入力ページ</a>
-    <a href="/admin/forms/{{ form.id }}/submissions" class="rounded border border-slate-300 px-3 py-1">送信一覧</a>
+    <a href="/forms/{{ form.id }}/submissions" class="rounded border border-slate-300 px-3 py-1">送信一覧</a>
   </div>
   {% endif %}
 </div>
@@ -32,7 +32,7 @@
 </div>
 {% endif %}
 
-<form method="post" action="{% if form %}/admin/forms/{{ form.id }}{% else %}/admin/forms{% endif %}" class="mt-6 space-y-3">
+<form method="post" action="{% if form %}/forms/{{ form.id }}{% else %}/forms{% endif %}" class="mt-6 space-y-3">
   {% set _u = get_current_user(request) %}
   {% set _is_admin = _u and _u.is_admin %}
   {% set _current_group = form.creator_group_id if form else None %}
@@ -217,7 +217,7 @@
 
   <div class="flex flex-wrap gap-3">
     <button type="submit" class="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">保存</button>
-    <a href="/admin/forms" class="rounded border border-slate-300 px-4 py-2 text-sm">戻る</a>
+    <a href="/forms" class="rounded border border-slate-300 px-4 py-2 text-sm">戻る</a>
   </div>
 </form>
 
