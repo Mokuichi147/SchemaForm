@@ -5,11 +5,6 @@
     <h1 class="text-2xl font-semibold">フォーム一覧</h1>
     <p class="text-sm text-slate-600">公開中のフォームを確認できます。</p>
   </div>
-  {% if can_create_form(request) %}
-  <div class="flex items-center gap-2">
-    <a href="/admin/forms" class="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100">フォーム管理</a>
-  </div>
-  {% endif %}
 </div>
 
 <div class="mt-6 overflow-x-auto rounded-lg border border-slate-200 bg-white">
@@ -58,11 +53,11 @@
         <td class="px-4 py-3">
           {% if _editable %}
             {% if form.status == "active" %}
-            <form method="post" action="/admin/forms/{{ form.id }}/stop?next=/forms">
+            <form method="post" action="/forms/{{ form.id }}/stop?next=/forms">
               <button type="submit" class="whitespace-nowrap rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-800 hover:bg-emerald-200">公開中</button>
             </form>
             {% else %}
-            <form method="post" action="/admin/forms/{{ form.id }}/publish?next=/forms">
+            <form method="post" action="/forms/{{ form.id }}/publish?next=/forms">
               <button type="submit" class="whitespace-nowrap rounded-full bg-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-300">停止中</button>
             </form>
             {% endif %}
@@ -79,7 +74,7 @@
           <div class="flex flex-nowrap gap-2 whitespace-nowrap">
             {% if has_any_editable.value %}
               {% if _editable %}
-              <a href="/admin/forms/{{ form.id }}" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs">編集</a>
+              <a href="/forms/{{ form.id }}" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs">編集</a>
               {% else %}
               <span class="whitespace-nowrap rounded border border-slate-200 px-2 py-1 text-xs text-slate-300">編集</span>
               {% endif %}

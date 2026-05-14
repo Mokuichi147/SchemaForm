@@ -5,21 +5,10 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from schemaform.fields import (
-    expand_group_array_rows,
-    flatten_filter_fields,
-)
-from schemaform.filters import (
-    apply_filters,
-    collect_file_ids,
-    resolve_file_infos,
-)
+from schemaform.filters import collect_file_ids, resolve_file_infos
 from schemaform.routes.submissions import (
-    build_submission_display_columns,
-    build_submission_raw_values,
-    build_submission_row_values,
-    collect_submission_master_display_file_ids,
-    sort_submissions,
+    build_submission_list_context,
+    perform_update_submission,
 )
 from schemaform.schema import fields_from_schema
 
@@ -27,12 +16,17 @@ router = APIRouter()
 
 
 def _check_submission_owner(
-    submission: dict[str, Any], current_user: dict[str, Any] | None
+    request: Any,
+    form: dict[str, Any] | None,
+    submission: dict[str, Any],
+    current_user: dict[str, Any] | None,
 ) -> None:
-    """本人の送信でなければ 403。管理者は許可。"""
+    """本人の送信、またはフォームを管理できるユーザーでなければ 403。"""
+    from schemaform.app import can_edit_form
+
     if current_user is None:
         raise HTTPException(status_code=401, detail="ログインが必要です")
-    if current_user.get("is_admin"):
+    if can_edit_form(request, form):
         return
     owner_id = submission.get("user_id")
     if owner_id is None or owner_id != current_user.get("id"):
@@ -40,10 +34,13 @@ def _check_submission_owner(
 
 
 def _check_submission_editable(
-    form: dict[str, Any], current_user: dict[str, Any] | None
+    request: Any, form: dict[str, Any], current_user: dict[str, Any] | None
 ) -> None:
-    """フォームの設定で送信内容変更が無効化されている場合は 403。管理者は許可。"""
-    if current_user and current_user.get("is_admin"):
+    """フォームの設定で送信内容変更が無効化されている場合は 403。
+    フォームを管理できるユーザーは許可。"""
+    from schemaform.app import can_edit_form
+
+    if can_edit_form(request, form):
         return
     if form.get("disallow_edit_submissions", False):
         raise HTTPException(
@@ -52,24 +49,28 @@ def _check_submission_editable(
 
 
 @router.get("/forms", tags=["user"], response_model=None)
-async def list_forms(request: Request) -> HTMLResponse | RedirectResponse:
-    from schemaform.app import can_edit_form, can_input_form
+async def list_forms(request: Request) -> HTMLResponse:
+    from schemaform.app import can_create_form, can_edit_form, can_input_form
 
-    current_user = getattr(request.state, "current_user", None)
-    if current_user and current_user.get("is_admin"):
-        return RedirectResponse("/admin/forms", status_code=303)
     storage = request.app.state.storage
     templates = request.app.state.templates
     forms = storage.forms.list_forms()
 
-    active_forms = [
-        f
-        for f in forms
-        if (
-            (f.get("status") == "active" and can_input_form(request, f))
-            or can_edit_form(request, f)
-        )
-    ]
+    current_user = getattr(request.state, "current_user", None)
+    is_admin = bool(current_user and current_user.get("is_admin"))
+    is_manager_view = is_admin or can_create_form(request)
+
+    if is_manager_view:
+        visible_forms = forms if is_admin else [f for f in forms if can_edit_form(request, f)]
+    else:
+        visible_forms = [
+            f
+            for f in forms
+            if (
+                (f.get("status") == "active" and can_input_form(request, f))
+                or can_edit_form(request, f)
+            )
+        ]
 
     sort = request.query_params.get("sort", "name")
     order = request.query_params.get("order", "asc")
@@ -78,18 +79,23 @@ async def list_forms(request: Request) -> HTMLResponse | RedirectResponse:
     reverse = order == "desc"
 
     if sort == "updated_at":
-        active_forms.sort(
+        visible_forms.sort(
             key=lambda f: str(f.get("updated_at") or ""), reverse=reverse
         )
+    elif sort == "status" and is_manager_view:
+        visible_forms.sort(key=lambda f: f.get("status") or "", reverse=reverse)
     else:
         sort = "name"
-        active_forms.sort(key=lambda f: (f.get("name") or "").lower(), reverse=reverse)
+        visible_forms.sort(
+            key=lambda f: (f.get("name") or "").lower(), reverse=reverse
+        )
 
+    template_name = "admin_forms.html" if is_manager_view else "forms.html"
     return templates.TemplateResponse(
-        "forms.html",
+        template_name,
         {
             "request": request,
-            "forms": active_forms,
+            "forms": visible_forms,
             "sort": sort,
             "order": order,
         },
@@ -100,131 +106,55 @@ async def list_forms(request: Request) -> HTMLResponse | RedirectResponse:
     "/forms/{form_id}/submissions", response_class=HTMLResponse, tags=["user"]
 )
 async def list_submissions(request: Request, form_id: str) -> HTMLResponse:
+    from schemaform.app import can_edit_form, can_view_form
+
     storage = request.app.state.storage
     templates = request.app.state.templates
-    from schemaform.app import can_view_form
 
     form = storage.forms.get_form(form_id)
     if not form:
         raise HTTPException(status_code=404, detail="フォームが見つかりません")
 
     current_user = getattr(request.state, "current_user", None)
-    is_admin = bool(current_user and current_user.get("is_admin"))
     publish_ids = form.get("publish_group_ids") or []
     if publish_ids and current_user is None:
         await request.app.state.auth_provider.require_login(request)
     if not can_view_form(request, form):
         raise HTTPException(status_code=403, detail="このフォームを閲覧する権限がありません")
-    if not form.get("allow_view_others", True) and not is_admin:
+    is_manager_view = can_edit_form(request, form)
+    if not form.get("allow_view_others", True) and not is_manager_view:
         await request.app.state.auth_provider.require_login(request)
 
-    fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
-    submissions = storage.submissions.list_submissions(form_id)
-    if not is_admin and not form.get("allow_view_others", True):
-        user_id = current_user.get("id") if current_user else None
-        submissions = [s for s in submissions if s.get("user_id") == user_id]
-    expanded_submissions: list[dict[str, Any]] = []
-    for submission in submissions:
-        data = submission.get("data_json", {})
-        for expanded_data in expand_group_array_rows(fields, data):
-            expanded_submissions.append({**submission, "data_json": expanded_data})
-    file_ids = collect_file_ids(submissions, fields)
+    filter_user_id: int | None = None
+    if not is_manager_view and not form.get("allow_view_others", True):
+        filter_user_id = current_user.get("id") if current_user else None
 
-    display_columns, master_lookup_by_field = build_submission_display_columns(
-        storage, fields
-    )
-    file_ids |= collect_submission_master_display_file_ids(
-        submissions, display_columns, master_lookup_by_field
-    )
-    file_infos = resolve_file_infos(storage.files, file_ids)
-    file_names = {fid: info["name"] for fid, info in file_infos.items()}
-
-    filtered = apply_filters(
-        expanded_submissions,
-        fields,
-        dict(request.query_params),
-        file_names=file_names,
+    context = await build_submission_list_context(
+        request,
+        form_id,
+        include_user_display_map=is_manager_view,
+        filter_user_id=filter_user_id,
     )
 
-    sort = request.query_params.get("sort", "created_at")
-    order = request.query_params.get("order", "desc")
-    sort_submissions(filtered, sort, order, display_columns, master_lookup_by_field)
-
-    try:
-        page = int(request.query_params.get("page", 1))
-    except (ValueError, TypeError):
-        page = 1
-    try:
-        page_size = int(request.query_params.get("page_size", 50))
-    except (ValueError, TypeError):
-        page_size = 50
-    page = max(1, page)
-    page_size = max(1, min(page_size, 100))
-    total = len(filtered)
-    start = (page - 1) * page_size
-    end = start + page_size
-    page_items = filtered[start:end]
-
-    filter_fields = flatten_filter_fields(fields)
-
-    display_rows = []
-    for item in page_items:
-        data = item.get("data_json", {})
-        row_values = build_submission_row_values(
-            data,
-            display_columns,
-            master_lookup_by_field,
-            file_names,
-        )
-        raw_values = build_submission_raw_values(
-            data, display_columns, master_lookup_by_field
-        )
-        display_rows.append(
-            {
-                "id": item["id"],
-                "created_at": item["created_at"],
-                "updated_at": item.get("updated_at"),
-                "user_id": item.get("user_id"),
-                "username": item.get("username"),
-                "values": row_values,
-                "raw_values": raw_values,
-            }
-        )
-
-    total_pages = max(1, (total + page_size - 1) // page_size)
-
-    allow_edit = not form.get("disallow_edit_submissions", False)
-    for row in display_rows:
-        owner_id = row.get("user_id")
-        if current_user is None:
-            row["editable"] = False
-        elif current_user.get("is_admin"):
-            row["editable"] = True
-        elif not allow_edit:
-            row["editable"] = False
-        else:
-            row["editable"] = (
-                owner_id is not None and owner_id == current_user.get("id")
-            )
+    if is_manager_view:
+        template_name = "submissions.html"
+    else:
+        template_name = "user_submissions.html"
+        allow_edit = not form.get("disallow_edit_submissions", False)
+        for row in context["rows"]:
+            owner_id = row.get("user_id")
+            if current_user is None:
+                row["editable"] = False
+            elif not allow_edit:
+                row["editable"] = False
+            else:
+                row["editable"] = (
+                    owner_id is not None and owner_id == current_user.get("id")
+                )
 
     return templates.TemplateResponse(
-        "user_submissions.html",
-        {
-            "request": request,
-            "form": form,
-            "fields": fields,
-            "display_columns": display_columns,
-            "filter_fields": filter_fields,
-            "rows": display_rows,
-            "file_infos": file_infos,
-            "page": page,
-            "page_size": page_size,
-            "total": total,
-            "total_pages": total_pages,
-            "query": dict(request.query_params),
-            "sort": sort,
-            "order": order,
-        },
+        template_name,
+        {"request": request, **context},
     )
 
 
@@ -249,8 +179,8 @@ async def edit_submission(
     if not submission or submission["form_id"] != form_id:
         raise HTTPException(status_code=404, detail="送信データが見つかりません")
 
-    _check_submission_owner(submission, current_user)
-    _check_submission_editable(form, current_user)
+    _check_submission_owner(request, form, submission, current_user)
+    _check_submission_editable(request, form, current_user)
 
     fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
     enrich_master_options(storage, fields)
@@ -280,22 +210,17 @@ async def edit_submission(
 async def update_submission(
     request: Request, form_id: str, submission_id: str
 ) -> HTMLResponse | RedirectResponse:
-    from schemaform.routes.submissions import update_submission as admin_update
-
     storage = request.app.state.storage
     current_user = getattr(request.state, "current_user", None)
     existing = storage.submissions.get_submission(submission_id)
     if not existing or existing.get("form_id") != form_id:
         raise HTTPException(status_code=404, detail="送信データが見つかりません")
     form = storage.forms.get_form(form_id)
-    _check_submission_owner(existing, current_user)
+    _check_submission_owner(request, form, existing, current_user)
     if form is not None:
-        _check_submission_editable(form, current_user)
+        _check_submission_editable(request, form, current_user)
 
-    response = await admin_update(request, form_id, submission_id, None)
-    if isinstance(response, RedirectResponse):
-        return RedirectResponse(f"/forms/{form_id}/submissions", status_code=303)
-    return response
+    return await perform_update_submission(request, form_id, submission_id)
 
 
 @router.post(
@@ -310,9 +235,9 @@ async def delete_submission(
     submission = storage.submissions.get_submission(submission_id)
     if not submission or submission.get("form_id") != form_id:
         raise HTTPException(status_code=404, detail="送信データが見つかりません")
-    _check_submission_owner(submission, current_user)
+    _check_submission_owner(request, form, submission, current_user)
     if form is not None:
-        _check_submission_editable(form, current_user)
+        _check_submission_editable(request, form, current_user)
 
     storage.submissions.delete_submission(submission_id)
 

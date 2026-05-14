@@ -155,7 +155,7 @@ def _ensure_form_editable(request: Request, form: dict | None) -> None:
         raise HTTPException(status_code=403, detail="このフォームを変更する権限がありません")
 
 
-def resolve_redirect_target(next_path: Any, default: str = "/admin/forms") -> str:
+def resolve_redirect_target(next_path: Any, default: str = "/forms") -> str:
     candidate = str(next_path or "").strip()
     if not candidate:
         return default
@@ -164,7 +164,7 @@ def resolve_redirect_target(next_path: Any, default: str = "/admin/forms") -> st
     parsed = urlsplit(candidate)
     if parsed.scheme or parsed.netloc:
         return default
-    if not parsed.path.startswith("/admin/forms"):
+    if not parsed.path.startswith("/forms"):
         return default
     if parsed.query:
         return f"{parsed.path}?{parsed.query}"
@@ -195,40 +195,7 @@ async def home(request: Request) -> HTMLResponse:
     return RedirectResponse("/forms")
 
 
-@router.get("/admin/forms", response_class=HTMLResponse, tags=["admin"])
-async def list_forms(request: Request, _: Any = Depends(form_creator_guard)) -> HTMLResponse:
-    from schemaform.app import can_edit_form
-
-    storage = request.app.state.storage
-    templates = request.app.state.templates
-    forms = storage.forms.list_forms()
-
-    current_user = getattr(request.state, "current_user", None)
-    is_admin = bool(current_user and current_user.get("is_admin"))
-    if not is_admin:
-        forms = [f for f in forms if can_edit_form(request, f)]
-
-    sort = request.query_params.get("sort", "name")
-    order = request.query_params.get("order", "asc")
-    if order not in ("asc", "desc"):
-        order = "asc"
-    reverse = order == "desc"
-
-    if sort == "updated_at":
-        forms.sort(key=lambda f: str(f.get("updated_at") or ""), reverse=reverse)
-    elif sort == "status":
-        forms.sort(key=lambda f: f.get("status") or "", reverse=reverse)
-    else:
-        sort = "name"
-        forms.sort(key=lambda f: (f.get("name") or "").lower(), reverse=reverse)
-
-    return templates.TemplateResponse(
-        "admin_forms.html",
-        {"request": request, "forms": forms, "sort": sort, "order": order},
-    )
-
-
-@router.get("/admin/forms/new", response_class=HTMLResponse, tags=["admin"])
+@router.get("/forms/new", response_class=HTMLResponse, tags=["admin"])
 async def new_form(request: Request, _: Any = Depends(form_creator_guard)) -> HTMLResponse:
     storage = request.app.state.storage
     templates = request.app.state.templates
@@ -251,7 +218,7 @@ async def new_form(request: Request, _: Any = Depends(form_creator_guard)) -> HT
     )
 
 
-@router.post("/admin/forms", response_class=HTMLResponse, tags=["admin"])
+@router.post("/forms", response_class=HTMLResponse, tags=["admin"])
 async def create_form(request: Request, _: Any = Depends(form_creator_guard)) -> HTMLResponse:
     storage = request.app.state.storage
     templates = request.app.state.templates
@@ -353,10 +320,10 @@ async def create_form(request: Request, _: Any = Depends(form_creator_guard)) ->
             "updated_at": now,
         }
     )
-    return RedirectResponse(f"/admin/forms/{form_id}", status_code=303)
+    return RedirectResponse(f"/forms/{form_id}", status_code=303)
 
 
-@router.get("/admin/forms/{form_id}", response_class=HTMLResponse, tags=["admin"])
+@router.get("/forms/{form_id}", response_class=HTMLResponse, tags=["admin"])
 async def edit_form(
     request: Request, form_id: str, _: Any = Depends(form_creator_guard)
 ) -> HTMLResponse:
@@ -388,7 +355,7 @@ async def edit_form(
     )
 
 
-@router.post("/admin/forms/{form_id}", response_class=HTMLResponse, tags=["admin"])
+@router.post("/forms/{form_id}", response_class=HTMLResponse, tags=["admin"])
 async def update_form(
     request: Request, form_id: str, _: Any = Depends(form_creator_guard)
 ) -> HTMLResponse:
@@ -491,10 +458,10 @@ async def update_form(
     if is_admin:
         updates["creator_group_id"] = creator_group_id
     updated = storage.forms.update_form(form_id, updates)
-    return RedirectResponse(f"/admin/forms/{updated['id']}", status_code=303)
+    return RedirectResponse(f"/forms/{updated['id']}", status_code=303)
 
 
-@router.post("/admin/forms/{form_id}/publish", tags=["admin"])
+@router.post("/forms/{form_id}/publish", tags=["admin"])
 async def publish_form(
     request: Request, form_id: str, _: Any = Depends(form_creator_guard)
 ) -> RedirectResponse:
@@ -506,7 +473,7 @@ async def publish_form(
     return RedirectResponse(target, status_code=303)
 
 
-@router.post("/admin/forms/{form_id}/stop", tags=["admin"])
+@router.post("/forms/{form_id}/stop", tags=["admin"])
 async def stop_form(
     request: Request, form_id: str, _: Any = Depends(form_creator_guard)
 ) -> RedirectResponse:
@@ -518,7 +485,7 @@ async def stop_form(
     return RedirectResponse(target, status_code=303)
 
 
-@router.post("/admin/forms/{form_id}/delete", tags=["admin"])
+@router.post("/forms/{form_id}/delete", tags=["admin"])
 async def delete_form(
     request: Request, form_id: str, _: Any = Depends(form_creator_guard)
 ) -> RedirectResponse:
@@ -526,4 +493,4 @@ async def delete_form(
     form = storage.forms.get_form(form_id)
     _ensure_form_editable(request, form)
     storage.forms.delete_form(form_id)
-    return RedirectResponse("/admin/forms", status_code=303)
+    return RedirectResponse("/forms", status_code=303)
