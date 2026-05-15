@@ -33,13 +33,13 @@ def main(
     port: int | None = typer.Option(None, help="バインドするポート"),
     user_permission_db: str | None = typer.Option(
         None,
-        "--user-permission-db",
-        help="user-permission の DBパス or URL",
+        "--auth-db",
+        help="認証DBのパス or URL",
     ),
     user_permission_secret: str | None = typer.Option(
         None,
-        "--user-permission-secret",
-        help="user-permission のシークレットキーファイルのパス（ローカルDB使用時）",
+        "--auth-secret",
+        help="シークレットキーファイルのパス（ローカルDB使用時）",
     ),
     solo: bool = typer.Option(
         False,
@@ -71,13 +71,13 @@ def run(
     port: int | None = typer.Option(None, help="バインドするポート"),
     user_permission_db: str | None = typer.Option(
         None,
-        "--user-permission-db",
-        help="user-permission の DBパス or URL",
+        "--auth-db",
+        help="認証DBのパス or URL",
     ),
     user_permission_secret: str | None = typer.Option(
         None,
-        "--user-permission-secret",
-        help="user-permission のシークレットキーファイルのパス（ローカルDB使用時）",
+        "--auth-secret",
+        help="シークレットキーファイルのパス（ローカルDB使用時）",
     ),
     solo: bool = typer.Option(
         False,
@@ -131,10 +131,10 @@ def create_admin(
         None, help="管理者グループ名（省略時は Settings の値）"
     ),
     user_permission_db: str | None = typer.Option(
-        None, "--user-permission-db", help="user-permission の DBパス or URL"
+        None, "--auth-db", help="認証DBのパス or URL"
     ),
     user_permission_secret: str | None = typer.Option(
-        None, "--user-permission-secret", help="シークレットキーファイルのパス"
+        None, "--auth-secret", help="シークレットキーファイルのパス"
     ),
 ) -> None:
     """管理者ユーザーを作成し、管理者グループへ追加する。"""
