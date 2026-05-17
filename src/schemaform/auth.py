@@ -1,11 +1,27 @@
 from __future__ import annotations
 
+import base64
+import json
 from datetime import timedelta
 from typing import Any, Protocol
 
 from fastapi import HTTPException, Request
 
 from schemaform.config import Settings
+
+
+def _decode_jwt_payload_unverified(token: str) -> dict[str, Any] | None:
+    """JWT の payload を署名検証なしで取り出す。リレー側で検証する前提。"""
+    try:
+        payload_b64 = token.split(".")[1]
+    except IndexError:
+        return None
+    pad = "=" * (-len(payload_b64) % 4)
+    try:
+        raw = base64.urlsafe_b64decode(payload_b64 + pad)
+        return json.loads(raw)
+    except Exception:
+        return None
 
 
 class LoginRequired(Exception):
@@ -144,7 +160,11 @@ class UserPermissionAuthProvider:
     ) -> tuple[int, str, str] | None:
         try:
             if self._is_relay:
-                user = await self._db.verify_token(token)
+                payload = _decode_jwt_payload_unverified(token)
+                if payload is None or "sub" not in payload:
+                    return None
+                user_id = int(payload["sub"])
+                user = await self._db.users.get_by_id(user_id, token=token)
                 if user is None:
                     return None
                 return (user.id, user.username, user.display_name or "")
@@ -161,10 +181,7 @@ class UserPermissionAuthProvider:
         self, user_id: int, token: str
     ) -> list[tuple[int, str, bool]]:
         try:
-            if self._is_relay:
-                groups = await self._db.groups.get_user_groups(user_id, token)
-            else:
-                groups = await self._db.groups.get_user_groups(user_id)
+            groups = await self._db.groups.get_user_groups(user_id, token=token)
             return [
                 (int(g.id), g.name, bool(getattr(g, "is_admin", False)))
                 for g in groups
@@ -215,14 +232,9 @@ class UserPermissionAuthProvider:
     ) -> bool:
         """表示名（user-permission の display_name）を更新する。成功時 True。"""
         try:
-            if self._is_relay:
-                result = await self._db.users.update(
-                    user_id, token, display_name=display_name
-                )
-            else:
-                result = await self._db.users.update(
-                    user_id, display_name=display_name
-                )
+            result = await self._db.users.update(
+                user_id, display_name=display_name, token=token
+            )
         except Exception:
             return False
         return result is not None
@@ -239,19 +251,13 @@ class UserPermissionAuthProvider:
         verified = await self._db.users.authenticate(username, current_password)
         if not verified:
             return False
-        if self._is_relay:
-            result = await self._db.users.update(
-                user_id, token, password=new_password
-            )
-        else:
-            result = await self._db.users.update(user_id, password=new_password)
+        result = await self._db.users.update(
+            user_id, password=new_password, token=token
+        )
         return result is not None
 
     async def list_users(self, token: str) -> list[dict[str, Any]]:
-        if self._is_relay:
-            users = await self._db.users.list_all(token)
-        else:
-            users = await self._db.users.list_all()
+        users = await self._db.users.list_all(token=token)
         return [
             {
                 "id": u.id,
@@ -262,10 +268,7 @@ class UserPermissionAuthProvider:
         ]
 
     async def list_groups(self, token: str) -> list[dict[str, Any]]:
-        if self._is_relay:
-            groups = await self._db.groups.list_all(token)
-        else:
-            groups = await self._db.groups.list_all()
+        groups = await self._db.groups.list_all(token=token)
         return [
             {
                 "id": g.id,
@@ -279,10 +282,7 @@ class UserPermissionAuthProvider:
     async def get_group(
         self, group_id: int, token: str
     ) -> dict[str, Any] | None:
-        if self._is_relay:
-            g = await self._db.groups.get_by_id(group_id, token)
-        else:
-            g = await self._db.groups.get_by_id(group_id)
+        g = await self._db.groups.get_by_id(group_id, token=token)
         if g is None:
             return None
         return {
@@ -296,10 +296,7 @@ class UserPermissionAuthProvider:
         self, name: str, description: str, token: str
     ) -> tuple[bool, str | None]:
         try:
-            if self._is_relay:
-                res = await self._db.groups.create(name, description, token)
-            else:
-                res = await self._db.groups.create(name, description)
+            res = await self._db.groups.create(name, description, token=token)
         except Exception:
             return False, "グループの作成に失敗しました"
         if res is None:
@@ -322,10 +319,7 @@ class UserPermissionAuthProvider:
         if not kwargs:
             return True
         try:
-            if self._is_relay:
-                res = await self._db.groups.update(group_id, token, **kwargs)
-            else:
-                res = await self._db.groups.update(group_id, **kwargs)
+            res = await self._db.groups.update(group_id, **kwargs, token=token)
         except Exception:
             return False
         return res is not None
@@ -333,10 +327,7 @@ class UserPermissionAuthProvider:
     async def get_group_members(
         self, group_id: int, token: str
     ) -> list[dict[str, Any]]:
-        if self._is_relay:
-            users = await self._db.groups.get_members(group_id, token)
-        else:
-            users = await self._db.groups.get_members(group_id)
+        users = await self._db.groups.get_members(group_id, token=token)
         return [
             {
                 "id": u.id,
@@ -350,9 +341,7 @@ class UserPermissionAuthProvider:
         self, group_id: int, user_id: int, token: str
     ) -> bool:
         try:
-            if self._is_relay:
-                return await self._db.groups.add_user(group_id, user_id, token)
-            return await self._db.groups.add_user(group_id, user_id)
+            return await self._db.groups.add_user(group_id, user_id, token=token)
         except Exception:
             return False
 
@@ -360,11 +349,9 @@ class UserPermissionAuthProvider:
         self, group_id: int, user_id: int, token: str
     ) -> bool:
         try:
-            if self._is_relay:
-                return await self._db.groups.remove_user(
-                    group_id, user_id, token
-                )
-            return await self._db.groups.remove_user(group_id, user_id)
+            return await self._db.groups.remove_user(
+                group_id, user_id, token=token
+            )
         except Exception:
             return False
 
