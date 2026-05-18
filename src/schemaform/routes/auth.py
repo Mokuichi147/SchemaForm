@@ -61,7 +61,10 @@ async def login(
             status_code=400,
         )
 
-    token = await auth.login(username, password)
+    try:
+        token = await auth.login(username, password)
+    except BaseException:
+        token = None
     if not token:
         return templates.TemplateResponse(
             "login.html",
