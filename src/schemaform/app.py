@@ -141,11 +141,11 @@ def can_edit_form(request: Request, form: dict | None) -> bool:
         return True
     if not form:
         return False
-    creator_group_id = form.get("creator_group_id")
-    if creator_group_id is None:
+    edit_group_ids = form.get("edit_group_ids") or []
+    if not edit_group_ids:
         return False
     user_group_ids = {g.get("id") for g in (user.get("groups") or [])}
-    return creator_group_id in user_group_ids
+    return bool(set(edit_group_ids) & user_group_ids)
 
 
 def can_view_form(request: Request, form: dict | None) -> bool:

@@ -64,7 +64,9 @@ class SQLiteFormRepo:
                 webhook_on_submit=1 if form.get("webhook_on_submit") else 0,
                 webhook_on_delete=1 if form.get("webhook_on_delete") else 0,
                 webhook_on_edit=1 if form.get("webhook_on_edit") else 0,
-                creator_group_id=form.get("creator_group_id"),
+                edit_group_ids=dumps_json(
+                    _normalize_group_ids(form.get("edit_group_ids"))
+                ),
                 publish_group_ids=dumps_json(
                     _normalize_group_ids(form.get("publish_group_ids"))
                 ),
@@ -96,7 +98,7 @@ class SQLiteFormRepo:
                     "allow_anonymous",
                 }:
                     setattr(row, key, 1 if value else 0)
-                elif key == "publish_group_ids":
+                elif key in {"publish_group_ids", "edit_group_ids"}:
                     setattr(row, key, dumps_json(_normalize_group_ids(value)))
                 else:
                     setattr(row, key, value)
@@ -134,7 +136,9 @@ class SQLiteFormRepo:
             "webhook_on_submit": bool(row.webhook_on_submit),
             "webhook_on_delete": bool(row.webhook_on_delete),
             "webhook_on_edit": bool(row.webhook_on_edit),
-            "creator_group_id": row.creator_group_id,
+            "edit_group_ids": _normalize_group_ids(
+                loads_json(row.edit_group_ids) if row.edit_group_ids else []
+            ),
             "publish_group_ids": _normalize_group_ids(
                 loads_json(row.publish_group_ids) if row.publish_group_ids else []
             ),
@@ -320,14 +324,29 @@ class SQLiteStorage:
                         "ALTER TABLE forms ADD COLUMN webhook_on_edit INTEGER DEFAULT 0"
                     )
                 )
-            if "creator_group_id" not in form_columns:
-                conn.execute(
-                    text("ALTER TABLE forms ADD COLUMN creator_group_id INTEGER")
-                )
             if "publish_group_ids" not in form_columns:
                 conn.execute(
                     text("ALTER TABLE forms ADD COLUMN publish_group_ids TEXT")
                 )
+            if "edit_group_ids" not in form_columns:
+                conn.execute(
+                    text("ALTER TABLE forms ADD COLUMN edit_group_ids TEXT")
+                )
+                if "creator_group_id" in form_columns:
+                    conn.execute(
+                        text(
+                            "UPDATE forms SET edit_group_ids = "
+                            "'[' || creator_group_id || ']' "
+                            "WHERE creator_group_id IS NOT NULL "
+                            "AND (edit_group_ids IS NULL OR edit_group_ids = '')"
+                        )
+                    )
+                    try:
+                        conn.execute(
+                            text("ALTER TABLE forms DROP COLUMN creator_group_id")
+                        )
+                    except Exception:
+                        pass
             if "allow_view_others" not in form_columns:
                 conn.execute(
                     text(
