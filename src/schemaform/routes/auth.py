@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Form, Request
@@ -63,6 +64,8 @@ async def login(
 
     try:
         token = await auth.login(username, password)
+    except (asyncio.CancelledError, KeyboardInterrupt, SystemExit):
+        raise
     except BaseException:
         token = None
     if not token:
