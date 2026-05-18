@@ -15,6 +15,7 @@ from fastapi.templating import Jinja2Templates
 from schemaform.auth import LoginRequired, get_auth_provider
 from schemaform.config import BASE_DIR, Settings, ensure_dirs
 from schemaform.file_formats import file_accept_for_constraints
+from schemaform.file_signing import load_or_create_secret, signed_file_url
 from schemaform.routes.admin import router as admin_router
 from schemaform.routes.admin_groups import router as admin_groups_router
 from schemaform.routes.api import router as api_router
@@ -257,6 +258,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.storage = storage
     app.state.settings = settings
     app.state.auth_provider = auth
+    app.state.file_url_secret = load_or_create_secret(settings.file_url_secret)
 
     templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
     app.state.templates = templates
@@ -277,7 +279,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return f"/static/{clean}?v={version}"
 
     templates.env.filters["tojson_attr"] = _tojson_attr
+    def file_url(request: Request, file_id: str) -> str:
+        if not file_id:
+            return ""
+        secret = request.app.state.file_url_secret
+        ttl = request.app.state.settings.file_url_ttl_seconds
+        return signed_file_url(file_id, secret, ttl)
+
     templates.env.globals["static_url"] = static_url
+    templates.env.globals["file_url"] = file_url
     templates.env.globals["field_input_type"] = field_input_type
     templates.env.globals["field_picker"] = field_picker
     templates.env.globals["field_file_accept"] = field_file_accept

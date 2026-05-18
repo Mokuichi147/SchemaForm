@@ -14,20 +14,21 @@ kind は "image"/"video"/"audio" またはそれ以外 (空文字) で、
     {% set img_class = "max-h-40 max-w-xs rounded border border-slate-200 object-contain" %}
     {% set video_class = "max-h-48 max-w-sm rounded border border-slate-200" %}
   {% endif %}
+  {% set url = file_url(request, file_id) %}
   {% if kind == "image" %}
-    <img src="/files/{{ file_id }}" alt="{{ name }}" loading="lazy" class="{{ img_class }} cursor-pointer" data-lightbox="/files/{{ file_id }}" data-lightbox-kind="image" data-lightbox-name="{{ name }}" />
+    <img src="{{ url }}" alt="{{ name }}" loading="lazy" class="{{ img_class }} cursor-pointer" data-lightbox="{{ url }}" data-lightbox-kind="image" data-lightbox-name="{{ name }}" />
   {% elif kind == "video" %}
-    <div class="{{ video_class }} flex items-center justify-center bg-slate-100 cursor-pointer" data-lightbox="/files/{{ file_id }}" data-lightbox-kind="video" data-lightbox-name="{{ name }}">
+    <div class="{{ video_class }} flex items-center justify-center bg-slate-100 cursor-pointer" data-lightbox="{{ url }}" data-lightbox-kind="video" data-lightbox-name="{{ name }}">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-slate-400" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
     </div>
   {% elif kind == "audio" %}
-    <audio src="/files/{{ file_id }}" controls preload="metadata" class="w-full max-w-xs"></audio>
+    <audio src="{{ url }}" controls preload="metadata" class="w-full max-w-xs"></audio>
   {% endif %}
 {%- endmacro %}
 
 {% macro file_link(file_id, info) -%}
   {% set name = info.name or file_id %}
-  <a href="/files/{{ file_id }}" target="_blank" rel="noopener noreferrer" class="break-all text-sky-700 underline">{{ name }}</a>
+  <a href="{{ file_url(request, file_id) }}" target="_blank" rel="noopener noreferrer" class="break-all text-sky-700 underline">{{ name }}</a>
 {%- endmacro %}
 
 {% macro file_entry(file_id, file_infos, size="md") -%}

@@ -37,6 +37,15 @@ class Settings:
         self.user_permission_secret = Path(
             os.getenv("USER_PERMISSION_SECRET", "./data/users.secret")
         )
+        self.file_url_secret = Path(
+            os.getenv("FILE_URL_SECRET", "./data/file_url.secret")
+        )
+        try:
+            self.file_url_ttl_seconds = int(
+                os.getenv("FILE_URL_TTL_SECONDS", "86400")
+            )
+        except ValueError:
+            self.file_url_ttl_seconds = 86400
         self.user_permission_admin_group = os.getenv(
             "USER_PERMISSION_ADMIN_GROUP", "admins"
         )
