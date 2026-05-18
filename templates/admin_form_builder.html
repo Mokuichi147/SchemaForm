@@ -74,29 +74,27 @@
         <div class="mt-0.5 break-words text-xs leading-relaxed text-slate-500">選択したグループのメンバーがこのフォームを編集できます。</div>
       </div>
       <div class="sf-field-input-col lg:col-span-9">
-        <div class="mt-1 w-full max-w-md rounded border border-slate-200 bg-slate-50 px-3 py-2 lg:mt-0">
-          {% if available_groups %}
-          <div class="array-field w-full" data-key="edit_group_ids" data-type="enum" data-picker="" data-unique="1" data-initial="{{ _edit_ids | tojson_attr }}">
-            <div class="space-y-2 array-items"></div>
-            <button type="button" class="add-item mt-1 rounded border border-slate-300 bg-white px-3 py-1 text-xs">追加</button>
-            <template>
-              <div class="flex items-start gap-2 array-item">
-                <div class="w-full space-y-1">
-                  <select name="edit_group_ids" data-choice-select="1" data-search-placeholder="グループを検索" class="w-full rounded border border-slate-300 bg-white px-2 py-2 text-sm">
-                    <option value="">選択してください</option>
-                    {% for g in available_groups %}
-                    <option value="{{ g.id }}">{{ g.name }}</option>
-                    {% endfor %}
-                  </select>
-                </div>
-                <button type="button" class="remove-item shrink-0 whitespace-nowrap rounded border border-rose-300 bg-white px-2 py-1 text-xs text-rose-600">削除</button>
+        {% if available_groups %}
+        <div class="array-field mt-1 w-full max-w-md lg:mt-0" data-key="edit_group_ids" data-type="enum" data-picker="" data-unique="1" data-initial="{{ _edit_ids | tojson_attr }}">
+          <div class="space-y-2 array-items"></div>
+          <button type="button" class="add-item mt-1 rounded border border-slate-300 bg-white px-3 py-1 text-xs">追加</button>
+          <template>
+            <div class="flex items-start gap-2 array-item">
+              <div class="w-full space-y-1">
+                <select name="edit_group_ids" data-choice-select="1" data-search-placeholder="グループを検索" class="w-full rounded border border-slate-300 bg-white px-2 py-2 text-sm">
+                  <option value="">選択してください</option>
+                  {% for g in available_groups %}
+                  <option value="{{ g.id }}">{{ g.name }}</option>
+                  {% endfor %}
+                </select>
               </div>
-            </template>
-          </div>
-          {% else %}
-          <div class="text-sm text-slate-500">選択できるグループがありません。</div>
-          {% endif %}
+              <button type="button" class="remove-item shrink-0 whitespace-nowrap rounded border border-rose-300 bg-white px-2 py-1 text-xs text-rose-600">削除</button>
+            </div>
+          </template>
         </div>
+        {% else %}
+        <div class="mt-1 text-sm text-slate-500 lg:mt-0">選択できるグループがありません。</div>
+        {% endif %}
       </div>
     </div>
   </div>
