@@ -94,7 +94,7 @@ def _parse_edit_group_ids(
         try:
             gid = int(s)
         except ValueError:
-            errors.append("編集グループの指定が不正です")
+            errors.append("編集範囲の指定が不正です")
             continue
         if gid in seen:
             continue
@@ -103,7 +103,7 @@ def _parse_edit_group_ids(
         seen.add(gid)
         result.append(gid)
     if not result and not is_admin:
-        errors.append("編集グループを選択してください")
+        errors.append("編集範囲のグループを選択してください")
     return sorted(result), errors
 
 
@@ -417,7 +417,7 @@ async def update_form(
     )
     edit_group_ids = sorted(set(parsed_edit_ids) | preserved_ids)
     if not is_admin and not edit_group_ids:
-        edit_errors.append("編集グループを選択してください")
+        edit_errors.append("編集範囲のグループを選択してください")
     errors.extend(edit_errors)
 
     def _render(form_extra: dict[str, Any] | None = None) -> HTMLResponse:
