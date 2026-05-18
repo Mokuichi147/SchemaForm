@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Form, Request
@@ -61,7 +62,12 @@ async def login(
             status_code=400,
         )
 
-    token = await auth.login(username, password)
+    try:
+        token = await auth.login(username, password)
+    except (asyncio.CancelledError, KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException:
+        token = None
     if not token:
         return templates.TemplateResponse(
             "login.html",
