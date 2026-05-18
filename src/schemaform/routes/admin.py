@@ -81,6 +81,32 @@ async def _list_all_groups(request: Request) -> list[dict[str, Any]]:
     return _normalize_group_options(groups)
 
 
+def _parse_edit_group_ids(
+    raw_values: list[str], allowed_ids: set[int], is_admin: bool
+) -> tuple[list[int], list[str]]:
+    errors: list[str] = []
+    result: list[int] = []
+    seen: set[int] = set()
+    for raw in raw_values:
+        s = str(raw or "").strip()
+        if not s:
+            continue
+        try:
+            gid = int(s)
+        except ValueError:
+            errors.append("編集範囲の指定が不正です")
+            continue
+        if gid in seen:
+            continue
+        if allowed_ids and gid not in allowed_ids:
+            continue
+        seen.add(gid)
+        result.append(gid)
+    if not result and not is_admin:
+        errors.append("編集範囲のグループを選択してください")
+    return sorted(result), errors
+
+
 def _parse_publish_group_ids(
     publish_scope: str, raw_values: list[str], all_group_ids: set[int]
 ) -> tuple[list[int], bool, list[str]]:
@@ -226,7 +252,6 @@ async def create_form(request: Request, _: Any = Depends(form_creator_guard)) ->
     name = str(form_data.get("name", "")).strip()
     description = str(form_data.get("description", "")).strip()
     fields_json = str(form_data.get("fields_json", ""))
-    creator_group_raw = str(form_data.get("creator_group_id", "")).strip()
 
     fields, errors = parse_fields_json(fields_json)
     master_forms, master_field_catalog = build_master_field_catalog(storage)
@@ -244,27 +269,21 @@ async def create_form(request: Request, _: Any = Depends(form_creator_guard)) ->
     user = getattr(request.state, "current_user", None)
     is_admin = bool(user and user.get("is_admin"))
     available_ids = {g["id"] for g in available_groups}
-    creator_group_id: int | None = None
-    if creator_group_raw:
-        try:
-            creator_group_id = int(creator_group_raw)
-        except ValueError:
-            errors.append("作成グループの指定が不正です")
-        else:
-            if creator_group_id not in available_ids:
-                errors.append("選択したグループにフォームを作成する権限がありません")
-    if not is_admin and creator_group_id is None:
-        if len(available_ids) == 1:
-            creator_group_id = next(iter(available_ids))
-        else:
-            errors.append("作成グループを選択してください")
+    raw_edit_ids = form_data.getlist("edit_group_ids")
+    if not is_admin and not any(str(v or "").strip() for v in raw_edit_ids) and len(available_ids) == 1:
+        edit_group_ids = [next(iter(available_ids))]
+        edit_errors: list[str] = []
+    else:
+        edit_group_ids, edit_errors = _parse_edit_group_ids(
+            raw_edit_ids, available_ids, is_admin
+        )
+    errors.extend(edit_errors)
 
     def _render(form_extra: dict[str, Any] | None = None) -> HTMLResponse:
         base = {"name": name, "description": description}
         if form_extra:
             base.update(form_extra)
-        if creator_group_id is not None:
-            base["creator_group_id"] = creator_group_id
+        base["edit_group_ids"] = edit_group_ids
         base["publish_group_ids"] = publish_group_ids
         base["allow_anonymous"] = allow_anonymous
         return templates.TemplateResponse(
@@ -311,7 +330,7 @@ async def create_form(request: Request, _: Any = Depends(form_creator_guard)) ->
             "webhook_on_submit": webhook_on_submit,
             "webhook_on_delete": webhook_on_delete,
             "webhook_on_edit": webhook_on_edit,
-            "creator_group_id": creator_group_id,
+            "edit_group_ids": edit_group_ids,
             "publish_group_ids": publish_group_ids,
             "allow_view_others": allow_view_others,
             "disallow_edit_submissions": disallow_edit_submissions,
@@ -388,26 +407,22 @@ async def update_form(
 
     user = getattr(request.state, "current_user", None)
     is_admin = bool(user and user.get("is_admin"))
-    creator_group_id: int | None = form.get("creator_group_id")
-    if is_admin:
-        raw = str(form_data.get("creator_group_id", "")).strip()
-        if raw == "":
-            creator_group_id = None
-        else:
-            try:
-                new_id = int(raw)
-            except ValueError:
-                errors.append("作成グループの指定が不正です")
-            else:
-                allowed_ids = {g["id"] for g in available_groups}
-                if new_id not in allowed_ids:
-                    errors.append("選択したグループは利用できません")
-                else:
-                    creator_group_id = new_id
+    available_ids = {g["id"] for g in available_groups}
+    existing_edit_ids: list[int] = list(form.get("edit_group_ids") or [])
+    preserved_ids: set[int] = (
+        set() if is_admin else {gid for gid in existing_edit_ids if gid not in available_ids}
+    )
+    parsed_edit_ids, edit_errors = _parse_edit_group_ids(
+        form_data.getlist("edit_group_ids"), available_ids, is_admin=True
+    )
+    edit_group_ids = sorted(set(parsed_edit_ids) | preserved_ids)
+    if not is_admin and not edit_group_ids:
+        edit_errors.append("編集範囲のグループを選択してください")
+    errors.extend(edit_errors)
 
     def _render(form_extra: dict[str, Any] | None = None) -> HTMLResponse:
         base = {**form, "name": name, "description": description}
-        base["creator_group_id"] = creator_group_id
+        base["edit_group_ids"] = edit_group_ids
         base["publish_group_ids"] = publish_group_ids
         base["allow_anonymous"] = allow_anonymous
         if form_extra:
@@ -453,10 +468,9 @@ async def update_form(
         "disallow_edit_submissions": disallow_edit_submissions,
         "allow_anonymous": allow_anonymous,
         "publish_group_ids": publish_group_ids,
+        "edit_group_ids": edit_group_ids,
         "updated_at": now_utc(),
     }
-    if is_admin:
-        updates["creator_group_id"] = creator_group_id
     updated = storage.forms.update_form(form_id, updates)
     return RedirectResponse(f"/forms/{updated['id']}", status_code=303)
 

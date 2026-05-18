@@ -97,7 +97,7 @@ class JSONFormRepo(JSONRepoBase):
         for key, value in form.items():
             if key in {"created_at", "updated_at"}:
                 record[key] = to_iso(value) if isinstance(value, datetime) else value
-            elif key == "publish_group_ids":
+            elif key in {"publish_group_ids", "edit_group_ids"}:
                 record[key] = _normalize_group_ids(value)
             else:
                 record[key] = value
@@ -120,7 +120,14 @@ class JSONFormRepo(JSONRepoBase):
             "webhook_on_submit": record.get("webhook_on_submit", False),
             "webhook_on_delete": record.get("webhook_on_delete", False),
             "webhook_on_edit": record.get("webhook_on_edit", False),
-            "creator_group_id": record.get("creator_group_id"),
+            "edit_group_ids": _normalize_group_ids(
+                record.get("edit_group_ids")
+                or (
+                    [record["creator_group_id"]]
+                    if record.get("creator_group_id") is not None
+                    else []
+                )
+            ),
             "publish_group_ids": _normalize_group_ids(
                 record.get("publish_group_ids")
             ),
