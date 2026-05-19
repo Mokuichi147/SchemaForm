@@ -993,13 +993,17 @@
   }
 
   function initSortable(container) {
-    if (window.Sortable) {
-      new Sortable(container, {
-        animation: 150,
-        handle: ".drag-handle",
-        onSort: updateFieldsJson,
-      });
-    }
+    if (!window.Sortable || !container || container._sortableInitialized) return;
+    new Sortable(container, {
+      animation: 150,
+      handle: ".drag-handle",
+      group: "form-fields",
+      fallbackOnBody: true,
+      swapThreshold: 0.65,
+      onMove: (evt) => !evt.dragged.contains(evt.to),
+      onSort: updateFieldsJson,
+    });
+    container._sortableInitialized = true;
   }
 
   function attachRowEvents(row) {
@@ -1067,10 +1071,12 @@
     attachRowEvents(row);
     targetContainer.appendChild(row);
 
-    if (normalized.type === "group" && normalized.children && normalized.children.length > 0) {
+    if (normalized.type === "group") {
       const childrenList = row.querySelector(".children-list");
-      for (const child of normalized.children) {
-        addRow(child, childrenList);
+      if (normalized.children && normalized.children.length > 0) {
+        for (const child of normalized.children) {
+          addRow(child, childrenList);
+        }
       }
       initSortable(childrenList);
     }
@@ -1097,9 +1103,8 @@
       const selectedType = button.dataset.type || "string";
       const target = pendingAddTarget || fieldList;
       addRow({ ...defaultField, type: selectedType }, target);
-      if (pendingAddTarget && window.Sortable && !pendingAddTarget._sortableInitialized) {
+      if (pendingAddTarget) {
         initSortable(pendingAddTarget);
-        pendingAddTarget._sortableInitialized = true;
       }
       pendingAddTarget = null;
       updateFieldsJson();
