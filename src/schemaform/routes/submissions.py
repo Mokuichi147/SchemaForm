@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 
 from schemaform.calculated import evaluate_formula
+from schemaform.file_signing import file_url_builder
 from schemaform.fields import (
     clean_empty_recursive,
     expand_group_array_rows,
@@ -380,7 +381,7 @@ async def build_submission_list_context(
     file_ids |= collect_submission_master_display_file_ids(
         submissions, display_columns, master_lookup_by_field
     )
-    file_infos = resolve_file_infos(storage.files, file_ids)
+    file_infos = resolve_file_infos(storage.files, file_ids, file_url_builder(request))
     file_names = {fid: info["name"] for fid, info in file_infos.items()}
 
     filtered = apply_filters(
@@ -633,7 +634,9 @@ async def perform_update_submission(
     if errors or master_errors:
         messages = [f"{error.message}" for error in errors] + master_errors
         file_ids = collect_file_ids([{**existing, "data_json": submission}], fields)
-        file_infos = resolve_file_infos(storage.files, file_ids)
+        file_infos = resolve_file_infos(
+            storage.files, file_ids, file_url_builder(request)
+        )
         return templates.TemplateResponse(
             "submission_edit.html",
             {
