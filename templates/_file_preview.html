@@ -14,7 +14,7 @@ kind は "image"/"video"/"audio" またはそれ以外 (空文字) で、
     {% set img_class = "max-h-40 max-w-xs rounded border border-slate-200 object-contain" %}
     {% set video_class = "max-h-48 max-w-sm rounded border border-slate-200" %}
   {% endif %}
-  {% set url = file_url(request, file_id) %}
+  {% set url = info.url or "" %}
   {% if kind == "image" %}
     <img src="{{ url }}" alt="{{ name }}" loading="lazy" class="{{ img_class }} cursor-pointer" data-lightbox="{{ url }}" data-lightbox-kind="image" data-lightbox-name="{{ name }}" />
   {% elif kind == "video" %}
@@ -28,7 +28,7 @@ kind は "image"/"video"/"audio" またはそれ以外 (空文字) で、
 
 {% macro file_link(file_id, info) -%}
   {% set name = info.name or file_id %}
-  <a href="{{ file_url(request, file_id) }}" target="_blank" rel="noopener noreferrer" class="break-all text-sky-700 underline">{{ name }}</a>
+  <a href="{{ info.url or '' }}" target="_blank" rel="noopener noreferrer" class="break-all text-sky-700 underline">{{ name }}</a>
 {%- endmacro %}
 
 {% macro file_entry(file_id, file_infos, size="md") -%}
