@@ -208,7 +208,10 @@
     const info = SF_FILE_INFOS[fileId] || null;
     const name = info?.name || fileId;
     const kind = info?.kind || "";
-    const href = `/files/${encodeURIComponent(fileId)}`;
+    const href = info?.url || "";
+    if (!href) {
+      return;
+    }
 
     const wrapper = document.createElement("div");
     wrapper.className = "space-y-1";

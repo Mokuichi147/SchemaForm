@@ -9,6 +9,7 @@ from jsonschema import Draft7Validator
 
 from schemaform.calculated import evaluate_formula
 from schemaform.file_formats import upload_matches_file_constraints
+from schemaform.file_signing import file_url_builder, verify_file_token
 from schemaform.fields import clean_empty_recursive
 from schemaform.filters import normalize_number, parse_bool, resolve_file_infos
 from schemaform.master import (
@@ -82,7 +83,9 @@ async def public_form(request: Request, public_id: str) -> HTMLResponse:
     fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
     enrich_master_options(storage, fields)
     file_infos = resolve_file_infos(
-        storage.files, collect_master_display_file_ids(fields)
+        storage.files,
+        collect_master_display_file_ids(fields),
+        file_url_builder(request),
     )
     inactive = form.get("status") != "active"
     errors = ["このフォームは停止中です"] if inactive else []
@@ -296,6 +299,11 @@ async def submit_form(request: Request, public_id: str) -> HTMLResponse:
 async def download_file(request: Request, file_id: str) -> FileResponse:
     storage = request.app.state.storage
     settings = request.app.state.settings
+    token = request.query_params.get("t")
+    expires_at = request.query_params.get("e")
+    secret = request.app.state.file_url_secret
+    if not verify_file_token(file_id, expires_at, token, secret):
+        raise HTTPException(status_code=404, detail="ファイルが見つかりません")
     file_meta = storage.files.get_file(file_id)
     if not file_meta:
         raise HTTPException(status_code=404, detail="ファイルが見つかりません")

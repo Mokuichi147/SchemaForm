@@ -4,7 +4,7 @@ import base64
 import csv
 import io
 from datetime import datetime, timezone
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from schemaform.fields import (
     flatten_fields,
@@ -68,11 +68,14 @@ def collect_file_ids(
 
 
 def resolve_file_infos(
-    file_repo: FileRepository, file_ids: Iterable[str]
+    file_repo: FileRepository,
+    file_ids: Iterable[str],
+    url_builder: "Callable[[str], str] | None" = None,
 ) -> dict[str, dict[str, str]]:
-    """file_id → {name, content_type, kind} のマップを返す。
+    """file_id → {name, content_type, kind, url?} のマップを返す。
 
     kind は "image"/"video"/"audio" もしくは空文字（ブラウザ上で表示/再生に適さない場合）。
+    url_builder が指定された場合は、各エントリに署名付き url を含める。
     """
     mapping: dict[str, dict[str, str]] = {}
     for file_id in file_ids:
@@ -81,11 +84,14 @@ def resolve_file_infos(
             continue
         name = str(file_meta.get("original_name", "") or "")
         content_type = str(file_meta.get("content_type", "") or "")
-        mapping[file_id] = {
+        info: dict[str, str] = {
             "name": name,
             "content_type": content_type,
             "kind": media_kind_for_file(content_type, name),
         }
+        if url_builder is not None:
+            info["url"] = url_builder(file_id)
+        mapping[file_id] = info
     return mapping
 
 

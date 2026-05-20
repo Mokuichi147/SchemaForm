@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from schemaform.file_signing import file_url_builder
 from schemaform.filters import collect_file_ids, resolve_file_infos
 from schemaform.routes.submissions import (
     build_submission_list_context,
@@ -184,7 +185,7 @@ async def edit_submission(
     fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
     enrich_master_options(storage, fields)
     file_ids = collect_file_ids([submission], fields)
-    file_infos = resolve_file_infos(storage.files, file_ids)
+    file_infos = resolve_file_infos(storage.files, file_ids, file_url_builder(request))
     return templates.TemplateResponse(
         "submission_edit.html",
         {
