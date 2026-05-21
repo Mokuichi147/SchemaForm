@@ -698,11 +698,15 @@ _TEMPORAL_DISPLAY_FORMATS = {
 _NUMERIC_KINDS = {"number", "integer"}
 
 
-def _parse_temporal(kind: str, text: str) -> datetime | date | time | None:
-    """Parse a formatted cell string back into a temporal object for Excel.
+def _parse_temporal(
+    kind: str, text: str, *, keep_tz: bool = False
+) -> datetime | date | time | None:
+    """Parse a formatted cell string back into a temporal object.
 
     Returns None when the value is empty or not parseable so the caller can
-    fall back to writing it as plain text.
+    fall back to writing it as plain text. By default a timezone-aware datetime
+    is converted to the local naive wall clock (Excel has no timezone concept);
+    pass ``keep_tz=True`` to preserve the original offset for round-tripping.
     """
     text = (text or "").strip()
     if not text:
@@ -714,7 +718,7 @@ def _parse_temporal(kind: str, text: str) -> datetime | date | time | None:
             return time.fromisoformat(text)
         if kind == "datetime":
             value = datetime.fromisoformat(text)
-            if value.tzinfo is not None:
+            if value.tzinfo is not None and not keep_tz:
                 value = value.astimezone().replace(tzinfo=None)
             return value
     except ValueError:
@@ -728,8 +732,10 @@ def _format_temporal_value(kind: str, value: Any, *, iso: bool = False) -> str:
     Stored values use ISO notation (e.g. ``2026-05-21T14:30``). For the
     submission list display we mirror the timestamp columns and emit slash
     notation (``2026/05/21 14:30``); for downloads we emit canonical ISO 8601
-    at minute precision so every export format matches. Unparseable values
-    fall back to their original text.
+    at minute precision so every export format matches. Timezone offsets on the
+    input are preserved (kept in ISO output, and the wall clock is shown as-is
+    rather than shifted) so the value's meaning never changes silently.
+    Unparseable values fall back to their original text.
     """
     if isinstance(value, list):
         return ", ".join(
@@ -739,7 +745,7 @@ def _format_temporal_value(kind: str, value: Any, *, iso: bool = False) -> str:
         )
     if value in (None, ""):
         return ""
-    parsed = _parse_temporal(kind, str(value))
+    parsed = _parse_temporal(kind, str(value), keep_tz=True)
     if parsed is None:
         return str(value)
     if iso:
