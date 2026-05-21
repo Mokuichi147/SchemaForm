@@ -9,7 +9,11 @@ from typing import Any
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import (
+    HTMLResponse,
+    RedirectResponse,
+    Response,
+)
 
 from schemaform.calculated import evaluate_formula
 from schemaform.file_signing import file_url_builder
@@ -668,10 +672,88 @@ async def perform_update_submission(
     return RedirectResponse(f"/forms/{form_id}/submissions", status_code=303)
 
 
+_EXPORT_FORMATS = {"csv", "xlsx", "parquet", "json"}
+
+
+def _unique_column_names(headers: list[str]) -> list[str]:
+    """Disambiguate duplicate header labels for formats that need unique keys."""
+    seen: dict[str, int] = {}
+    result: list[str] = []
+    for header in headers:
+        name = header or "column"
+        if name in seen:
+            seen[name] += 1
+            result.append(f"{name}_{seen[name]}")
+        else:
+            seen[name] = 0
+            result.append(name)
+    return result
+
+
+def _serialize_export(
+    fmt: str, headers: list[str], rows: list[list[str]]
+) -> tuple[bytes | str, str, str]:
+    """Serialize tabular data to the requested format.
+
+    Returns (content, media_type, file_extension).
+    """
+    if fmt == "xlsx":
+        from openpyxl import Workbook
+
+        workbook = Workbook()
+        worksheet = workbook.active
+        worksheet.title = "submissions"
+        worksheet.append(headers)
+        for row in rows:
+            worksheet.append(row)
+        # Force string cells to text so values like "=cmd" are stored as
+        # literals rather than being interpreted as Excel formulas.
+        for row_cells in worksheet.iter_rows():
+            for cell in row_cells:
+                if isinstance(cell.value, str):
+                    cell.data_type = "s"
+        buffer = io.BytesIO()
+        workbook.save(buffer)
+        return (
+            buffer.getvalue(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "xlsx",
+        )
+
+    if fmt == "parquet":
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+
+        columns = _unique_column_names(headers)
+        arrays = [
+            pa.array([row[index] for row in rows], type=pa.string())
+            for index in range(len(columns))
+        ]
+        table = pa.Table.from_arrays(arrays, names=columns)
+        buffer = pa.BufferOutputStream()
+        pq.write_table(table, buffer)
+        return buffer.getvalue().to_pybytes(), "application/vnd.apache.parquet", "parquet"
+
+    if fmt == "json":
+        columns = _unique_column_names(headers)
+        records = [dict(zip(columns, row)) for row in rows]
+        return (
+            json.dumps(records, ensure_ascii=False, indent=2),
+            "application/json; charset=utf-8",
+            "json",
+        )
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(headers)
+    writer.writerows(rows)
+    return output.getvalue(), "text/csv; charset=utf-8", "csv"
+
+
 @router.get("/forms/{form_id}/export", tags=["admin"])
 async def export_submissions(
     request: Request, form_id: str, _: Any = Depends(form_editor_guard)
-) -> PlainTextResponse:
+) -> Response:
     storage = request.app.state.storage
     form = storage.forms.get_form(form_id)
     if not form:
@@ -741,21 +823,20 @@ async def export_submissions(
     ]
 
     fmt = request.query_params.get("format", "csv")
-    delimiter = "," if fmt == "csv" else "\t"
+    if fmt not in _EXPORT_FORMATS:
+        fmt = "csv"
 
-    output = io.StringIO()
-    writer = csv.writer(output, delimiter=delimiter)
-    writer.writerow(headers)
-    writer.writerows(rows)
+    content, content_type, extension = _serialize_export(fmt, headers, rows)
 
-    content_type = "text/csv" if fmt == "csv" else "text/tab-separated-values"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     raw_name = (form.get("name") or "submissions").strip() or "submissions"
     safe_name = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "_", raw_name)
-    filename = f"{safe_name}_{timestamp}.{fmt}"
-    ascii_fallback = re.sub(r"[^A-Za-z0-9._-]+", "_", filename) or f"submissions.{fmt}"
-    return PlainTextResponse(
-        output.getvalue(),
+    filename = f"{safe_name}_{timestamp}.{extension}"
+    ascii_fallback = (
+        re.sub(r"[^A-Za-z0-9._-]+", "_", filename) or f"submissions.{extension}"
+    )
+    return Response(
+        content=content,
         media_type=content_type,
         headers={
             "Content-Disposition": (
