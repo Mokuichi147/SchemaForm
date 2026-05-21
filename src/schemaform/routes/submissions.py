@@ -4,12 +4,16 @@ import csv
 import io
 import json
 import re
-from datetime import datetime
+from datetime import date, datetime, time
 from typing import Any
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import (
+    HTMLResponse,
+    RedirectResponse,
+    Response,
+)
 
 from schemaform.calculated import evaluate_formula
 from schemaform.file_signing import file_url_builder
@@ -668,10 +672,154 @@ async def perform_update_submission(
     return RedirectResponse(f"/forms/{form_id}/submissions", status_code=303)
 
 
+_EXPORT_FORMATS = {"csv", "xlsx", "parquet", "json"}
+
+_TEMPORAL_KINDS = {"datetime", "date", "time"}
+_TEMPORAL_NUMBER_FORMATS = {
+    "datetime": "yyyy/mm/dd hh:mm",
+    "date": "yyyy/mm/dd",
+    "time": "hh:mm",
+}
+
+
+def _parse_temporal(kind: str, text: str) -> datetime | date | time | None:
+    """Parse a formatted cell string back into a temporal object for Excel.
+
+    Returns None when the value is empty or not parseable so the caller can
+    fall back to writing it as plain text.
+    """
+    text = (text or "").strip()
+    if not text:
+        return None
+    try:
+        if kind == "date":
+            return date.fromisoformat(text)
+        if kind == "time":
+            return time.fromisoformat(text)
+        if kind == "datetime":
+            value = datetime.fromisoformat(text)
+            if value.tzinfo is not None:
+                value = value.astimezone().replace(tzinfo=None)
+            return value
+    except ValueError:
+        return None
+    return None
+
+
+def _column_temporal_kind(column: dict[str, Any]) -> str:
+    """Return "datetime"/"date"/"time" for a temporal display column, else "".
+
+    Array columns join multiple values into one string, so they stay text.
+    """
+    field = column.get("field", {})
+    if field.get("is_array"):
+        return ""
+    if column.get("kind") == "master_display":
+        display_type = column.get("display_type", "")
+        return display_type if display_type in _TEMPORAL_KINDS else ""
+    field_type = field.get("type", "")
+    return field_type if field_type in _TEMPORAL_KINDS else ""
+
+
+def _unique_column_names(headers: list[str]) -> list[str]:
+    """Disambiguate duplicate header labels for formats that need unique keys."""
+    seen: dict[str, int] = {}
+    result: list[str] = []
+    for header in headers:
+        name = header or "column"
+        if name in seen:
+            seen[name] += 1
+            result.append(f"{name}_{seen[name]}")
+        else:
+            seen[name] = 0
+            result.append(name)
+    return result
+
+
+def _serialize_export(
+    fmt: str,
+    headers: list[str],
+    rows: list[list[str]],
+    column_kinds: list[str] | None = None,
+) -> tuple[bytes | str, str, str]:
+    """Serialize tabular data to the requested format.
+
+    ``column_kinds`` aligns with ``headers`` and marks temporal columns
+    ("datetime"/"date"/"time") so the Excel export can emit real date values.
+
+    Returns (content, media_type, file_extension).
+    """
+    if fmt == "xlsx":
+        from openpyxl import Workbook
+
+        kinds = column_kinds or []
+        workbook = Workbook()
+        worksheet = workbook.active
+        worksheet.title = "submissions"
+        worksheet.append(headers)
+        # Force header cells to text so labels like "=total" are not treated
+        # as Excel formulas.
+        for cell in worksheet[1]:
+            if isinstance(cell.value, str):
+                cell.data_type = "s"
+        for row in rows:
+            worksheet.append(row)
+            for index, cell in enumerate(worksheet[worksheet.max_row]):
+                kind = kinds[index] if index < len(kinds) else ""
+                parsed = (
+                    _parse_temporal(kind, cell.value)
+                    if kind in _TEMPORAL_KINDS and isinstance(cell.value, str)
+                    else None
+                )
+                if parsed is not None:
+                    cell.value = parsed
+                    cell.number_format = _TEMPORAL_NUMBER_FORMATS[kind]
+                elif isinstance(cell.value, str):
+                    # Force text so values like "=cmd" are stored as literals
+                    # rather than being interpreted as Excel formulas.
+                    cell.data_type = "s"
+        buffer = io.BytesIO()
+        workbook.save(buffer)
+        return (
+            buffer.getvalue(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "xlsx",
+        )
+
+    if fmt == "parquet":
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+
+        columns = _unique_column_names(headers)
+        arrays = [
+            pa.array([row[index] for row in rows], type=pa.string())
+            for index in range(len(columns))
+        ]
+        table = pa.Table.from_arrays(arrays, names=columns)
+        buffer = pa.BufferOutputStream()
+        pq.write_table(table, buffer)
+        return buffer.getvalue().to_pybytes(), "application/vnd.apache.parquet", "parquet"
+
+    if fmt == "json":
+        columns = _unique_column_names(headers)
+        records = [dict(zip(columns, row)) for row in rows]
+        return (
+            json.dumps(records, ensure_ascii=False, indent=2),
+            "application/json; charset=utf-8",
+            "json",
+        )
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(headers)
+    writer.writerows(rows)
+    return output.getvalue(), "text/csv; charset=utf-8", "csv"
+
+
 @router.get("/forms/{form_id}/export", tags=["admin"])
 async def export_submissions(
     request: Request, form_id: str, _: Any = Depends(form_editor_guard)
-) -> PlainTextResponse:
+) -> Response:
     storage = request.app.state.storage
     form = storage.forms.get_form(form_id)
     if not form:
@@ -725,6 +873,9 @@ async def export_submissions(
     headers = ["送信日時", "更新日時", "送信ユーザー"] + [
         column["label"] for column in display_columns
     ]
+    column_kinds = ["datetime", "datetime", ""] + [
+        _column_temporal_kind(column) for column in display_columns
+    ]
     rows = [
         [
             _fmt(submission.get("created_at")),
@@ -741,21 +892,22 @@ async def export_submissions(
     ]
 
     fmt = request.query_params.get("format", "csv")
-    delimiter = "," if fmt == "csv" else "\t"
+    if fmt not in _EXPORT_FORMATS:
+        fmt = "csv"
 
-    output = io.StringIO()
-    writer = csv.writer(output, delimiter=delimiter)
-    writer.writerow(headers)
-    writer.writerows(rows)
+    content, content_type, extension = _serialize_export(
+        fmt, headers, rows, column_kinds
+    )
 
-    content_type = "text/csv" if fmt == "csv" else "text/tab-separated-values"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     raw_name = (form.get("name") or "submissions").strip() or "submissions"
     safe_name = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "_", raw_name)
-    filename = f"{safe_name}_{timestamp}.{fmt}"
-    ascii_fallback = re.sub(r"[^A-Za-z0-9._-]+", "_", filename) or f"submissions.{fmt}"
-    return PlainTextResponse(
-        output.getvalue(),
+    filename = f"{safe_name}_{timestamp}.{extension}"
+    ascii_fallback = (
+        re.sub(r"[^A-Za-z0-9._-]+", "_", filename) or f"submissions.{extension}"
+    )
+    return Response(
+        content=content,
         media_type=content_type,
         headers={
             "Content-Disposition": (
