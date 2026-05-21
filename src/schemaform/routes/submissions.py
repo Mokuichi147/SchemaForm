@@ -680,6 +680,7 @@ _TEMPORAL_NUMBER_FORMATS = {
     "date": "yyyy/mm/dd",
     "time": "hh:mm",
 }
+_NUMERIC_KINDS = {"number", "integer"}
 
 
 def _parse_temporal(kind: str, text: str) -> datetime | date | time | None:
@@ -706,19 +707,44 @@ def _parse_temporal(kind: str, text: str) -> datetime | date | time | None:
     return None
 
 
-def _column_temporal_kind(column: dict[str, Any]) -> str:
-    """Return "datetime"/"date"/"time" for a temporal display column, else "".
+def _parse_number(kind: str, text: str) -> int | float | None:
+    """Parse a cell string back into a number for Excel.
 
-    Array columns join multiple values into one string, so they stay text.
+    Returns None when the value is empty or not numeric so the caller can fall
+    back to writing it as plain text. An "integer" column may still hold a
+    non-integral value, so it falls back to float rather than dropping it.
+    """
+    text = (text or "").strip()
+    if not text:
+        return None
+    try:
+        if kind == "integer":
+            return int(text)
+        return float(text)
+    except ValueError:
+        try:
+            return float(text)
+        except ValueError:
+            return None
+
+
+def _column_export_kind(column: dict[str, Any]) -> str:
+    """Return the export kind for a display column, else "".
+
+    Temporal kinds ("datetime"/"date"/"time") let the Excel export emit real
+    date values, and numeric kinds ("number"/"integer") let it emit real
+    numbers. Array columns join multiple values into one string, so they stay
+    text.
     """
     field = column.get("field", {})
     if field.get("is_array"):
         return ""
+    typed_kinds = _TEMPORAL_KINDS | _NUMERIC_KINDS
     if column.get("kind") == "master_display":
         display_type = column.get("display_type", "")
-        return display_type if display_type in _TEMPORAL_KINDS else ""
+        return display_type if display_type in typed_kinds else ""
     field_type = field.get("type", "")
-    return field_type if field_type in _TEMPORAL_KINDS else ""
+    return field_type if field_type in typed_kinds else ""
 
 
 def _unique_column_names(headers: list[str]) -> list[str]:
@@ -751,8 +777,13 @@ def _serialize_export(
     """
     if fmt == "xlsx":
         from openpyxl import Workbook
+        from openpyxl.styles import Alignment
 
         kinds = column_kinds or []
+        # Excel defaults cells to bottom vertical alignment; pin to top so
+        # values (and multi-line text) read from the top of each cell.
+        top_align = Alignment(vertical="top")
+        top_wrap_align = Alignment(vertical="top", wrap_text=True)
         workbook = Workbook()
         worksheet = workbook.active
         worksheet.title = "submissions"
@@ -760,24 +791,36 @@ def _serialize_export(
         # Force header cells to text so labels like "=total" are not treated
         # as Excel formulas.
         for cell in worksheet[1]:
+            cell.alignment = top_align
             if isinstance(cell.value, str):
                 cell.data_type = "s"
         for row in rows:
             worksheet.append(row)
             for index, cell in enumerate(worksheet[worksheet.max_row]):
+                cell.alignment = top_align
+                if not isinstance(cell.value, str):
+                    continue
                 kind = kinds[index] if index < len(kinds) else ""
-                parsed = (
-                    _parse_temporal(kind, cell.value)
-                    if kind in _TEMPORAL_KINDS and isinstance(cell.value, str)
-                    else None
-                )
-                if parsed is not None:
-                    cell.value = parsed
-                    cell.number_format = _TEMPORAL_NUMBER_FORMATS[kind]
-                elif isinstance(cell.value, str):
-                    # Force text so values like "=cmd" are stored as literals
-                    # rather than being interpreted as Excel formulas.
-                    cell.data_type = "s"
+                if kind in _TEMPORAL_KINDS:
+                    parsed = _parse_temporal(kind, cell.value)
+                    if parsed is not None:
+                        cell.value = parsed
+                        cell.number_format = _TEMPORAL_NUMBER_FORMATS[kind]
+                        continue
+                elif kind in _NUMERIC_KINDS:
+                    number = _parse_number(kind, cell.value)
+                    if number is not None:
+                        cell.value = number
+                        continue
+                # Normalize CRLF/CR to LF so Excel renders a single in-cell
+                # line break instead of doubling it.
+                cell.value = cell.value.replace("\r\n", "\n").replace("\r", "\n")
+                if "\n" in cell.value:
+                    # Wrap so the line breaks are actually shown as new lines.
+                    cell.alignment = top_wrap_align
+                # Force text so values like "=cmd" are stored as literals
+                # rather than being interpreted as Excel formulas.
+                cell.data_type = "s"
         buffer = io.BytesIO()
         workbook.save(buffer)
         return (
@@ -874,7 +917,7 @@ async def export_submissions(
         column["label"] for column in display_columns
     ]
     column_kinds = ["datetime", "datetime", ""] + [
-        _column_temporal_kind(column) for column in display_columns
+        _column_export_kind(column) for column in display_columns
     ]
     rows = [
         [
