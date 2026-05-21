@@ -12,3 +12,9 @@ wheels/
 # Runtime data
 data/
 .env
+
+# user-permission
+secret.key
+*.db
+*.db-shm
+*.db-wal
