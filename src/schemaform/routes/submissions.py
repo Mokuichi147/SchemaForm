@@ -767,18 +767,24 @@ def _serialize_export(
     headers: list[str],
     rows: list[list[str]],
     column_kinds: list[str] | None = None,
+    column_wraps: list[bool] | None = None,
 ) -> tuple[bytes | str, str, str]:
     """Serialize tabular data to the requested format.
 
     ``column_kinds`` aligns with ``headers`` and marks temporal columns
     ("datetime"/"date"/"time") so the Excel export can emit real date values.
+    ``column_wraps`` aligns with ``headers`` and marks columns whose Excel
+    cells should enable wrap text (multi-line text fields).
 
     Returns (content, media_type, file_extension).
     """
     if fmt == "xlsx":
         from openpyxl import Workbook
+        from openpyxl.styles import Alignment
 
         kinds = column_kinds or []
+        wraps = column_wraps or []
+        wrap_align = Alignment(wrap_text=True)
         workbook = Workbook()
         worksheet = workbook.active
         worksheet.title = "submissions"
@@ -791,6 +797,8 @@ def _serialize_export(
         for row in rows:
             worksheet.append(row)
             for index, cell in enumerate(worksheet[worksheet.max_row]):
+                if index < len(wraps) and wraps[index]:
+                    cell.alignment = wrap_align
                 if not isinstance(cell.value, str):
                     continue
                 kind = kinds[index] if index < len(kinds) else ""
@@ -909,6 +917,9 @@ async def export_submissions(
     column_kinds = ["datetime", "datetime", ""] + [
         _column_export_kind(column) for column in display_columns
     ]
+    column_wraps = [False, False, False] + [
+        bool(column.get("field", {}).get("multiline")) for column in display_columns
+    ]
     rows = [
         [
             _fmt(submission.get("created_at")),
@@ -929,7 +940,7 @@ async def export_submissions(
         fmt = "csv"
 
     content, content_type, extension = _serialize_export(
-        fmt, headers, rows, column_kinds
+        fmt, headers, rows, column_kinds, column_wraps
     )
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
