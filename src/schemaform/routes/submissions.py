@@ -240,6 +240,7 @@ def build_submission_row_values(
     display_columns: list[dict[str, Any]],
     master_lookup_by_field: dict[str, dict[str, dict[str, Any]]],
     file_names: dict[str, str],
+    format_temporal: bool = False,
 ) -> list[str]:
     row_values: list[str] = []
     for column in display_columns:
@@ -265,7 +266,12 @@ def build_submission_row_values(
                 row_values.append(render_master_display_text(value, lookup))
             continue
 
-        row_values.append(value_to_text(value, file_names, field["type"] == "file"))
+        field_type = field.get("type", "")
+        if format_temporal and field_type in _TEMPORAL_KINDS:
+            row_values.append(_format_temporal_value(field_type, value))
+            continue
+
+        row_values.append(value_to_text(value, file_names, field_type == "file"))
     return row_values
 
 
@@ -447,6 +453,7 @@ async def build_submission_list_context(
             display_columns,
             master_lookup_by_field,
             file_names,
+            format_temporal=True,
         )
         raw_values = build_submission_raw_values(
             data, display_columns, master_lookup_by_field
@@ -680,6 +687,11 @@ _TEMPORAL_NUMBER_FORMATS = {
     "date": "yyyy/mm/dd",
     "time": "hh:mm",
 }
+_TEMPORAL_DISPLAY_FORMATS = {
+    "datetime": "%Y/%m/%d %H:%M",
+    "date": "%Y/%m/%d",
+    "time": "%H:%M",
+}
 
 
 def _parse_temporal(kind: str, text: str) -> datetime | date | time | None:
@@ -704,6 +716,26 @@ def _parse_temporal(kind: str, text: str) -> datetime | date | time | None:
     except ValueError:
         return None
     return None
+
+
+def _format_temporal_value(kind: str, value: Any) -> str:
+    """Format a stored temporal field value for the submission list display.
+
+    Stored values use ISO notation (e.g. ``2026-05-21T14:30``), but timestamps
+    such as 送信日時/更新日時 render as ``2026/05/21 14:30``. Normalize temporal
+    field values to the same slash notation so the list has no mixed formats.
+    Unparseable values fall back to their original text.
+    """
+    if isinstance(value, list):
+        return ", ".join(
+            _format_temporal_value(kind, item) for item in value if item is not None
+        )
+    if value in (None, ""):
+        return ""
+    parsed = _parse_temporal(kind, str(value))
+    if parsed is None:
+        return str(value)
+    return parsed.strftime(_TEMPORAL_DISPLAY_FORMATS[kind])
 
 
 def _column_temporal_kind(column: dict[str, Any]) -> str:
