@@ -4,6 +4,7 @@ import csv
 import io
 import json
 import re
+import unicodedata
 from datetime import date, datetime, time
 from typing import Any
 from urllib.parse import quote
@@ -680,6 +681,7 @@ _TEMPORAL_NUMBER_FORMATS = {
     "date": "yyyy/mm/dd",
     "time": "hh:mm",
 }
+_NUMERIC_KINDS = {"number", "integer"}
 
 
 def _parse_temporal(kind: str, text: str) -> datetime | date | time | None:
@@ -706,19 +708,56 @@ def _parse_temporal(kind: str, text: str) -> datetime | date | time | None:
     return None
 
 
-def _column_temporal_kind(column: dict[str, Any]) -> str:
-    """Return "datetime"/"date"/"time" for a temporal display column, else "".
+def _display_text_width(text: str) -> int:
+    """Approximate the rendered width of ``text`` in Excel column units.
 
-    Array columns join multiple values into one string, so they stay text.
+    Full-width / wide (mostly CJK) characters take roughly two units, others
+    take one, so Japanese labels are not under-sized.
+    """
+    width = 0
+    for char in text:
+        width += 2 if unicodedata.east_asian_width(char) in ("W", "F") else 1
+    return width
+
+
+def _parse_number(kind: str, text: str) -> int | float | None:
+    """Parse a cell string back into a number for Excel.
+
+    Returns None when the value is empty or not numeric so the caller can fall
+    back to writing it as plain text. An "integer" column may still hold a
+    non-integral value, so it falls back to float rather than dropping it.
+    """
+    text = (text or "").strip()
+    if not text:
+        return None
+    try:
+        if kind == "integer":
+            return int(text)
+        return float(text)
+    except ValueError:
+        try:
+            return float(text)
+        except ValueError:
+            return None
+
+
+def _column_export_kind(column: dict[str, Any]) -> str:
+    """Return the export kind for a display column, else "".
+
+    Temporal kinds ("datetime"/"date"/"time") let the Excel export emit real
+    date values, and numeric kinds ("number"/"integer") let it emit real
+    numbers. Array columns join multiple values into one string, so they stay
+    text.
     """
     field = column.get("field", {})
     if field.get("is_array"):
         return ""
+    typed_kinds = _TEMPORAL_KINDS | _NUMERIC_KINDS
     if column.get("kind") == "master_display":
         display_type = column.get("display_type", "")
-        return display_type if display_type in _TEMPORAL_KINDS else ""
+        return display_type if display_type in typed_kinds else ""
     field_type = field.get("type", "")
-    return field_type if field_type in _TEMPORAL_KINDS else ""
+    return field_type if field_type in typed_kinds else ""
 
 
 def _unique_column_names(headers: list[str]) -> list[str]:
@@ -741,18 +780,29 @@ def _serialize_export(
     headers: list[str],
     rows: list[list[str]],
     column_kinds: list[str] | None = None,
+    column_wraps: list[bool] | None = None,
 ) -> tuple[bytes | str, str, str]:
     """Serialize tabular data to the requested format.
 
     ``column_kinds`` aligns with ``headers`` and marks temporal columns
     ("datetime"/"date"/"time") so the Excel export can emit real date values.
+    ``column_wraps`` aligns with ``headers`` and marks columns whose Excel
+    cells should enable wrap text (multi-line text fields).
 
     Returns (content, media_type, file_extension).
     """
     if fmt == "xlsx":
         from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Font
+        from openpyxl.utils import get_column_letter
 
         kinds = column_kinds or []
+        wraps = column_wraps or []
+        # Excel's standard vertical alignment is centered; an unset (None)
+        # alignment renders at the bottom, so pin every cell to center.
+        center_align = Alignment(vertical="center")
+        center_wrap_align = Alignment(vertical="center", wrap_text=True)
+        header_font = Font(bold=True)
         workbook = Workbook()
         worksheet = workbook.active
         worksheet.title = "submissions"
@@ -760,24 +810,55 @@ def _serialize_export(
         # Force header cells to text so labels like "=total" are not treated
         # as Excel formulas.
         for cell in worksheet[1]:
+            cell.alignment = center_align
+            cell.font = header_font
             if isinstance(cell.value, str):
                 cell.data_type = "s"
         for row in rows:
             worksheet.append(row)
             for index, cell in enumerate(worksheet[worksheet.max_row]):
+                wrap = index < len(wraps) and wraps[index]
+                cell.alignment = center_wrap_align if wrap else center_align
+                if not isinstance(cell.value, str):
+                    continue
                 kind = kinds[index] if index < len(kinds) else ""
-                parsed = (
-                    _parse_temporal(kind, cell.value)
-                    if kind in _TEMPORAL_KINDS and isinstance(cell.value, str)
-                    else None
+                if kind in _TEMPORAL_KINDS:
+                    parsed = _parse_temporal(kind, cell.value)
+                    if parsed is not None:
+                        cell.value = parsed
+                        cell.number_format = _TEMPORAL_NUMBER_FORMATS[kind]
+                        continue
+                elif kind in _NUMERIC_KINDS:
+                    number = _parse_number(kind, cell.value)
+                    if number is not None:
+                        cell.value = number
+                        continue
+                # Normalize CRLF/CR to LF so Excel renders a single in-cell
+                # line break instead of doubling it.
+                cell.value = cell.value.replace("\r\n", "\n").replace("\r", "\n")
+                # Force text so values like "=cmd" are stored as literals
+                # rather than being interpreted as Excel formulas.
+                cell.data_type = "s"
+        # Size each column to its content. Full-width (CJK) characters count
+        # as two units, and wrapped cells are measured by their longest line
+        # so multi-line text does not blow up the width.
+        for col_index in range(len(headers)):
+            content_width = _display_text_width(headers[col_index])
+            for row in rows:
+                if col_index >= len(row):
+                    continue
+                text = row[col_index].replace("\r\n", "\n").replace("\r", "\n")
+                line_width = max(
+                    (_display_text_width(line) for line in text.split("\n")),
+                    default=0,
                 )
-                if parsed is not None:
-                    cell.value = parsed
-                    cell.number_format = _TEMPORAL_NUMBER_FORMATS[kind]
-                elif isinstance(cell.value, str):
-                    # Force text so values like "=cmd" are stored as literals
-                    # rather than being interpreted as Excel formulas.
-                    cell.data_type = "s"
+                content_width = max(content_width, line_width)
+            # Pad for cell margins plus the header's filter dropdown arrow,
+            # then clamp so columns stay within a sensible range.
+            width = max(8, min(content_width + 4, 60))
+            worksheet.column_dimensions[get_column_letter(col_index + 1)].width = width
+        # Enable Excel's filter dropdowns on the header row over all data.
+        worksheet.auto_filter.ref = worksheet.dimensions
         buffer = io.BytesIO()
         workbook.save(buffer)
         return (
@@ -874,7 +955,10 @@ async def export_submissions(
         column["label"] for column in display_columns
     ]
     column_kinds = ["datetime", "datetime", ""] + [
-        _column_temporal_kind(column) for column in display_columns
+        _column_export_kind(column) for column in display_columns
+    ]
+    column_wraps = [False, False, False] + [
+        bool(column.get("field", {}).get("multiline")) for column in display_columns
     ]
     rows = [
         [
@@ -896,7 +980,7 @@ async def export_submissions(
         fmt = "csv"
 
     content, content_type, extension = _serialize_export(
-        fmt, headers, rows, column_kinds
+        fmt, headers, rows, column_kinds, column_wraps
     )
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
