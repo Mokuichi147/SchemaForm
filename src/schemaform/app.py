@@ -77,7 +77,7 @@ def field_file_accept(field: dict[str, Any]) -> str:
 
 def format_dt(value: Any) -> str:
     if isinstance(value, datetime):
-        return value.astimezone().strftime("%Y-%m-%d %H:%M")
+        return value.astimezone().strftime("%Y/%m/%d %H:%M")
     return str(value or "")
 
 

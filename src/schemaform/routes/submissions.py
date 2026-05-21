@@ -241,6 +241,7 @@ def build_submission_row_values(
     display_columns: list[dict[str, Any]],
     master_lookup_by_field: dict[str, dict[str, dict[str, Any]]],
     file_names: dict[str, str],
+    temporal_style: str = "raw",
 ) -> list[str]:
     row_values: list[str] = []
     for column in display_columns:
@@ -266,7 +267,14 @@ def build_submission_row_values(
                 row_values.append(render_master_display_text(value, lookup))
             continue
 
-        row_values.append(value_to_text(value, file_names, field["type"] == "file"))
+        field_type = field.get("type", "")
+        if temporal_style != "raw" and field_type in _TEMPORAL_KINDS:
+            row_values.append(
+                _format_temporal_value(field_type, value, iso=temporal_style == "iso")
+            )
+            continue
+
+        row_values.append(value_to_text(value, file_names, field_type == "file"))
     return row_values
 
 
@@ -448,6 +456,7 @@ async def build_submission_list_context(
             display_columns,
             master_lookup_by_field,
             file_names,
+            temporal_style="display",
         )
         raw_values = build_submission_raw_values(
             data, display_columns, master_lookup_by_field
@@ -681,14 +690,23 @@ _TEMPORAL_NUMBER_FORMATS = {
     "date": "yyyy/mm/dd",
     "time": "hh:mm",
 }
+_TEMPORAL_DISPLAY_FORMATS = {
+    "datetime": "%Y/%m/%d %H:%M",
+    "date": "%Y/%m/%d",
+    "time": "%H:%M",
+}
 _NUMERIC_KINDS = {"number", "integer"}
 
 
-def _parse_temporal(kind: str, text: str) -> datetime | date | time | None:
-    """Parse a formatted cell string back into a temporal object for Excel.
+def _parse_temporal(
+    kind: str, text: str, *, keep_tz: bool = False
+) -> datetime | date | time | None:
+    """Parse a formatted cell string back into a temporal object.
 
     Returns None when the value is empty or not parseable so the caller can
-    fall back to writing it as plain text.
+    fall back to writing it as plain text. By default a timezone-aware datetime
+    is converted to the local naive wall clock (Excel has no timezone concept);
+    pass ``keep_tz=True`` to preserve the original offset for round-tripping.
     """
     text = (text or "").strip()
     if not text:
@@ -700,12 +718,41 @@ def _parse_temporal(kind: str, text: str) -> datetime | date | time | None:
             return time.fromisoformat(text)
         if kind == "datetime":
             value = datetime.fromisoformat(text)
-            if value.tzinfo is not None:
+            if value.tzinfo is not None and not keep_tz:
                 value = value.astimezone().replace(tzinfo=None)
             return value
     except ValueError:
         return None
     return None
+
+
+def _format_temporal_value(kind: str, value: Any, *, iso: bool = False) -> str:
+    """Normalize a stored temporal field value to a consistent notation.
+
+    Stored values use ISO notation (e.g. ``2026-05-21T14:30``). For the
+    submission list display we mirror the timestamp columns and emit slash
+    notation (``2026/05/21 14:30``); for downloads we emit canonical ISO 8601
+    at minute precision so every export format matches. Timezone offsets on the
+    input are preserved (kept in ISO output, and the wall clock is shown as-is
+    rather than shifted) so the value's meaning never changes silently.
+    Unparseable values fall back to their original text.
+    """
+    if isinstance(value, list):
+        return ", ".join(
+            _format_temporal_value(kind, item, iso=iso)
+            for item in value
+            if item is not None
+        )
+    if value in (None, ""):
+        return ""
+    parsed = _parse_temporal(kind, str(value), keep_tz=True)
+    if parsed is None:
+        return str(value)
+    if iso:
+        if kind == "date":
+            return parsed.isoformat()
+        return parsed.isoformat(timespec="minutes")
+    return parsed.strftime(_TEMPORAL_DISPLAY_FORMATS[kind])
 
 
 def _display_text_width(text: str) -> int:
@@ -948,7 +995,7 @@ async def export_submissions(
 
     def _fmt(value: Any) -> str:
         if isinstance(value, datetime):
-            return value.astimezone().strftime("%Y-%m-%d %H:%M")
+            return value.astimezone().strftime("%Y-%m-%dT%H:%M")
         return str(value or "")
 
     headers = ["送信日時", "更新日時", "送信ユーザー"] + [
@@ -971,6 +1018,7 @@ async def export_submissions(
             display_columns,
             master_lookup_by_field,
             file_names,
+            temporal_style="iso",
         )
         for submission in filtered
     ]
