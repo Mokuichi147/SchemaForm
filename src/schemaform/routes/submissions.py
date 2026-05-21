@@ -777,13 +777,8 @@ def _serialize_export(
     """
     if fmt == "xlsx":
         from openpyxl import Workbook
-        from openpyxl.styles import Alignment
 
         kinds = column_kinds or []
-        # Excel defaults cells to bottom vertical alignment; pin to top so
-        # values (and multi-line text) read from the top of each cell.
-        top_align = Alignment(vertical="top")
-        top_wrap_align = Alignment(vertical="top", wrap_text=True)
         workbook = Workbook()
         worksheet = workbook.active
         worksheet.title = "submissions"
@@ -791,13 +786,11 @@ def _serialize_export(
         # Force header cells to text so labels like "=total" are not treated
         # as Excel formulas.
         for cell in worksheet[1]:
-            cell.alignment = top_align
             if isinstance(cell.value, str):
                 cell.data_type = "s"
         for row in rows:
             worksheet.append(row)
             for index, cell in enumerate(worksheet[worksheet.max_row]):
-                cell.alignment = top_align
                 if not isinstance(cell.value, str):
                     continue
                 kind = kinds[index] if index < len(kinds) else ""
@@ -815,9 +808,6 @@ def _serialize_export(
                 # Normalize CRLF/CR to LF so Excel renders a single in-cell
                 # line break instead of doubling it.
                 cell.value = cell.value.replace("\r\n", "\n").replace("\r", "\n")
-                if "\n" in cell.value:
-                    # Wrap so the line breaks are actually shown as new lines.
-                    cell.alignment = top_wrap_align
                 # Force text so values like "=cmd" are stored as literals
                 # rather than being interpreted as Excel formulas.
                 cell.data_type = "s"
