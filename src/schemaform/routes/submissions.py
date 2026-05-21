@@ -823,6 +823,8 @@ def _serialize_export(
                 # Force text so values like "=cmd" are stored as literals
                 # rather than being interpreted as Excel formulas.
                 cell.data_type = "s"
+        # Enable Excel's filter dropdowns on the header row over all data.
+        worksheet.auto_filter.ref = worksheet.dimensions
         buffer = io.BytesIO()
         workbook.save(buffer)
         return (
