@@ -4,6 +4,7 @@ import csv
 import io
 import json
 import re
+import unicodedata
 from datetime import date, datetime, time
 from typing import Any
 from urllib.parse import quote
@@ -707,6 +708,18 @@ def _parse_temporal(kind: str, text: str) -> datetime | date | time | None:
     return None
 
 
+def _display_text_width(text: str) -> int:
+    """Approximate the rendered width of ``text`` in Excel column units.
+
+    Full-width / wide (mostly CJK) characters take roughly two units, others
+    take one, so Japanese labels are not under-sized.
+    """
+    width = 0
+    for char in text:
+        width += 2 if unicodedata.east_asian_width(char) in ("W", "F") else 1
+    return width
+
+
 def _parse_number(kind: str, text: str) -> int | float | None:
     """Parse a cell string back into a number for Excel.
 
@@ -781,6 +794,7 @@ def _serialize_export(
     if fmt == "xlsx":
         from openpyxl import Workbook
         from openpyxl.styles import Alignment, Font
+        from openpyxl.utils import get_column_letter
 
         kinds = column_kinds or []
         wraps = column_wraps or []
@@ -825,6 +839,24 @@ def _serialize_export(
                 # Force text so values like "=cmd" are stored as literals
                 # rather than being interpreted as Excel formulas.
                 cell.data_type = "s"
+        # Size each column to its content. Full-width (CJK) characters count
+        # as two units, and wrapped cells are measured by their longest line
+        # so multi-line text does not blow up the width.
+        for col_index in range(len(headers)):
+            content_width = _display_text_width(headers[col_index])
+            for row in rows:
+                if col_index >= len(row):
+                    continue
+                text = row[col_index].replace("\r\n", "\n").replace("\r", "\n")
+                line_width = max(
+                    (_display_text_width(line) for line in text.split("\n")),
+                    default=0,
+                )
+                content_width = max(content_width, line_width)
+            # Pad for cell margins plus the header's filter dropdown arrow,
+            # then clamp so columns stay within a sensible range.
+            width = max(8, min(content_width + 4, 60))
+            worksheet.column_dimensions[get_column_letter(col_index + 1)].width = width
         # Enable Excel's filter dropdowns on the header row over all data.
         worksheet.auto_filter.ref = worksheet.dimensions
         buffer = io.BytesIO()
