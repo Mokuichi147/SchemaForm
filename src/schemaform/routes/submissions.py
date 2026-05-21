@@ -780,7 +780,7 @@ def _serialize_export(
     """
     if fmt == "xlsx":
         from openpyxl import Workbook
-        from openpyxl.styles import Alignment
+        from openpyxl.styles import Alignment, Font
 
         kinds = column_kinds or []
         wraps = column_wraps or []
@@ -788,6 +788,7 @@ def _serialize_export(
         # alignment renders at the bottom, so pin every cell to center.
         center_align = Alignment(vertical="center")
         center_wrap_align = Alignment(vertical="center", wrap_text=True)
+        header_font = Font(bold=True)
         workbook = Workbook()
         worksheet = workbook.active
         worksheet.title = "submissions"
@@ -796,6 +797,7 @@ def _serialize_export(
         # as Excel formulas.
         for cell in worksheet[1]:
             cell.alignment = center_align
+            cell.font = header_font
             if isinstance(cell.value, str):
                 cell.data_type = "s"
         for row in rows:
