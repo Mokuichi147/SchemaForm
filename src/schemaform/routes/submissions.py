@@ -676,8 +676,8 @@ _EXPORT_FORMATS = {"csv", "xlsx", "parquet", "json"}
 
 _TEMPORAL_KINDS = {"datetime", "date", "time"}
 _TEMPORAL_NUMBER_FORMATS = {
-    "datetime": "yyyy-mm-dd hh:mm",
-    "date": "yyyy-mm-dd",
+    "datetime": "yyyy/mm/dd hh:mm",
+    "date": "yyyy/mm/dd",
     "time": "hh:mm",
 }
 
