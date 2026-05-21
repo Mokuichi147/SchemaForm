@@ -240,7 +240,7 @@ def build_submission_row_values(
     display_columns: list[dict[str, Any]],
     master_lookup_by_field: dict[str, dict[str, dict[str, Any]]],
     file_names: dict[str, str],
-    format_temporal: bool = False,
+    temporal_style: str = "raw",
 ) -> list[str]:
     row_values: list[str] = []
     for column in display_columns:
@@ -267,8 +267,10 @@ def build_submission_row_values(
             continue
 
         field_type = field.get("type", "")
-        if format_temporal and field_type in _TEMPORAL_KINDS:
-            row_values.append(_format_temporal_value(field_type, value))
+        if temporal_style != "raw" and field_type in _TEMPORAL_KINDS:
+            row_values.append(
+                _format_temporal_value(field_type, value, iso=temporal_style == "iso")
+            )
             continue
 
         row_values.append(value_to_text(value, file_names, field_type == "file"))
@@ -453,7 +455,7 @@ async def build_submission_list_context(
             display_columns,
             master_lookup_by_field,
             file_names,
-            format_temporal=True,
+            temporal_style="display",
         )
         raw_values = build_submission_raw_values(
             data, display_columns, master_lookup_by_field
@@ -718,23 +720,30 @@ def _parse_temporal(kind: str, text: str) -> datetime | date | time | None:
     return None
 
 
-def _format_temporal_value(kind: str, value: Any) -> str:
-    """Format a stored temporal field value for the submission list display.
+def _format_temporal_value(kind: str, value: Any, *, iso: bool = False) -> str:
+    """Normalize a stored temporal field value to a consistent notation.
 
-    Stored values use ISO notation (e.g. ``2026-05-21T14:30``), but timestamps
-    such as 送信日時/更新日時 render as ``2026/05/21 14:30``. Normalize temporal
-    field values to the same slash notation so the list has no mixed formats.
-    Unparseable values fall back to their original text.
+    Stored values use ISO notation (e.g. ``2026-05-21T14:30``). For the
+    submission list display we mirror the timestamp columns and emit slash
+    notation (``2026/05/21 14:30``); for downloads we emit canonical ISO 8601
+    at minute precision so every export format matches. Unparseable values
+    fall back to their original text.
     """
     if isinstance(value, list):
         return ", ".join(
-            _format_temporal_value(kind, item) for item in value if item is not None
+            _format_temporal_value(kind, item, iso=iso)
+            for item in value
+            if item is not None
         )
     if value in (None, ""):
         return ""
     parsed = _parse_temporal(kind, str(value))
     if parsed is None:
         return str(value)
+    if iso:
+        if kind == "date":
+            return parsed.isoformat()
+        return parsed.isoformat(timespec="minutes")
     return parsed.strftime(_TEMPORAL_DISPLAY_FORMATS[kind])
 
 
@@ -899,7 +908,7 @@ async def export_submissions(
 
     def _fmt(value: Any) -> str:
         if isinstance(value, datetime):
-            return value.astimezone().strftime("%Y-%m-%d %H:%M")
+            return value.astimezone().strftime("%Y-%m-%dT%H:%M")
         return str(value or "")
 
     headers = ["送信日時", "更新日時", "送信ユーザー"] + [
@@ -919,6 +928,7 @@ async def export_submissions(
             display_columns,
             master_lookup_by_field,
             file_names,
+            temporal_style="iso",
         )
         for submission in filtered
     ]
