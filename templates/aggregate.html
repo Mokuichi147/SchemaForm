@@ -10,7 +10,38 @@
       <p class="text-sm text-slate-600">{{ form.name }} の送信内容を集計します。</p>
     </div>
     <div class="flex gap-2">
+      <button type="button" id="open-download-modal" class="rounded border border-slate-300 px-3 py-2 text-sm">ダウンロード</button>
       <a href="/forms/{{ form.id }}/submissions?{{ build_query(query, page=None) }}" class="rounded border border-slate-300 px-3 py-2 text-sm">送信一覧へ戻る</a>
+    </div>
+  </div>
+
+  <div id="download-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 px-4 py-6">
+    <div class="w-full max-w-md rounded-lg border border-slate-200 bg-white shadow-xl">
+      <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+        <h2 class="text-base font-semibold text-slate-900">ダウンロード形式を選択</h2>
+        <button type="button" data-action="close-download-modal" class="rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700">閉じる</button>
+      </div>
+      <div class="p-4">
+        <p class="text-xs text-slate-500">現在の検索・フィルター条件に一致する送信内容をダウンロードします。</p>
+        <div class="mt-3 grid gap-2">
+          <a href="/forms/{{ form.id }}/export?{{ build_query(query, format='xlsx', page=None) }}" class="flex items-center justify-between rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
+            <span class="font-medium text-slate-900">Excel</span>
+            <span class="text-xs text-slate-500">.xlsx</span>
+          </a>
+          <a href="/forms/{{ form.id }}/export?{{ build_query(query, format='csv', page=None) }}" class="flex items-center justify-between rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
+            <span class="font-medium text-slate-900">CSV</span>
+            <span class="text-xs text-slate-500">.csv</span>
+          </a>
+          <a href="/forms/{{ form.id }}/export?{{ build_query(query, format='parquet', page=None) }}" class="flex items-center justify-between rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
+            <span class="font-medium text-slate-900">Parquet</span>
+            <span class="text-xs text-slate-500">.parquet</span>
+          </a>
+          <a href="/forms/{{ form.id }}/export?{{ build_query(query, format='json', page=None) }}" class="flex items-center justify-between rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
+            <span class="font-medium text-slate-900">JSON</span>
+            <span class="text-xs text-slate-500">.json</span>
+          </a>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -26,13 +57,13 @@
         <span>粒度</span>
         <select id="ts-unit-select" class="rounded border border-slate-300 px-2 py-1 text-sm">
           <option value="auto">自動</option>
-          <option value="second">秒</option>
-          <option value="minute">分</option>
-          <option value="hour">時</option>
-          <option value="day">日</option>
-          <option value="week">週</option>
-          <option value="month">月</option>
           <option value="year">年</option>
+          <option value="month">月</option>
+          <option value="week">週</option>
+          <option value="day">日</option>
+          <option value="hour">時</option>
+          <option value="minute">分</option>
+          <option value="second">秒</option>
         </select>
       </label>
     </div>
@@ -134,6 +165,9 @@
               <button type="button" class="js-sort group inline-flex items-center gap-1" data-sort-kind="text">送信ユーザー <span class="js-sort-arrow text-slate-300">↕</span></button>
             </th>
             <th class="px-4 py-3">
+              <button type="button" class="js-sort group inline-flex items-center gap-1" data-sort-kind="number">正答数 <span class="js-sort-arrow text-slate-300">↕</span></button>
+            </th>
+            <th class="px-4 py-3">
               <button type="button" class="js-sort group inline-flex items-center gap-1" data-sort-kind="rate">正答率 <span class="js-sort-arrow text-slate-300">↕</span></button>
             </th>
             {% for column in display_columns %}
@@ -152,6 +186,7 @@
               <time class="js-local-dt" data-iso="{{ iso_dt(row.created_at) }}">{{ format_dt(row.created_at) }}</time>
             </td>
             <td class="px-4 py-3 text-slate-600">{{ row.username or '-' }}</td>
+            <td class="px-4 py-3 text-slate-700"><span class="js-row-correct tabular-nums">—</span></td>
             <td class="px-4 py-3 text-slate-700"><span class="js-row-rate tabular-nums">—</span></td>
             {% for value in row["values"] %}
             {% set column = display_columns[loop.index0] %}
@@ -195,7 +230,7 @@
           </tr>
           {% endfor %}
           <tr id="drill-empty-row" class="hidden">
-            <td colspan="{{ display_columns | length + 4 }}" class="px-4 py-6 text-center text-slate-500">該当データがありません。</td>
+            <td colspan="{{ display_columns | length + 5 }}" class="px-4 py-6 text-center text-slate-500">該当データがありません。</td>
           </tr>
         </tbody>
       </table>
@@ -219,7 +254,13 @@
     const tableRows = Array.from(document.querySelectorAll("tr[data-row]")).map((tr) => {
       let data = {};
       try { data = JSON.parse(tr.dataset.row); } catch (e) {}
-      return { tr, data, ts: tr.dataset.ts || "", rateCell: tr.querySelector(".js-row-rate") };
+      return {
+        tr,
+        data,
+        ts: tr.dataset.ts || "",
+        rateCell: tr.querySelector(".js-row-rate"),
+        countCell: tr.querySelector(".js-row-correct"),
+      };
     });
     const emptyRow = document.getElementById("drill-empty-row");
     const banner = document.getElementById("drill-banner");
@@ -510,6 +551,34 @@
 
     document.getElementById("drill-clear")?.addEventListener("click", clearDrill);
 
+    // ---- ダウンロード（送信一覧と同じ形式選択モーダル） ----
+    const downloadModal = document.getElementById("download-modal");
+    function openDownloadModal() {
+      if (!downloadModal) return;
+      downloadModal.classList.remove("hidden");
+      downloadModal.classList.add("flex");
+      document.body.classList.add("overflow-hidden");
+    }
+    function closeDownloadModal() {
+      if (!downloadModal) return;
+      downloadModal.classList.add("hidden");
+      downloadModal.classList.remove("flex");
+      document.body.classList.remove("overflow-hidden");
+    }
+    document.getElementById("open-download-modal")?.addEventListener("click", openDownloadModal);
+    document.querySelectorAll('[data-action="close-download-modal"]').forEach((btn) => {
+      btn.addEventListener("click", closeDownloadModal);
+    });
+    downloadModal?.addEventListener("click", (event) => {
+      if (event.target === downloadModal) closeDownloadModal();
+    });
+    downloadModal?.querySelectorAll("a").forEach((link) => {
+      link.addEventListener("click", closeDownloadModal);
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeDownloadModal();
+    });
+
     // ---- 列ヘッダーによる並べ替え（クライアント側） ----
     const tableBody = document.querySelector("#data-table-section tbody");
     const sortState = { index: null, dir: 1 };
@@ -619,14 +688,18 @@
       const correctMap = getCorrectMap();
       const keys = Object.keys(correctMap);
       tableRows.forEach((row) => {
-        if (!row.rateCell) return;
-        if (!keys.length) { row.rateCell.textContent = "—"; return; }
+        if (!keys.length) {
+          if (row.rateCell) row.rateCell.textContent = "—";
+          if (row.countCell) row.countCell.textContent = "—";
+          return;
+        }
         let correct = 0;
         keys.forEach((key) => {
           if (isRowCorrect(row.data, key, correctMap[key])) correct += 1;
         });
         const rate = (correct / keys.length) * 100;
-        row.rateCell.textContent = rate.toFixed(0) + "% (" + correct + "/" + keys.length + ")";
+        if (row.countCell) row.countCell.textContent = correct + " / " + keys.length;
+        if (row.rateCell) row.rateCell.textContent = rate.toFixed(0) + "%";
       });
     }
 
