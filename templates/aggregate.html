@@ -553,8 +553,24 @@
 
     // ---- ダウンロード（送信一覧と同じ形式選択モーダル） ----
     const downloadModal = document.getElementById("download-modal");
+    const downloadLinks = downloadModal
+      ? Array.from(downloadModal.querySelectorAll("a"))
+      : [];
+    downloadLinks.forEach((a) => { a.dataset.baseHref = a.getAttribute("href"); });
+
+    function updateDownloadLinks() {
+      // 正解が1つ以上設定されている場合だけ、正答数・正答率を含めるよう
+      // correct パラメータを付与する（サーバー側で列を追加）。
+      const correctMap = getCorrectMap();
+      const param = Object.keys(correctMap).length
+        ? "&correct=" + encodeURIComponent(JSON.stringify(correctMap))
+        : "";
+      downloadLinks.forEach((a) => { a.setAttribute("href", a.dataset.baseHref + param); });
+    }
+
     function openDownloadModal() {
       if (!downloadModal) return;
+      updateDownloadLinks();
       downloadModal.classList.remove("hidden");
       downloadModal.classList.add("flex");
       document.body.classList.add("overflow-hidden");

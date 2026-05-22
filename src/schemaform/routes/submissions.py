@@ -1034,6 +1034,71 @@ def _serialize_export(
     return output.getvalue(), "text/csv; charset=utf-8", "csv"
 
 
+def _parse_correct_map(raw: str | None) -> dict[str, dict[str, Any]]:
+    """集計ページから渡される正解指定(JSON)をパースする。
+
+    形式: {flat_key: {"mode": "single", "value": str}}
+          {flat_key: {"mode": "array", "list": [str], "ordered": bool}}
+    enumフィールドの正答数・正答率をダウンロードに含めるために使う。"""
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    result: dict[str, dict[str, Any]] = {}
+    for key, info in parsed.items():
+        if not isinstance(info, dict):
+            continue
+        if info.get("mode") == "array":
+            values = info.get("list")
+            if isinstance(values, list) and values:
+                result[str(key)] = {
+                    "mode": "array",
+                    "list": [str(v) for v in values],
+                    "ordered": bool(info.get("ordered")),
+                }
+        else:
+            value = info.get("value")
+            if value not in (None, ""):
+                result[str(key)] = {"mode": "single", "value": str(value)}
+    return result
+
+
+def _row_is_correct(
+    data: dict[str, Any], flat_key: str, info: dict[str, Any]
+) -> bool:
+    value = get_nested_value(data, flat_key)
+    if value is None:
+        return False
+    if info["mode"] == "array":
+        actual = [str(v) for v in (value if isinstance(value, list) else [value])]
+        expected = info["list"]
+        if len(actual) != len(expected):
+            return False
+        if info.get("ordered"):
+            return actual == expected
+        return sorted(actual) == sorted(expected)
+    if isinstance(value, list):
+        return False
+    return str(value) == info["value"]
+
+
+def _correctness_cells(
+    data: dict[str, Any], correct_map: dict[str, dict[str, Any]]
+) -> tuple[str, str]:
+    """1送信あたりの (正答数, 正答率) セル文字列を返す。画面表示と同じ表記。"""
+    total = len(correct_map)
+    if total == 0:
+        return "", ""
+    correct = sum(
+        1 for key, info in correct_map.items() if _row_is_correct(data, key, info)
+    )
+    return f"{correct} / {total}", f"{round(correct / total * 100)}%"
+
+
 @router.get("/forms/{form_id}/export", tags=["admin"])
 async def export_submissions(
     request: Request, form_id: str, _: Any = Depends(form_editor_guard)
@@ -1054,35 +1119,48 @@ async def export_submissions(
     order = request.query_params.get("order", "desc")
     sort_submissions(filtered, sort, order, display_columns, master_lookup_by_field)
 
+    correct_map = _parse_correct_map(request.query_params.get("correct"))
+    include_correct = bool(correct_map)
+
     def _fmt(value: Any) -> str:
         if isinstance(value, datetime):
             return value.astimezone().strftime("%Y-%m-%dT%H:%M")
         return str(value or "")
 
-    headers = ["送信日時", "更新日時", "送信ユーザー"] + [
-        column["label"] for column in display_columns
-    ]
-    column_kinds = ["datetime", "datetime", ""] + [
-        _column_export_kind(column) for column in display_columns
-    ]
-    column_wraps = [False, False, False] + [
-        bool(column.get("field", {}).get("multiline")) for column in display_columns
-    ]
-    rows = [
-        [
+    correct_headers = ["正答数", "正答率"] if include_correct else []
+    headers = (
+        ["送信日時", "更新日時", "送信ユーザー"]
+        + correct_headers
+        + [column["label"] for column in display_columns]
+    )
+    column_kinds = (
+        ["datetime", "datetime", ""]
+        + ([""] * len(correct_headers))
+        + [_column_export_kind(column) for column in display_columns]
+    )
+    column_wraps = (
+        [False, False, False]
+        + ([False] * len(correct_headers))
+        + [bool(column.get("field", {}).get("multiline")) for column in display_columns]
+    )
+    rows = []
+    for submission in filtered:
+        data = submission.get("data_json", {})
+        row = [
             _fmt(submission.get("created_at")),
             _fmt(submission.get("updated_at")),
             submission.get("_display_username") or "",
         ]
-        + build_submission_row_values(
-            submission.get("data_json", {}),
+        if include_correct:
+            row += list(_correctness_cells(data, correct_map))
+        row += build_submission_row_values(
+            data,
             display_columns,
             master_lookup_by_field,
             file_names,
             temporal_style="iso",
         )
-        for submission in filtered
-    ]
+        rows.append(row)
 
     fmt = request.query_params.get("format", "csv")
     if fmt not in _EXPORT_FORMATS:
