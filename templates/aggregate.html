@@ -145,6 +145,14 @@
     {% endfor %}
   </div>
 
+  <div id="correct-dist-section" class="mt-6 hidden rounded-lg border border-slate-200 bg-white p-4">
+    <h2 class="text-base font-semibold text-slate-900">正答数の分布</h2>
+    <div class="relative mt-3 h-64">
+      <canvas id="correct-dist-chart"></canvas>
+    </div>
+    <p class="mt-2 text-xs text-slate-400">正解を指定すると表示されます。グラフをクリックすると、その正答数の送信のみ表に表示します。</p>
+  </div>
+
   <div id="data-table-section" class="mt-8">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <h2 class="text-lg font-semibold text-slate-900">元データ</h2>
@@ -499,6 +507,21 @@
           test: (row) => toBool(row.data[spec.field]) === target,
         };
       }
+      if (spec.ckind === "correctcount") {
+        const correctMap = getCorrectMap();
+        const keys = Object.keys(correctMap);
+        const target = parseInt(clickedLabel, 10);
+        return {
+          label: "正答数: " + clickedLabel,
+          test: (row) => {
+            let count = 0;
+            keys.forEach((key) => {
+              if (isRowCorrect(row.data, key, correctMap[key])) count += 1;
+            });
+            return count === target;
+          },
+        };
+      }
       if (spec.ckind === "numeric") {
         const range = spec.ranges[index];
         const isLast = index === spec.ranges.length - 1;
@@ -712,6 +735,36 @@
         if (row.countCell) row.countCell.textContent = String(correct);
         if (row.rateCell) row.rateCell.textContent = rate.toFixed(0);
       });
+      renderCorrectDistribution();
+    }
+
+    // ---- 正答数の分布（正解が1つ以上設定されている場合に表示） ----
+    const correctDistSection = document.getElementById("correct-dist-section");
+    const correctDistCanvas = document.getElementById("correct-dist-chart");
+    let correctDistChart = null;
+
+    function renderCorrectDistribution() {
+      if (!correctDistSection || !correctDistCanvas) return;
+      const correctMap = getCorrectMap();
+      const keys = Object.keys(correctMap);
+      if (!keys.length) {
+        correctDistSection.classList.add("hidden");
+        if (correctDistChart) { correctDistChart.destroy(); correctDistChart = null; }
+        return;
+      }
+      const counts = new Array(keys.length + 1).fill(0);
+      tableRows.forEach((row) => {
+        let correct = 0;
+        keys.forEach((key) => {
+          if (isRowCorrect(row.data, key, correctMap[key])) correct += 1;
+        });
+        counts[correct] += 1;
+      });
+      const labels = counts.map((_, i) => String(i));
+      const spec = { type: "bar", labels, counts, label: "件数", ckind: "correctcount", flabel: "正答数" };
+      correctDistSection.classList.remove("hidden");
+      if (correctDistChart) correctDistChart.destroy();
+      correctDistChart = new Chart(correctDistCanvas, buildConfig(spec));
     }
 
     function recomputeFieldRate(container) {
