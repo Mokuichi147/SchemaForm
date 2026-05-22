@@ -168,7 +168,7 @@
               <button type="button" class="js-sort group inline-flex items-center gap-1" data-sort-kind="number">正答数 <span class="js-sort-arrow text-slate-300">↕</span></button>
             </th>
             <th class="px-4 py-3">
-              <button type="button" class="js-sort group inline-flex items-center gap-1" data-sort-kind="rate">正答率 <span class="js-sort-arrow text-slate-300">↕</span></button>
+              <button type="button" class="js-sort group inline-flex items-center gap-1" data-sort-kind="number">正答率 <span class="js-sort-arrow text-slate-300">↕</span></button>
             </th>
             {% for column in display_columns %}
             {% set col_numeric = (column.kind == 'default' and column.field.type in ['number', 'integer', 'calculated']) or (column.kind == 'master_display' and column.display_type in ['number', 'integer']) %}
@@ -607,11 +607,6 @@
         const ms = Date.parse(timeEl ? timeEl.dataset.iso : "");
         return Number.isNaN(ms) ? null : ms;
       }
-      if (kind === "rate") {
-        const span = cell.querySelector(".js-row-rate");
-        const match = (span ? span.textContent : "").match(/([\d.]+)%/);
-        return match ? parseFloat(match[1]) : null;
-      }
       if (kind === "number") {
         const n = parseFloat((cell.textContent || "").replace(/,/g, "").trim());
         return Number.isNaN(n) ? null : n;
@@ -714,8 +709,8 @@
           if (isRowCorrect(row.data, key, correctMap[key])) correct += 1;
         });
         const rate = (correct / keys.length) * 100;
-        if (row.countCell) row.countCell.textContent = correct + " / " + keys.length;
-        if (row.rateCell) row.rateCell.textContent = rate.toFixed(0) + "%";
+        if (row.countCell) row.countCell.textContent = String(correct);
+        if (row.rateCell) row.rateCell.textContent = rate.toFixed(0);
       });
     }
 

@@ -1089,14 +1089,15 @@ def _row_is_correct(
 def _correctness_cells(
     data: dict[str, Any], correct_map: dict[str, dict[str, Any]]
 ) -> tuple[str, str]:
-    """1送信あたりの (正答数, 正答率) セル文字列を返す。画面表示と同じ表記。"""
+    """1送信あたりの (正答数, 正答率) セル文字列を返す。正答数は個数のみ、
+    正答率は%なしの数値。画面表示と同じ表記。"""
     total = len(correct_map)
     if total == 0:
         return "", ""
     correct = sum(
         1 for key, info in correct_map.items() if _row_is_correct(data, key, info)
     )
-    return f"{correct} / {total}", f"{round(correct / total * 100)}%"
+    return str(correct), str(round(correct / total * 100))
 
 
 @router.get("/forms/{form_id}/export", tags=["admin"])
