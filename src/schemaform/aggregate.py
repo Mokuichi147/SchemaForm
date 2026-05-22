@@ -126,6 +126,7 @@ def _distribution_enum(
         "kind": "distribution",
         "is_enum": True,
         "is_array": bool(field.get("is_array")),
+        "unique_items": bool(field.get("unique_items")),
         "supports_correct": True,
         "labels": order,
         "counts": [counts[label] for label in order],
