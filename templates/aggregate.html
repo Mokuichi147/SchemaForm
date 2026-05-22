@@ -60,6 +60,12 @@
             </label>
             {% endfor %}
           </div>
+          {% if agg.is_array %}
+          <label class="mt-2 inline-flex items-center gap-1 text-xs text-slate-500">
+            <input type="checkbox" class="js-correct-ordered" />
+            <span>順番も一致させる</span>
+          </label>
+          {% endif %}
           <div class="mt-2 text-sm text-slate-700">正答率: <span class="js-correct-rate font-semibold" data-total="{{ agg.total }}">—</span></div>
         </div>
         {% endif %}
@@ -206,6 +212,9 @@
       const isPie = spec.type === "pie";
       let labels = spec.labels;
       let counts = spec.counts;
+      // ラベルごとに元の並び順で色を固定し、棒・円で同じ選択肢が同色になるようにする
+      const colorByLabel = {};
+      spec.labels.forEach((label, i) => { colorByLabel[label] = palette[i % palette.length]; });
       if (isPie) {
         // 円グラフは割合（件数）の多い順に並べ替える
         const pairs = labels.map((label, i) => ({ label, count: counts[i] }));
@@ -213,7 +222,7 @@
         labels = pairs.map((p) => p.label);
         counts = pairs.map((p) => p.count);
       }
-      const colors = labels.map((_, i) => palette[i % palette.length]);
+      const colors = labels.map((label, i) => colorByLabel[label] || palette[i % palette.length]);
       return {
         type: spec.type,
         data: {
@@ -417,21 +426,35 @@
     function getCorrectMap() {
       const map = {};
       document.querySelectorAll("[data-correct-field]").forEach((container) => {
+        // 選択肢定義順（DOM順）で正解集合を作る
         const selected = Array.from(container.querySelectorAll(".js-correct-option"))
           .filter((o) => o.checked)
           .map((o) => o.value);
-        if (selected.length) map[container.dataset.correctField] = selected;
+        if (selected.length) {
+          const orderedEl = container.querySelector(".js-correct-ordered");
+          map[container.dataset.correctField] = {
+            set: selected,
+            ordered: !!(orderedEl && orderedEl.checked),
+          };
+        }
       });
       return map;
     }
 
-    function isRowCorrect(rowData, key, correctSet) {
+    function isRowCorrect(rowData, key, info) {
       const v = rowData[key];
       if (v === undefined || v === null) return false;
+      const correctSet = info.set;
       if (Array.isArray(v)) {
-        const a = v.map(String).sort();
-        const b = correctSet.slice().sort();
-        return a.length === b.length && a.every((x, i) => x === b[i]);
+        // 配列（複数選択）は過不足のない完全一致が必要
+        const a = v.map(String);
+        if (a.length !== correctSet.length) return false;
+        if (info.ordered) {
+          return a.every((x, i) => x === correctSet[i]);
+        }
+        const sa = a.slice().sort();
+        const sb = correctSet.slice().sort();
+        return sa.every((x, i) => x === sb[i]);
       }
       return correctSet.includes(String(v));
     }
@@ -457,6 +480,7 @@
       const rateEl = container.querySelector(".js-correct-rate");
       const total = parseFloat(rateEl.dataset.total) || 0;
       const options = Array.from(container.querySelectorAll(".js-correct-option"));
+      const orderedEl = container.querySelector(".js-correct-ordered");
 
       function recomputeField() {
         const selected = options.filter((o) => o.checked);
@@ -468,21 +492,35 @@
           rateEl.textContent = rate.toFixed(1) + "% (" + correct + "/" + total + ")";
         }
         try {
-          localStorage.setItem(storageKey, JSON.stringify(selected.map((o) => o.value)));
+          localStorage.setItem(storageKey, JSON.stringify({
+            options: selected.map((o) => o.value),
+            ordered: orderedEl ? orderedEl.checked : false,
+          }));
         } catch (e) {}
       }
 
       try {
-        const saved = JSON.parse(localStorage.getItem(storageKey) || "[]");
+        const saved = JSON.parse(localStorage.getItem(storageKey) || "null");
+        let savedOptions = [];
+        let savedOrdered = false;
         if (Array.isArray(saved)) {
-          options.forEach((o) => { if (saved.includes(o.value)) o.checked = true; });
+          savedOptions = saved;
+        } else if (saved && typeof saved === "object") {
+          savedOptions = saved.options || [];
+          savedOrdered = !!saved.ordered;
         }
+        options.forEach((o) => { if (savedOptions.includes(o.value)) o.checked = true; });
+        if (orderedEl) orderedEl.checked = savedOrdered;
       } catch (e) {}
 
       options.forEach((o) => o.addEventListener("change", () => {
         recomputeField();
         recomputeRowRates();
       }));
+      if (orderedEl) orderedEl.addEventListener("change", () => {
+        recomputeField();
+        recomputeRowRates();
+      });
       recomputeField();
     });
 
