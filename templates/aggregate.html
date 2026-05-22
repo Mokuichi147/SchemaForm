@@ -49,8 +49,9 @@
   <div class="mt-6 rounded-lg border border-slate-200 bg-white px-4 py-10 text-center text-slate-500">該当データがありません。</div>
   {% else %}
 
+  <div class="mt-6 grid gap-4 lg:grid-cols-2">
   {% if timeseries_timestamps %}
-  <div id="timeseries-section" class="mt-6 rounded-lg border border-slate-200 bg-white p-4" data-timestamps="{{ timeseries_timestamps | tojson_attr }}">
+  <div id="timeseries-section" class="rounded-lg border border-slate-200 bg-white p-4" data-timestamps="{{ timeseries_timestamps | tojson_attr }}">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <h2 class="text-base font-semibold text-slate-900">件数の推移</h2>
       <label class="flex items-center gap-1 text-xs text-slate-500">
@@ -74,7 +75,6 @@
   </div>
   {% endif %}
 
-  <div class="mt-6 grid gap-4 lg:grid-cols-2">
     {% for agg in aggregations %}
     {% set canvas_id = 'chart-' ~ loop.index0 %}
     <div class="rounded-lg border border-slate-200 bg-white p-4">
@@ -143,14 +143,14 @@
       {% endif %}
     </div>
     {% endfor %}
-  </div>
 
-  <div id="correct-dist-section" class="mt-6 hidden rounded-lg border border-slate-200 bg-white p-4">
-    <h2 class="text-base font-semibold text-slate-900">正答数の分布</h2>
-    <div class="relative mt-3 h-64">
-      <canvas id="correct-dist-chart"></canvas>
+    <div id="correct-dist-section" class="hidden rounded-lg border border-slate-200 bg-white p-4">
+      <h2 class="text-base font-semibold text-slate-900">正答数の分布</h2>
+      <div class="relative mt-3 h-64">
+        <canvas id="correct-dist-chart"></canvas>
+      </div>
+      <p class="mt-2 text-xs text-slate-400">正解を指定すると表示されます。グラフをクリックすると、その正答数の送信のみ表に表示します。</p>
     </div>
-    <p class="mt-2 text-xs text-slate-400">正解を指定すると表示されます。グラフをクリックすると、その正答数の送信のみ表に表示します。</p>
   </div>
 
   <div id="data-table-section" class="mt-8">
@@ -379,6 +379,8 @@
         counts = pairs.map((p) => p.count);
       }
       const colors = labels.map((label, i) => colorByLabel[label] || palette[i % palette.length]);
+      const fill = isLine ? "rgba(37, 99, 235, 0.2)" : (spec.mono ? palette[0] : colors);
+      const stroke = isLine ? "#2563eb" : (spec.mono ? palette[0] : colors);
       return {
         type: spec.type,
         data: {
@@ -386,8 +388,8 @@
           datasets: [{
             label: spec.label || "",
             data: counts,
-            backgroundColor: isLine ? "rgba(37, 99, 235, 0.2)" : colors,
-            borderColor: isLine ? "#2563eb" : colors,
+            backgroundColor: fill,
+            borderColor: stroke,
             borderWidth: isLine ? 2 : 1,
             fill: isLine,
             tension: isLine ? 0.2 : 0,
@@ -761,7 +763,7 @@
         counts[correct] += 1;
       });
       const labels = counts.map((_, i) => String(i));
-      const spec = { type: "bar", labels, counts, label: "件数", ckind: "correctcount", flabel: "正答数" };
+      const spec = { type: "bar", labels, counts, label: "件数", ckind: "correctcount", flabel: "正答数", mono: true };
       correctDistSection.classList.remove("hidden");
       if (correctDistChart) correctDistChart.destroy();
       correctDistChart = new Chart(correctDistCanvas, buildConfig(spec));
