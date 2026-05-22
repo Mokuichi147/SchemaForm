@@ -1108,6 +1108,12 @@ async def export_submissions(
     form, fields, filtered, file_names = await gather_filtered_submissions(
         request, form_id
     )
+    # 集計ページのグラフクリックによる絞り込み結果のみをダウンロードするため、
+    # 表示中の送信ID(ids)が指定されていればその送信に限定する。
+    ids_param = request.query_params.get("ids")
+    if ids_param is not None:
+        id_set = {token for token in ids_param.split(",") if token}
+        filtered = [s for s in filtered if s.get("id") in id_set]
     display_columns, master_lookup_by_field = build_submission_display_columns(
         storage, fields
     )

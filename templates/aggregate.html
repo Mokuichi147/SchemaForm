@@ -191,7 +191,7 @@
         </thead>
         <tbody class="divide-y divide-slate-200">
           {% for row in rows %}
-          <tr data-row="{{ row.drill | tojson_attr }}" data-ts="{{ row.ts }}">
+          <tr data-row="{{ row.drill | tojson_attr }}" data-ts="{{ row.ts }}" data-id="{{ row.id }}">
             <td class="px-4 py-3 text-slate-600">
               <time class="js-local-dt" data-iso="{{ iso_dt(row.created_at) }}">{{ format_dt(row.created_at) }}</time>
             </td>
@@ -260,6 +260,7 @@
       "#db2777", "#65a30d", "#ea580c", "#4f46e5", "#0d9488", "#9333ea",
     ];
     const charts = {};
+    let drillActive = false;
 
     const tableRows = Array.from(document.querySelectorAll("tr[data-row]")).map((tr) => {
       let data = {};
@@ -268,6 +269,7 @@
         tr,
         data,
         ts: tr.dataset.ts || "",
+        id: tr.dataset.id || "",
         rateCell: tr.querySelector(".js-row-rate"),
         countCell: tr.querySelector(".js-row-correct"),
       };
@@ -570,6 +572,7 @@
     function applyDrill(spec, index, chart) {
       const predicate = buildPredicate(spec, index, chart);
       if (!predicate) return;
+      drillActive = true;
       let count = 0;
       tableRows.forEach((row) => {
         const ok = predicate.test(row);
@@ -588,6 +591,7 @@
     }
 
     function clearDrill() {
+      drillActive = false;
       tableRows.forEach((row) => row.tr.classList.remove("hidden"));
       if (emptyRow) emptyRow.classList.add("hidden");
       if (banner) {
@@ -609,9 +613,17 @@
       // 正解が1つ以上設定されている場合だけ、正答数・正答率を含めるよう
       // correct パラメータを付与する（サーバー側で列を追加）。
       const correctMap = getCorrectMap();
-      const param = Object.keys(correctMap).length
+      let param = Object.keys(correctMap).length
         ? "&correct=" + encodeURIComponent(JSON.stringify(correctMap))
         : "";
+      // グラフクリックで絞り込み中は、表示中の送信のみダウンロードする。
+      if (drillActive) {
+        const ids = tableRows
+          .filter((r) => !r.tr.classList.contains("hidden"))
+          .map((r) => r.id)
+          .filter(Boolean);
+        param += "&ids=" + encodeURIComponent(ids.join(","));
+      }
       downloadLinks.forEach((a) => { a.setAttribute("href", a.dataset.baseHref + param); });
     }
 
