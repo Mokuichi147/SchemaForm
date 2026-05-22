@@ -227,7 +227,20 @@
             if (!elements.length) return;
             applyDrill(spec, elements[0].index);
           },
-          plugins: { legend: { display: isPie } },
+          plugins: {
+            legend: { display: isPie },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => {
+                  const value = typeof ctx.raw === "number" ? ctx.raw : (ctx.parsed.y ?? ctx.parsed);
+                  const data = ctx.dataset.data || [];
+                  const total = data.reduce((sum, v) => sum + (Number(v) || 0), 0);
+                  const pct = total > 0 ? (value / total * 100).toFixed(1) : "0.0";
+                  return value + "件 (" + pct + "%)";
+                },
+              },
+            },
+          },
           scales: isPie ? {} : { y: { beginAtZero: true, ticks: { precision: 0 } } },
         },
       };
