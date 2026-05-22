@@ -52,14 +52,22 @@ def build_histogram(
 
     値が0/1個・全同値の場合は単一ビンにフォールバックしてゼロ除算を避ける。
     整数かつレンジが狭い場合は値ごとのビンにする。
+
+    各ビンには `ranges`（[下限, 上限] の組）と `mode`（"range" は半開区間で最終ビンのみ
+    上限を含む、"exact" は値一致）を併せて返し、クリック時のドリルダウン照合に使う。
     """
     if not values:
-        return {"labels": [], "counts": []}
+        return {"labels": [], "counts": [], "ranges": [], "mode": "range"}
 
     low = min(values)
     high = max(values)
     if low == high:
-        return {"labels": [_format_num(low)], "counts": [len(values)]}
+        return {
+            "labels": [_format_num(low)],
+            "counts": [len(values)],
+            "ranges": [[low, high]],
+            "mode": "exact",
+        }
 
     if (
         is_integer
@@ -72,7 +80,8 @@ def build_histogram(
         counts = [0] * len(labels)
         for value in values:
             counts[int(round(value)) - ilow] += 1
-        return {"labels": labels, "counts": counts}
+        ranges = [[v, v] for v in range(ilow, ihigh + 1)]
+        return {"labels": labels, "counts": counts, "ranges": ranges, "mode": "exact"}
 
     bins = max_bins
     width = (high - low) / bins
@@ -88,7 +97,8 @@ def build_histogram(
     labels = [
         f"{_format_num(edges[i])}–{_format_num(edges[i + 1])}" for i in range(bins)
     ]
-    return {"labels": labels, "counts": counts}
+    ranges = [[edges[i], edges[i + 1]] for i in range(bins)]
+    return {"labels": labels, "counts": counts, "ranges": ranges, "mode": "range"}
 
 
 def _distribution_enum(

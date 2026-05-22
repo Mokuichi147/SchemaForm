@@ -398,6 +398,56 @@ async def gather_filtered_submissions(
     return form, fields, filtered, file_names
 
 
+def build_full_table_context(
+    request: Request,
+    fields: list[dict[str, Any]],
+    submissions: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """ページングなしで送信一覧と同じ表示行を構築する（集計ページの元データ表示用）。
+
+    送信一覧の表示列／値整形ロジックをそのまま再利用し、与えられた送信集合を
+    すべて行に変換する。
+    """
+    storage = request.app.state.storage
+    display_columns, master_lookup_by_field = build_submission_display_columns(
+        storage, fields
+    )
+    file_ids = collect_file_ids(submissions, fields) | (
+        collect_submission_master_display_file_ids(
+            submissions, display_columns, master_lookup_by_field
+        )
+    )
+    file_infos = resolve_file_infos(storage.files, file_ids, file_url_builder(request))
+    file_names = {fid: info["name"] for fid, info in file_infos.items()}
+
+    rows: list[dict[str, Any]] = []
+    for item in submissions:
+        data = item.get("data_json", {})
+        rows.append(
+            {
+                "id": item["id"],
+                "created_at": item.get("created_at"),
+                "updated_at": item.get("updated_at"),
+                "username": item.get("username") or "",
+                "values": build_submission_row_values(
+                    data,
+                    display_columns,
+                    master_lookup_by_field,
+                    file_names,
+                    temporal_style="display",
+                ),
+                "raw_values": build_submission_raw_values(
+                    data, display_columns, master_lookup_by_field
+                ),
+            }
+        )
+    return {
+        "display_columns": display_columns,
+        "file_infos": file_infos,
+        "rows": rows,
+    }
+
+
 async def build_submission_list_context(
     request: Request,
     form_id: str,

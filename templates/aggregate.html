@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_file_preview.html" import file_value as render_file_value %}
 {% block content %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 
@@ -21,8 +22,9 @@
   <div class="mt-6 rounded-lg border border-slate-200 bg-white p-4">
     <h2 class="text-base font-semibold text-slate-900">日付別の件数推移</h2>
     <div class="relative mt-3 h-64">
-      <canvas class="js-chart" data-chart="{{ {'type': 'line', 'labels': timeseries.labels, 'counts': timeseries.counts, 'label': '件数'} | tojson_attr }}"></canvas>
+      <canvas class="js-chart" data-chart="{{ {'type': 'line', 'labels': timeseries.labels, 'counts': timeseries.counts, 'label': '件数', 'ckind': 'date', 'flabel': '送信日'} | tojson_attr }}"></canvas>
     </div>
+    <p class="mt-2 text-xs text-slate-400">グラフをクリックすると、下の表に該当データのみを表示します。</p>
   </div>
   {% endif %}
 
@@ -45,7 +47,7 @@
         <p class="mt-3 text-sm text-slate-500">データなし</p>
         {% else %}
         <div class="relative mt-3 h-64">
-          <canvas id="{{ canvas_id }}" class="js-chart" data-chart="{{ {'type': 'bar', 'labels': agg.labels, 'counts': agg.counts, 'label': '件数'} | tojson_attr }}"></canvas>
+          <canvas id="{{ canvas_id }}" class="js-chart" data-chart="{{ {'type': 'bar', 'labels': agg.labels, 'counts': agg.counts, 'label': '件数', 'ckind': ('enum' if agg.is_enum else 'boolean'), 'field': agg.key, 'flabel': agg.label} | tojson_attr }}"></canvas>
         </div>
         {% if agg.supports_correct %}
         <div class="mt-3 border-t border-slate-100 pt-3" data-correct-field="{{ agg.key }}">
@@ -74,12 +76,91 @@
         </table>
         {% if agg.histogram.labels %}
         <div class="relative mt-3 h-64">
-          <canvas class="js-chart" data-chart="{{ {'type': 'bar', 'labels': agg.histogram.labels, 'counts': agg.histogram.counts, 'label': '件数'} | tojson_attr }}"></canvas>
+          <canvas class="js-chart" data-chart="{{ {'type': 'bar', 'labels': agg.histogram.labels, 'counts': agg.histogram.counts, 'label': '件数', 'ckind': 'numeric', 'field': agg.key, 'flabel': agg.label, 'ranges': agg.histogram.ranges, 'mode': agg.histogram.mode} | tojson_attr }}"></canvas>
         </div>
         {% endif %}
       {% endif %}
     </div>
     {% endfor %}
+  </div>
+
+  <div id="data-table-section" class="mt-8">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 class="text-lg font-semibold text-slate-900">元データ</h2>
+      <div id="drill-banner" class="hidden items-center gap-2 rounded border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm text-sky-800">
+        <span>絞り込み中: <span id="drill-label" class="font-semibold"></span>（<span id="drill-count"></span>件）</span>
+        <button type="button" id="drill-clear" class="rounded border border-sky-300 px-2 py-0.5 text-xs">解除</button>
+      </div>
+    </div>
+
+    <div class="mt-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      <table class="min-w-full divide-y divide-slate-200 text-sm">
+        <thead class="bg-slate-100 text-left">
+          <tr>
+            <th class="px-4 py-3">送信日時</th>
+            <th class="px-4 py-3">送信ユーザー</th>
+            <th class="px-4 py-3">正答率</th>
+            {% for column in display_columns %}
+            <th class="px-4 py-3">{{ column.label }}</th>
+            {% endfor %}
+            <th class="px-4 py-3">操作</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-200">
+          {% for row in rows %}
+          <tr data-row="{{ row.drill | tojson_attr }}" data-date="{{ row.date }}">
+            <td class="px-4 py-3 text-slate-600">
+              <time class="js-local-dt" data-iso="{{ iso_dt(row.created_at) }}">{{ format_dt(row.created_at) }}</time>
+            </td>
+            <td class="px-4 py-3 text-slate-600">{{ row.username or '-' }}</td>
+            <td class="px-4 py-3 text-slate-700"><span class="js-row-rate tabular-nums">—</span></td>
+            {% for value in row["values"] %}
+            {% set column = display_columns[loop.index0] %}
+            {% set raw_value = row.raw_values[loop.index0] if row.raw_values is defined else none %}
+            {% if column.kind == "default" and column.field.type == "file" and raw_value %}
+              <td class="px-4 py-3">{{ render_file_value(raw_value, file_infos, "sm") }}</td>
+            {% elif column.kind == "master_display" and column.display_type == "file" and raw_value %}
+              <td class="px-4 py-3">{{ render_file_value(raw_value, file_infos, "sm") }}</td>
+            {% elif column.kind == "default"
+                  and column.field.type == "string"
+                  and (
+                    column.field.format == "url"
+                    or "http://" in value
+                    or "https://" in value
+                    or "www." in value
+                  )
+                  and value %}
+              <td class="px-4 py-3">
+                {% set raw_items = value.split(",") if column.field.is_array else [value] %}
+                {% for raw_item in raw_items %}
+                  {% set trimmed = raw_item | trim %}
+                  {% if trimmed %}
+                    {% if trimmed.startswith("http://") or trimmed.startswith("https://") %}
+                      <a href="{{ trimmed }}" target="_blank" rel="noopener noreferrer" class="break-all text-sky-700 underline">{{ trimmed }}</a>
+                    {% elif trimmed.startswith("www.") %}
+                      <a href="https://{{ trimmed }}" target="_blank" rel="noopener noreferrer" class="break-all text-sky-700 underline">{{ trimmed }}</a>
+                    {% else %}
+                      {{ trimmed }}
+                    {% endif %}
+                    {% if not loop.last %}, {% endif %}
+                  {% endif %}
+                {% endfor %}
+              </td>
+            {% else %}
+            <td class="px-4 py-3">{{ value }}</td>
+            {% endif %}
+            {% endfor %}
+            <td class="px-4 py-3">
+              <a href="/forms/{{ form.id }}/submissions/{{ row.id }}/edit" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs text-slate-700">詳細</a>
+            </td>
+          </tr>
+          {% endfor %}
+          <tr id="drill-empty-row" class="hidden">
+            <td colspan="{{ display_columns | length + 4 }}" class="px-4 py-6 text-center text-slate-500">該当データがありません。</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </div>
   {% endif %}
 </div>
@@ -95,6 +176,21 @@
       "#db2777", "#65a30d", "#ea580c", "#4f46e5", "#0d9488", "#9333ea",
     ];
     const charts = {};
+
+    const tableRows = Array.from(document.querySelectorAll("tr[data-row]")).map((tr) => {
+      let data = {};
+      try { data = JSON.parse(tr.dataset.row); } catch (e) {}
+      return { tr, data, date: tr.dataset.date || "", rateCell: tr.querySelector(".js-row-rate") };
+    });
+    const emptyRow = document.getElementById("drill-empty-row");
+    const banner = document.getElementById("drill-banner");
+    const drillLabel = document.getElementById("drill-label");
+    const drillCount = document.getElementById("drill-count");
+
+    function toBool(value) {
+      if (Array.isArray(value)) value = value[0];
+      return value === true || (typeof value === "string" && ["true", "1", "yes", "on"].includes(value.toLowerCase()));
+    }
 
     function buildConfig(spec) {
       const isLine = spec.type === "line";
@@ -117,6 +213,11 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          interaction: isPie ? undefined : { mode: "index", intersect: false },
+          onClick: (evt, elements) => {
+            if (!elements.length) return;
+            applyDrill(spec, elements[0].index);
+          },
           plugins: { legend: { display: isPie } },
           scales: isPie ? {} : { y: { beginAtZero: true, ticks: { precision: 0 } } },
         },
@@ -125,11 +226,7 @@
 
     document.querySelectorAll("canvas.js-chart").forEach((canvas) => {
       let spec;
-      try {
-        spec = JSON.parse(canvas.dataset.chart);
-      } catch (e) {
-        return;
-      }
+      try { spec = JSON.parse(canvas.dataset.chart); } catch (e) { return; }
       const chart = new Chart(canvas, buildConfig(spec));
       if (canvas.id) charts[canvas.id] = { chart, spec };
     });
@@ -140,28 +237,138 @@
         if (!entry) return;
         entry.chart.destroy();
         const nextSpec = Object.assign({}, entry.spec, { type: button.dataset.mode });
-        entry.chart = new Chart(
-          document.getElementById(button.dataset.target),
-          buildConfig(nextSpec),
-        );
+        entry.chart = new Chart(document.getElementById(button.dataset.target), buildConfig(nextSpec));
         entry.spec = nextSpec;
       });
     });
 
+    // ---- グラフクリックによる絞り込み（ドリルダウン） ----
+    function buildPredicate(spec, index) {
+      if (spec.ckind === "date") {
+        const day = spec.labels[index];
+        return { label: spec.flabel + ": " + day, test: (row) => row.date === day };
+      }
+      if (spec.ckind === "enum") {
+        const target = spec.labels[index];
+        return {
+          label: spec.flabel + ": " + target,
+          test: (row) => {
+            const v = row.data[spec.field];
+            if (Array.isArray(v)) return v.map(String).includes(target);
+            return String(v) === target;
+          },
+        };
+      }
+      if (spec.ckind === "boolean") {
+        const target = spec.labels[index] === "true";
+        return {
+          label: spec.flabel + ": " + spec.labels[index],
+          test: (row) => toBool(row.data[spec.field]) === target,
+        };
+      }
+      if (spec.ckind === "numeric") {
+        const range = spec.ranges[index];
+        const isLast = index === spec.ranges.length - 1;
+        const exact = spec.mode === "exact";
+        return {
+          label: spec.flabel + ": " + spec.labels[index],
+          test: (row) => {
+            let v = row.data[spec.field];
+            const arr = Array.isArray(v) ? v : [v];
+            return arr.some((x) => {
+              const n = Number(x);
+              if (Number.isNaN(n)) return false;
+              if (exact) return n === range[0];
+              return n >= range[0] && (isLast ? n <= range[1] : n < range[1]);
+            });
+          },
+        };
+      }
+      return null;
+    }
+
+    function applyDrill(spec, index) {
+      const predicate = buildPredicate(spec, index);
+      if (!predicate) return;
+      let count = 0;
+      tableRows.forEach((row) => {
+        const ok = predicate.test(row);
+        row.tr.classList.toggle("hidden", !ok);
+        if (ok) count += 1;
+      });
+      if (emptyRow) emptyRow.classList.toggle("hidden", count > 0);
+      if (banner) {
+        banner.classList.remove("hidden");
+        banner.classList.add("flex");
+        drillLabel.textContent = predicate.label;
+        drillCount.textContent = count;
+      }
+      const section = document.getElementById("data-table-section");
+      if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    function clearDrill() {
+      tableRows.forEach((row) => row.tr.classList.remove("hidden"));
+      if (emptyRow) emptyRow.classList.add("hidden");
+      if (banner) {
+        banner.classList.add("hidden");
+        banner.classList.remove("flex");
+      }
+    }
+
+    document.getElementById("drill-clear")?.addEventListener("click", clearDrill);
+
+    // ---- 各送信ごとの正答率 ----
+    function getCorrectMap() {
+      const map = {};
+      document.querySelectorAll("[data-correct-field]").forEach((container) => {
+        const selected = Array.from(container.querySelectorAll(".js-correct-option"))
+          .filter((o) => o.checked)
+          .map((o) => o.value);
+        if (selected.length) map[container.dataset.correctField] = selected;
+      });
+      return map;
+    }
+
+    function isRowCorrect(rowData, key, correctSet) {
+      const v = rowData[key];
+      if (v === undefined || v === null) return false;
+      if (Array.isArray(v)) {
+        const a = v.map(String).sort();
+        const b = correctSet.slice().sort();
+        return a.length === b.length && a.every((x, i) => x === b[i]);
+      }
+      return correctSet.includes(String(v));
+    }
+
+    function recomputeRowRates() {
+      const correctMap = getCorrectMap();
+      const keys = Object.keys(correctMap);
+      tableRows.forEach((row) => {
+        if (!row.rateCell) return;
+        if (!keys.length) { row.rateCell.textContent = "—"; return; }
+        let correct = 0;
+        keys.forEach((key) => {
+          if (isRowCorrect(row.data, key, correctMap[key])) correct += 1;
+        });
+        const rate = (correct / keys.length) * 100;
+        row.rateCell.textContent = rate.toFixed(0) + "% (" + correct + "/" + keys.length + ")";
+      });
+    }
+
+    // ---- 設問ごとの正答率（円/棒の下の表示）と localStorage 復元 ----
     document.querySelectorAll("[data-correct-field]").forEach((container) => {
       const storageKey = "sf-correct:" + formId + ":" + container.dataset.correctField;
       const rateEl = container.querySelector(".js-correct-rate");
       const total = parseFloat(rateEl.dataset.total) || 0;
       const options = Array.from(container.querySelectorAll(".js-correct-option"));
 
-      function recompute() {
+      function recomputeField() {
         const selected = options.filter((o) => o.checked);
         if (selected.length === 0) {
           rateEl.textContent = "—";
         } else {
-          const correct = selected.reduce(
-            (acc, o) => acc + (parseFloat(o.dataset.count) || 0), 0,
-          );
+          const correct = selected.reduce((acc, o) => acc + (parseFloat(o.dataset.count) || 0), 0);
           const rate = total > 0 ? (correct / total * 100) : 0;
           rateEl.textContent = rate.toFixed(1) + "% (" + correct + "/" + total + ")";
         }
@@ -177,9 +384,14 @@
         }
       } catch (e) {}
 
-      options.forEach((o) => o.addEventListener("change", recompute));
-      recompute();
+      options.forEach((o) => o.addEventListener("change", () => {
+        recomputeField();
+        recomputeRowRates();
+      }));
+      recomputeField();
     });
+
+    recomputeRowRates();
   });
 </script>
 {% endblock %}
