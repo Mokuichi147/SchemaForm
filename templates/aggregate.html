@@ -154,13 +154,13 @@
 
   <div id="data-table-section" class="mt-8">
     <div class="flex flex-wrap items-center justify-between gap-2">
-      <div class="flex items-center gap-3">
-        <h2 class="text-lg font-semibold text-slate-900">元データ</h2>
+      <h2 class="text-lg font-semibold text-slate-900">元データ</h2>
+      <div class="flex flex-wrap items-center gap-2">
+        <div id="drill-banner" class="hidden items-center gap-2 rounded border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm text-sky-800">
+          <span>絞り込み中: <span id="drill-label" class="font-semibold"></span>（<span id="drill-count"></span>件）</span>
+          <button type="button" id="drill-clear" class="rounded border border-sky-300 px-2 py-0.5 text-xs">解除</button>
+        </div>
         <button type="button" id="open-download-modal" class="rounded border border-slate-300 px-3 py-2 text-sm">ダウンロード</button>
-      </div>
-      <div id="drill-banner" class="hidden items-center gap-2 rounded border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm text-sky-800">
-        <span>絞り込み中: <span id="drill-label" class="font-semibold"></span>（<span id="drill-count"></span>件）</span>
-        <button type="button" id="drill-clear" class="rounded border border-sky-300 px-2 py-0.5 text-xs">解除</button>
       </div>
     </div>
 
