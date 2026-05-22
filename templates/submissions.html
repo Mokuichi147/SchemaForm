@@ -12,6 +12,7 @@
       <input type="file" id="import-file-input" name="file" accept=".csv,.tsv" required class="hidden" />
       <button type="button" id="open-import-modal" class="rounded border border-slate-300 px-3 py-2 text-sm">取り込み</button>
     </form>
+    <a href="/forms/{{ form.id }}/aggregate?{{ build_query(query, page=None) }}" class="rounded border border-slate-300 px-3 py-2 text-sm">集計</a>
     <a href="/f/{{ form.public_id }}" class="rounded border border-slate-300 px-3 py-2 text-sm">入力ページ</a>
     <button type="button" id="open-download-modal" class="rounded border border-slate-300 px-3 py-2 text-sm">ダウンロード</button>
   </div>

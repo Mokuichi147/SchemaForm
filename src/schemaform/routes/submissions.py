@@ -364,6 +364,40 @@ def collect_submission_master_display_file_ids(
     return ids
 
 
+async def gather_filtered_submissions(
+    request: Request,
+    form_id: str,
+    *,
+    filter_user_id: int | None = None,
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]], dict[str, str]]:
+    """フォーム・フィールド定義と、現在のクエリでフィルター済みの送信一覧、
+    ファイル名マップを返す。
+
+    送信一覧／エクスポート／集計で共通のデータ取得手順（list_submissions →
+    配列グループ行の展開 → apply_filters）をまとめたもの。
+    """
+    storage = request.app.state.storage
+    form = storage.forms.get_form(form_id)
+    if not form:
+        raise HTTPException(status_code=404, detail="フォームが見つかりません")
+
+    fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
+    submissions = storage.submissions.list_submissions(form_id)
+    if filter_user_id is not None:
+        submissions = [s for s in submissions if s.get("user_id") == filter_user_id]
+    expanded_submissions: list[dict[str, Any]] = []
+    for submission in submissions:
+        data = submission.get("data_json", {})
+        for expanded_data in expand_group_array_rows(fields, data):
+            expanded_submissions.append({**submission, "data_json": expanded_data})
+    file_ids = collect_file_ids(submissions, fields)
+    file_names = resolve_file_names(storage.files, file_ids)
+    filtered = apply_filters(
+        expanded_submissions, fields, dict(request.query_params), file_names=file_names
+    )
+    return form, fields, filtered, file_names
+
+
 async def build_submission_list_context(
     request: Request,
     form_id: str,
@@ -949,21 +983,8 @@ async def export_submissions(
     request: Request, form_id: str, _: Any = Depends(form_editor_guard)
 ) -> Response:
     storage = request.app.state.storage
-    form = storage.forms.get_form(form_id)
-    if not form:
-        raise HTTPException(status_code=404, detail="フォームが見つかりません")
-
-    fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
-    submissions = storage.submissions.list_submissions(form_id)
-    expanded_submissions: list[dict[str, Any]] = []
-    for submission in submissions:
-        data = submission.get("data_json", {})
-        for expanded_data in expand_group_array_rows(fields, data):
-            expanded_submissions.append({**submission, "data_json": expanded_data})
-    file_ids = collect_file_ids(submissions, fields)
-    file_names = resolve_file_names(storage.files, file_ids)
-    filtered = apply_filters(
-        expanded_submissions, fields, dict(request.query_params), file_names=file_names
+    form, fields, filtered, file_names = await gather_filtered_submissions(
+        request, form_id
     )
     display_columns, master_lookup_by_field = build_submission_display_columns(
         storage, fields
