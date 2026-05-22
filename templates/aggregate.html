@@ -282,7 +282,10 @@
 
     // ---- 件数の推移: 送信日時の間隔に応じた粒度バケット ----
     const TS_UNITS = ["second", "minute", "hour", "day", "week", "month", "year"];
-    const TS_TARGET_BUCKETS = 150;
+    // バーが多すぎる粒度は不可。充填率(データの入る区間の割合)がこれ未満なら
+    // 0件区間が多すぎるとみなし、1段階広い粒度を選ぶ。
+    const TS_MAX_BUCKETS = 60;
+    const TS_MIN_FILL = 0.34;
     const TS_UNIT_SECONDS = { second: 1, minute: 60, hour: 3600, day: 86400, week: 604800 };
 
     function tsTruncate(date, unit) {
@@ -332,18 +335,35 @@
       return Math.floor((hi - lo) / (TS_UNIT_SECONDS[unit] * 1000)) + 1;
     }
 
-    function tsAutoUnit(minD, maxD) {
+    function tsFilledCount(dates, unit) {
+      const set = new Set();
+      dates.forEach((d) => set.add(tsLabel(tsTruncate(d, unit), unit)));
+      return set.size;
+    }
+
+    function tsAutoUnit(dates) {
+      // なるべく広い粒度を優先。細→粗に見て、バー数が上限以下で、かつ空区間が
+      // 多すぎない(充填率が十分な)最も細かい粒度を選ぶ。空が多い粒度は飛ばして
+      // 1段階広い粒度へ。
+      const minD = dates[0];
+      const maxD = dates[dates.length - 1];
+      let chosen = "year";
       for (const unit of TS_UNITS) {
-        if (tsBucketCount(minD, maxD, unit) <= TS_TARGET_BUCKETS) return unit;
+        const count = tsBucketCount(minD, maxD, unit);
+        if (count > TS_MAX_BUCKETS) continue;
+        chosen = unit;
+        if (count <= 3 || tsFilledCount(dates, unit) / count >= TS_MIN_FILL) {
+          return unit;
+        }
       }
-      return "year";
+      return chosen;
     }
 
     function buildTimeseries(dates, requested) {
       if (!dates.length) return { labels: [], counts: [], unit: "day" };
       const minD = dates[0], maxD = dates[dates.length - 1];
       const unit = (requested === "auto" || !TS_UNITS.includes(requested))
-        ? tsAutoUnit(minD, maxD) : requested;
+        ? tsAutoUnit(dates) : requested;
       const counter = {};
       dates.forEach((d) => {
         const key = tsLabel(tsTruncate(d, unit), unit);
