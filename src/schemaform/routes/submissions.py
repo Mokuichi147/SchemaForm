@@ -66,6 +66,32 @@ async def form_editor_guard(request: Request, form_id: str) -> None:
         )
 
 
+async def resolve_user_display_map(request: Request) -> dict[int, str]:
+    """user_id → 表示名 のマップを認証プロバイダから構築する。"""
+    user_display_map: dict[int, str] = {}
+    auth = request.app.state.auth_provider
+    current_user = getattr(request.state, "current_user", None)
+    list_users = getattr(auth, "list_users", None)
+    if list_users is None:
+        return user_display_map
+    try:
+        users = await list_users((current_user or {}).get("token", ""))
+    except Exception:
+        users = []
+    for u in users:
+        uid = u.get("id")
+        if uid is not None:
+            user_display_map[uid] = u.get("display_name") or u.get("username") or ""
+    return user_display_map
+
+
+def resolve_user_label(item: dict[str, Any], user_display_map: dict[int, str]) -> str:
+    uid = item.get("user_id")
+    if uid in user_display_map and user_display_map[uid]:
+        return user_display_map[uid]
+    return item.get("username") or ""
+
+
 def build_submission_display_columns(
     storage: Any, fields: list[dict[str, Any]]
 ) -> tuple[list[dict[str, Any]], dict[str, dict[str, dict[str, Any]]]]:
@@ -398,7 +424,7 @@ async def gather_filtered_submissions(
     return form, fields, filtered, file_names
 
 
-def build_full_table_context(
+async def build_full_table_context(
     request: Request,
     fields: list[dict[str, Any]],
     submissions: list[dict[str, Any]],
@@ -406,7 +432,7 @@ def build_full_table_context(
     """ページングなしで送信一覧と同じ表示行を構築する（集計ページの元データ表示用）。
 
     送信一覧の表示列／値整形ロジックをそのまま再利用し、与えられた送信集合を
-    すべて行に変換する。
+    すべて行に変換する。送信ユーザーは認証プロバイダの表示名へ解決する。
     """
     storage = request.app.state.storage
     display_columns, master_lookup_by_field = build_submission_display_columns(
@@ -419,6 +445,7 @@ def build_full_table_context(
     )
     file_infos = resolve_file_infos(storage.files, file_ids, file_url_builder(request))
     file_names = {fid: info["name"] for fid, info in file_infos.items()}
+    user_display_map = await resolve_user_display_map(request)
 
     rows: list[dict[str, Any]] = []
     for item in submissions:
@@ -428,7 +455,7 @@ def build_full_table_context(
                 "id": item["id"],
                 "created_at": item.get("created_at"),
                 "updated_at": item.get("updated_at"),
-                "username": item.get("username") or "",
+                "username": resolve_user_label(item, user_display_map),
                 "values": build_submission_row_values(
                     data,
                     display_columns,
@@ -486,30 +513,9 @@ async def build_submission_list_context(
     )
 
     if include_user_display_map:
-        user_display_map: dict[int, str] = {}
-        auth = request.app.state.auth_provider
-        current_user = getattr(request.state, "current_user", None)
-        list_users = getattr(auth, "list_users", None)
-        if list_users is not None:
-            try:
-                users = await list_users((current_user or {}).get("token", ""))
-            except Exception:
-                users = []
-            for u in users:
-                uid = u.get("id")
-                if uid is not None:
-                    user_display_map[uid] = (
-                        u.get("display_name") or u.get("username") or ""
-                    )
-
-        def _resolve_user_label(item: dict[str, Any]) -> str:
-            uid = item.get("user_id")
-            if uid in user_display_map and user_display_map[uid]:
-                return user_display_map[uid]
-            return item.get("username") or ""
-
+        user_display_map = await resolve_user_display_map(request)
         for item in filtered:
-            item["_display_username"] = _resolve_user_label(item)
+            item["_display_username"] = resolve_user_label(item, user_display_map)
 
     sort = request.query_params.get("sort", "created_at")
     order = request.query_params.get("order", "desc")
@@ -1040,25 +1046,9 @@ async def export_submissions(
         storage, fields
     )
 
-    user_display_map: dict[int, str] = {}
-    auth = request.app.state.auth_provider
-    current_user = getattr(request.state, "current_user", None)
-    list_users = getattr(auth, "list_users", None)
-    if list_users is not None:
-        try:
-            users = await list_users((current_user or {}).get("token", ""))
-        except Exception:
-            users = []
-        for u in users:
-            uid = u.get("id")
-            if uid is not None:
-                user_display_map[uid] = u.get("display_name") or u.get("username") or ""
-
+    user_display_map = await resolve_user_display_map(request)
     for item in filtered:
-        uid = item.get("user_id")
-        item["_display_username"] = (
-            user_display_map.get(uid) if uid in user_display_map else None
-        ) or item.get("username") or ""
+        item["_display_username"] = resolve_user_label(item, user_display_map)
 
     sort = request.query_params.get("sort", "created_at")
     order = request.query_params.get("order", "desc")

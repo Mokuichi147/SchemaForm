@@ -28,7 +28,7 @@ async def aggregate_view(
         request, form_id
     )
     result = aggregate_submissions(fields, filtered)
-    table = build_full_table_context(request, fields, filtered)
+    table = await build_full_table_context(request, fields, filtered)
 
     drill_keys = [
         field["flat_key"]
