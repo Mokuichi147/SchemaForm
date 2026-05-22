@@ -97,11 +97,20 @@
       <table class="min-w-full divide-y divide-slate-200 text-sm">
         <thead class="bg-slate-100 text-left">
           <tr>
-            <th class="px-4 py-3">送信日時</th>
-            <th class="px-4 py-3">送信ユーザー</th>
-            <th class="px-4 py-3">正答率</th>
+            <th class="px-4 py-3">
+              <button type="button" class="js-sort group inline-flex items-center gap-1" data-sort-kind="datetime">送信日時 <span class="js-sort-arrow text-slate-300">↕</span></button>
+            </th>
+            <th class="px-4 py-3">
+              <button type="button" class="js-sort group inline-flex items-center gap-1" data-sort-kind="text">送信ユーザー <span class="js-sort-arrow text-slate-300">↕</span></button>
+            </th>
+            <th class="px-4 py-3">
+              <button type="button" class="js-sort group inline-flex items-center gap-1" data-sort-kind="rate">正答率 <span class="js-sort-arrow text-slate-300">↕</span></button>
+            </th>
             {% for column in display_columns %}
-            <th class="px-4 py-3">{{ column.label }}</th>
+            {% set col_numeric = (column.kind == 'default' and column.field.type in ['number', 'integer', 'calculated']) or (column.kind == 'master_display' and column.display_type in ['number', 'integer']) %}
+            <th class="px-4 py-3">
+              <button type="button" class="js-sort group inline-flex items-center gap-1" data-sort-kind="{{ 'number' if col_numeric else 'text' }}">{{ column.label }} <span class="js-sort-arrow text-slate-300">↕</span></button>
+            </th>
             {% endfor %}
             <th class="px-4 py-3">操作</th>
           </tr>
@@ -317,6 +326,68 @@
     }
 
     document.getElementById("drill-clear")?.addEventListener("click", clearDrill);
+
+    // ---- 列ヘッダーによる並べ替え（クライアント側） ----
+    const tableBody = document.querySelector("#data-table-section tbody");
+    const sortState = { index: null, dir: 1 };
+
+    function cellSortValue(tr, cellIndex, kind) {
+      const cell = tr.cells[cellIndex];
+      if (!cell) return null;
+      if (kind === "datetime") {
+        const timeEl = cell.querySelector("time");
+        const ms = Date.parse(timeEl ? timeEl.dataset.iso : "");
+        return Number.isNaN(ms) ? null : ms;
+      }
+      if (kind === "rate") {
+        const span = cell.querySelector(".js-row-rate");
+        const match = (span ? span.textContent : "").match(/([\d.]+)%/);
+        return match ? parseFloat(match[1]) : null;
+      }
+      if (kind === "number") {
+        const n = parseFloat((cell.textContent || "").replace(/,/g, "").trim());
+        return Number.isNaN(n) ? null : n;
+      }
+      const text = (cell.textContent || "").trim().toLowerCase();
+      return text === "" ? null : text;
+    }
+
+    document.querySelectorAll(".js-sort").forEach((button) => {
+      button.addEventListener("click", () => {
+        if (!tableBody) return;
+        const th = button.closest("th");
+        const cellIndex = th.cellIndex;
+        const kind = button.dataset.sortKind;
+        if (sortState.index === cellIndex) {
+          sortState.dir = -sortState.dir;
+        } else {
+          sortState.index = cellIndex;
+          sortState.dir = 1;
+        }
+        const sorted = tableRows.slice().sort((a, b) => {
+          const va = cellSortValue(a.tr, cellIndex, kind);
+          const vb = cellSortValue(b.tr, cellIndex, kind);
+          if (va === null && vb === null) return 0;
+          if (va === null) return 1;
+          if (vb === null) return -1;
+          if (va < vb) return -sortState.dir;
+          if (va > vb) return sortState.dir;
+          return 0;
+        });
+        sorted.forEach((row) => tableBody.insertBefore(row.tr, emptyRow));
+        document.querySelectorAll(".js-sort-arrow").forEach((arrow) => {
+          arrow.textContent = "↕";
+          arrow.classList.add("text-slate-300");
+          arrow.classList.remove("text-slate-500");
+        });
+        const arrow = button.querySelector(".js-sort-arrow");
+        if (arrow) {
+          arrow.textContent = sortState.dir === 1 ? "▲" : "▼";
+          arrow.classList.remove("text-slate-300");
+          arrow.classList.add("text-slate-500");
+        }
+      });
+    });
 
     // ---- 各送信ごとの正答率 ----
     function getCorrectMap() {
