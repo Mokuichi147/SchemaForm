@@ -18,11 +18,26 @@
   <div class="mt-6 rounded-lg border border-slate-200 bg-white px-4 py-10 text-center text-slate-500">該当データがありません。</div>
   {% else %}
 
-  {% if timeseries.labels %}
-  <div class="mt-6 rounded-lg border border-slate-200 bg-white p-4">
-    <h2 class="text-base font-semibold text-slate-900">日付別の件数推移</h2>
+  {% if timeseries_timestamps %}
+  <div id="timeseries-section" class="mt-6 rounded-lg border border-slate-200 bg-white p-4" data-timestamps="{{ timeseries_timestamps | tojson_attr }}">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 class="text-base font-semibold text-slate-900">件数の推移</h2>
+      <label class="flex items-center gap-1 text-xs text-slate-500">
+        <span>粒度</span>
+        <select id="ts-unit-select" class="rounded border border-slate-300 px-2 py-1 text-sm">
+          <option value="auto">自動</option>
+          <option value="second">秒</option>
+          <option value="minute">分</option>
+          <option value="hour">時</option>
+          <option value="day">日</option>
+          <option value="week">週</option>
+          <option value="month">月</option>
+          <option value="year">年</option>
+        </select>
+      </label>
+    </div>
     <div class="relative mt-3 h-64">
-      <canvas class="js-chart" data-chart="{{ {'type': 'line', 'labels': timeseries.labels, 'counts': timeseries.counts, 'label': '件数', 'ckind': 'date', 'flabel': '送信日'} | tojson_attr }}"></canvas>
+      <canvas id="ts-chart"></canvas>
     </div>
     <p class="mt-2 text-xs text-slate-400">グラフをクリックすると、下の表に該当データのみを表示します。</p>
   </div>
@@ -132,7 +147,7 @@
         </thead>
         <tbody class="divide-y divide-slate-200">
           {% for row in rows %}
-          <tr data-row="{{ row.drill | tojson_attr }}" data-date="{{ row.date }}">
+          <tr data-row="{{ row.drill | tojson_attr }}" data-ts="{{ row.ts }}">
             <td class="px-4 py-3 text-slate-600">
               <time class="js-local-dt" data-iso="{{ iso_dt(row.created_at) }}">{{ format_dt(row.created_at) }}</time>
             </td>
@@ -204,7 +219,7 @@
     const tableRows = Array.from(document.querySelectorAll("tr[data-row]")).map((tr) => {
       let data = {};
       try { data = JSON.parse(tr.dataset.row); } catch (e) {}
-      return { tr, data, date: tr.dataset.date || "", rateCell: tr.querySelector(".js-row-rate") };
+      return { tr, data, ts: tr.dataset.ts || "", rateCell: tr.querySelector(".js-row-rate") };
     });
     const emptyRow = document.getElementById("drill-empty-row");
     const banner = document.getElementById("drill-banner");
@@ -214,6 +229,89 @@
     function toBool(value) {
       if (Array.isArray(value)) value = value[0];
       return value === true || (typeof value === "string" && ["true", "1", "yes", "on"].includes(value.toLowerCase()));
+    }
+
+    // ---- 件数の推移: 送信日時の間隔に応じた粒度バケット ----
+    const TS_UNITS = ["second", "minute", "hour", "day", "week", "month", "year"];
+    const TS_TARGET_BUCKETS = 150;
+    const TS_UNIT_SECONDS = { second: 1, minute: 60, hour: 3600, day: 86400, week: 604800 };
+
+    function tsTruncate(date, unit) {
+      const Y = date.getFullYear(), Mo = date.getMonth(), D = date.getDate();
+      const H = date.getHours(), Mi = date.getMinutes(), S = date.getSeconds();
+      if (unit === "second") return new Date(Y, Mo, D, H, Mi, S);
+      if (unit === "minute") return new Date(Y, Mo, D, H, Mi, 0);
+      if (unit === "hour") return new Date(Y, Mo, D, H, 0, 0);
+      if (unit === "day") return new Date(Y, Mo, D, 0, 0, 0);
+      if (unit === "week") {
+        const d = new Date(Y, Mo, D);
+        d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+        return d;
+      }
+      if (unit === "month") return new Date(Y, Mo, 1);
+      return new Date(Y, 0, 1);
+    }
+
+    function tsNext(date, unit) {
+      const d = new Date(date.getTime());
+      if (unit === "second") d.setSeconds(d.getSeconds() + 1);
+      else if (unit === "minute") d.setMinutes(d.getMinutes() + 1);
+      else if (unit === "hour") d.setHours(d.getHours() + 1);
+      else if (unit === "day") d.setDate(d.getDate() + 1);
+      else if (unit === "week") d.setDate(d.getDate() + 7);
+      else if (unit === "month") d.setMonth(d.getMonth() + 1);
+      else d.setFullYear(d.getFullYear() + 1);
+      return d;
+    }
+
+    function tsLabel(date, unit) {
+      const pad = (n) => String(n).padStart(2, "0");
+      const Y = date.getFullYear(), Mo = pad(date.getMonth() + 1), D = pad(date.getDate());
+      const H = pad(date.getHours()), Mi = pad(date.getMinutes()), S = pad(date.getSeconds());
+      if (unit === "second") return Y + "-" + Mo + "-" + D + " " + H + ":" + Mi + ":" + S;
+      if (unit === "minute") return Y + "-" + Mo + "-" + D + " " + H + ":" + Mi;
+      if (unit === "hour") return Y + "-" + Mo + "-" + D + " " + H + ":00";
+      if (unit === "day" || unit === "week") return Y + "-" + Mo + "-" + D;
+      if (unit === "month") return Y + "-" + Mo;
+      return String(Y);
+    }
+
+    function tsBucketCount(minD, maxD, unit) {
+      const lo = tsTruncate(minD, unit), hi = tsTruncate(maxD, unit);
+      if (unit === "year") return hi.getFullYear() - lo.getFullYear() + 1;
+      if (unit === "month") return (hi.getFullYear() - lo.getFullYear()) * 12 + (hi.getMonth() - lo.getMonth()) + 1;
+      return Math.floor((hi - lo) / (TS_UNIT_SECONDS[unit] * 1000)) + 1;
+    }
+
+    function tsAutoUnit(minD, maxD) {
+      for (const unit of TS_UNITS) {
+        if (tsBucketCount(minD, maxD, unit) <= TS_TARGET_BUCKETS) return unit;
+      }
+      return "year";
+    }
+
+    function buildTimeseries(dates, requested) {
+      if (!dates.length) return { labels: [], counts: [], unit: "day" };
+      const minD = dates[0], maxD = dates[dates.length - 1];
+      const unit = (requested === "auto" || !TS_UNITS.includes(requested))
+        ? tsAutoUnit(minD, maxD) : requested;
+      const counter = {};
+      dates.forEach((d) => {
+        const key = tsLabel(tsTruncate(d, unit), unit);
+        counter[key] = (counter[key] || 0) + 1;
+      });
+      const labels = [], counts = [];
+      let cur = tsTruncate(minD, unit);
+      const end = tsTruncate(maxD, unit);
+      let guard = 0;
+      while (cur <= end && guard < 2000) {
+        const key = tsLabel(cur, unit);
+        labels.push(key);
+        counts.push(counter[key] || 0);
+        cur = tsNext(cur, unit);
+        guard += 1;
+      }
+      return { labels, counts, unit };
     }
 
     function buildConfig(spec) {
@@ -280,6 +378,40 @@
       if (canvas.id) charts[canvas.id] = { chart, spec };
     });
 
+    // 件数の推移（送信日時の間隔で粒度を自動選択、手動切替も可能）
+    const tsSection = document.getElementById("timeseries-section");
+    if (tsSection) {
+      let timestamps = [];
+      try { timestamps = JSON.parse(tsSection.dataset.timestamps || "[]"); } catch (e) {}
+      const tsDates = timestamps
+        .map((s) => new Date(s))
+        .filter((d) => !Number.isNaN(d.getTime()))
+        .sort((a, b) => a - b);
+      const tsCanvas = document.getElementById("ts-chart");
+      const tsUnitSelect = document.getElementById("ts-unit-select");
+      let tsChart = null;
+
+      const renderTimeseries = () => {
+        if (!tsCanvas || !tsDates.length) return;
+        const requested = tsUnitSelect ? tsUnitSelect.value : "auto";
+        const built = buildTimeseries(tsDates, requested);
+        const spec = {
+          type: "line",
+          labels: built.labels,
+          counts: built.counts,
+          label: "件数",
+          ckind: "date",
+          flabel: "送信日時",
+          unit: built.unit,
+        };
+        if (tsChart) tsChart.destroy();
+        tsChart = new Chart(tsCanvas, buildConfig(spec));
+      };
+
+      if (tsUnitSelect) tsUnitSelect.addEventListener("change", renderTimeseries);
+      renderTimeseries();
+    }
+
     document.querySelectorAll(".js-chart-toggle").forEach((button) => {
       button.addEventListener("click", () => {
         const entry = charts[button.dataset.target];
@@ -296,8 +428,17 @@
       // 円グラフは並べ替えるため、クリックされたラベルはチャート本体から取得する
       const clickedLabel = chart ? chart.data.labels[index] : spec.labels[index];
       if (spec.ckind === "date") {
-        const day = clickedLabel;
-        return { label: spec.flabel + ": " + day, test: (row) => row.date === day };
+        const unit = spec.unit || "day";
+        const target = clickedLabel;
+        return {
+          label: spec.flabel + ": " + target,
+          test: (row) => {
+            if (!row.ts) return false;
+            const d = new Date(row.ts);
+            if (Number.isNaN(d.getTime())) return false;
+            return tsLabel(tsTruncate(d, unit), unit) === target;
+          },
+        };
       }
       if (spec.ckind === "enum") {
         const target = clickedLabel;

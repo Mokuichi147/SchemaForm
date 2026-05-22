@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 
-from schemaform.aggregate import NUMERIC_TYPES, aggregate_submissions
+from schemaform.aggregate import NUMERIC_TYPES, aggregate_submissions, to_utc_iso
 from schemaform.fields import flatten_fields, get_nested_value
 from schemaform.routes.submissions import (
     build_full_table_context,
@@ -43,12 +42,7 @@ async def aggregate_view(
             if value is not None and value != "":
                 drill[key] = value
         row["drill"] = drill
-        created = item.get("created_at")
-        row["date"] = (
-            created.astimezone().date().isoformat()
-            if isinstance(created, datetime)
-            else ""
-        )
+        row["ts"] = to_utc_iso(item.get("created_at")) or ""
 
     return templates.TemplateResponse(
         "aggregate.html",

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from collections import Counter
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from typing import Any, Iterator
 
 from schemaform.calculated import _apply_aggregate, _collect_numeric_values
@@ -188,40 +187,36 @@ def _numeric(
     }
 
 
-def _to_local_date(value: Any) -> Any:
+def to_utc_iso(value: Any) -> str | None:
+    """datetime/ISO文字列を UTC・秒精度の ISO 文字列にする。naive はUTCとみなす。
+
+    ブラウザ側で各自のローカル時刻に変換して粒度バケットを作るため、絶対時刻
+    （UTC）で受け渡す。送信一覧の日時表示と同じ基準。"""
     if isinstance(value, datetime):
-        return value.astimezone().date()
-    if isinstance(value, str):
+        aware = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    elif isinstance(value, str):
         try:
-            return datetime.fromisoformat(value).astimezone().date()
+            parsed = datetime.fromisoformat(value)
         except ValueError:
             return None
-    return None
+        aware = parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    else:
+        return None
+    return aware.astimezone(timezone.utc).replace(microsecond=0).isoformat()
 
 
-def _timeseries(submissions: list[dict[str, Any]]) -> dict[str, Any]:
-    """送信日時(created_at)をローカル日付で集計し、欠落日を埋めて連続化する。"""
-    day_counts: Counter[str] = Counter()
-    dates = []
+def _timeseries_timestamps(submissions: list[dict[str, Any]]) -> list[str]:
+    """件数推移グラフ用に、各送信の送信日時（UTC・秒精度のISO文字列）を返す。
+
+    横軸の粒度（秒・分・時・日・週・月・年）は、送信日時の間隔に応じてクライアント
+    側で自動選択し、手動でも切り替えられるようにする。"""
+    out: list[str] = []
     for submission in submissions:
-        day = _to_local_date(submission.get("created_at"))
-        if day is None:
-            continue
-        day_counts[day.isoformat()] += 1
-        dates.append(day)
-    if not dates:
-        return {"labels": [], "counts": []}
-
-    labels: list[str] = []
-    counts: list[int] = []
-    current = min(dates)
-    end = max(dates)
-    while current <= end:
-        key = current.isoformat()
-        labels.append(key)
-        counts.append(day_counts.get(key, 0))
-        current = current + timedelta(days=1)
-    return {"labels": labels, "counts": counts}
+        iso = to_utc_iso(submission.get("created_at"))
+        if iso is not None:
+            out.append(iso)
+    out.sort()
+    return out
 
 
 def aggregate_submissions(
@@ -247,6 +242,6 @@ def aggregate_submissions(
     distinct = _distinct_submissions(submissions)
     return {
         "aggregations": aggregations,
-        "timeseries": _timeseries(distinct),
+        "timeseries_timestamps": _timeseries_timestamps(distinct),
         "total_submissions": len(distinct),
     }
