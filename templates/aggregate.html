@@ -204,14 +204,23 @@
     function buildConfig(spec) {
       const isLine = spec.type === "line";
       const isPie = spec.type === "pie";
-      const colors = spec.labels.map((_, i) => palette[i % palette.length]);
+      let labels = spec.labels;
+      let counts = spec.counts;
+      if (isPie) {
+        // 円グラフは割合（件数）の多い順に並べ替える
+        const pairs = labels.map((label, i) => ({ label, count: counts[i] }));
+        pairs.sort((a, b) => b.count - a.count);
+        labels = pairs.map((p) => p.label);
+        counts = pairs.map((p) => p.count);
+      }
+      const colors = labels.map((_, i) => palette[i % palette.length]);
       return {
         type: spec.type,
         data: {
-          labels: spec.labels,
+          labels: labels,
           datasets: [{
             label: spec.label || "",
-            data: spec.counts,
+            data: counts,
             backgroundColor: isLine ? "rgba(37, 99, 235, 0.2)" : colors,
             borderColor: isLine ? "#2563eb" : colors,
             borderWidth: isLine ? 2 : 1,
@@ -223,9 +232,9 @@
           responsive: true,
           maintainAspectRatio: false,
           interaction: isPie ? undefined : { mode: "index", intersect: false },
-          onClick: (evt, elements) => {
+          onClick: (evt, elements, chart) => {
             if (!elements.length) return;
-            applyDrill(spec, elements[0].index);
+            applyDrill(spec, elements[0].index, chart);
           },
           plugins: {
             legend: { display: isPie },
@@ -265,13 +274,15 @@
     });
 
     // ---- グラフクリックによる絞り込み（ドリルダウン） ----
-    function buildPredicate(spec, index) {
+    function buildPredicate(spec, index, chart) {
+      // 円グラフは並べ替えるため、クリックされたラベルはチャート本体から取得する
+      const clickedLabel = chart ? chart.data.labels[index] : spec.labels[index];
       if (spec.ckind === "date") {
-        const day = spec.labels[index];
+        const day = clickedLabel;
         return { label: spec.flabel + ": " + day, test: (row) => row.date === day };
       }
       if (spec.ckind === "enum") {
-        const target = spec.labels[index];
+        const target = clickedLabel;
         return {
           label: spec.flabel + ": " + target,
           test: (row) => {
@@ -282,9 +293,9 @@
         };
       }
       if (spec.ckind === "boolean") {
-        const target = spec.labels[index] === "true";
+        const target = clickedLabel === "true";
         return {
-          label: spec.flabel + ": " + spec.labels[index],
+          label: spec.flabel + ": " + clickedLabel,
           test: (row) => toBool(row.data[spec.field]) === target,
         };
       }
@@ -309,8 +320,8 @@
       return null;
     }
 
-    function applyDrill(spec, index) {
-      const predicate = buildPredicate(spec, index);
+    function applyDrill(spec, index, chart) {
+      const predicate = buildPredicate(spec, index, chart);
       if (!predicate) return;
       let count = 0;
       tableRows.forEach((row) => {
