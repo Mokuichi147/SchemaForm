@@ -66,6 +66,32 @@ async def form_editor_guard(request: Request, form_id: str) -> None:
         )
 
 
+async def resolve_user_display_map(request: Request) -> dict[int, str]:
+    """user_id → 表示名 のマップを認証プロバイダから構築する。"""
+    user_display_map: dict[int, str] = {}
+    auth = request.app.state.auth_provider
+    current_user = getattr(request.state, "current_user", None)
+    list_users = getattr(auth, "list_users", None)
+    if list_users is None:
+        return user_display_map
+    try:
+        users = await list_users((current_user or {}).get("token", ""))
+    except Exception:
+        users = []
+    for u in users:
+        uid = u.get("id")
+        if uid is not None:
+            user_display_map[uid] = u.get("display_name") or u.get("username") or ""
+    return user_display_map
+
+
+def resolve_user_label(item: dict[str, Any], user_display_map: dict[int, str]) -> str:
+    uid = item.get("user_id")
+    if uid in user_display_map and user_display_map[uid]:
+        return user_display_map[uid]
+    return item.get("username") or ""
+
+
 def build_submission_display_columns(
     storage: Any, fields: list[dict[str, Any]]
 ) -> tuple[list[dict[str, Any]], dict[str, dict[str, dict[str, Any]]]]:
@@ -364,6 +390,91 @@ def collect_submission_master_display_file_ids(
     return ids
 
 
+async def gather_filtered_submissions(
+    request: Request,
+    form_id: str,
+    *,
+    filter_user_id: int | None = None,
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]], dict[str, str]]:
+    """フォーム・フィールド定義と、現在のクエリでフィルター済みの送信一覧、
+    ファイル名マップを返す。
+
+    送信一覧／エクスポート／集計で共通のデータ取得手順（list_submissions →
+    配列グループ行の展開 → apply_filters）をまとめたもの。
+    """
+    storage = request.app.state.storage
+    form = storage.forms.get_form(form_id)
+    if not form:
+        raise HTTPException(status_code=404, detail="フォームが見つかりません")
+
+    fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
+    submissions = storage.submissions.list_submissions(form_id)
+    if filter_user_id is not None:
+        submissions = [s for s in submissions if s.get("user_id") == filter_user_id]
+    expanded_submissions: list[dict[str, Any]] = []
+    for submission in submissions:
+        data = submission.get("data_json", {})
+        for expanded_data in expand_group_array_rows(fields, data):
+            expanded_submissions.append({**submission, "data_json": expanded_data})
+    file_ids = collect_file_ids(submissions, fields)
+    file_names = resolve_file_names(storage.files, file_ids)
+    filtered = apply_filters(
+        expanded_submissions, fields, dict(request.query_params), file_names=file_names
+    )
+    return form, fields, filtered, file_names
+
+
+async def build_full_table_context(
+    request: Request,
+    fields: list[dict[str, Any]],
+    submissions: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """ページングなしで送信一覧と同じ表示行を構築する（集計ページの元データ表示用）。
+
+    送信一覧の表示列／値整形ロジックをそのまま再利用し、与えられた送信集合を
+    すべて行に変換する。送信ユーザーは認証プロバイダの表示名へ解決する。
+    """
+    storage = request.app.state.storage
+    display_columns, master_lookup_by_field = build_submission_display_columns(
+        storage, fields
+    )
+    file_ids = collect_file_ids(submissions, fields) | (
+        collect_submission_master_display_file_ids(
+            submissions, display_columns, master_lookup_by_field
+        )
+    )
+    file_infos = resolve_file_infos(storage.files, file_ids, file_url_builder(request))
+    file_names = {fid: info["name"] for fid, info in file_infos.items()}
+    user_display_map = await resolve_user_display_map(request)
+
+    rows: list[dict[str, Any]] = []
+    for item in submissions:
+        data = item.get("data_json", {})
+        rows.append(
+            {
+                "id": item["id"],
+                "created_at": item.get("created_at"),
+                "updated_at": item.get("updated_at"),
+                "username": resolve_user_label(item, user_display_map),
+                "values": build_submission_row_values(
+                    data,
+                    display_columns,
+                    master_lookup_by_field,
+                    file_names,
+                    temporal_style="display",
+                ),
+                "raw_values": build_submission_raw_values(
+                    data, display_columns, master_lookup_by_field
+                ),
+            }
+        )
+    return {
+        "display_columns": display_columns,
+        "file_infos": file_infos,
+        "rows": rows,
+    }
+
+
 async def build_submission_list_context(
     request: Request,
     form_id: str,
@@ -402,30 +513,9 @@ async def build_submission_list_context(
     )
 
     if include_user_display_map:
-        user_display_map: dict[int, str] = {}
-        auth = request.app.state.auth_provider
-        current_user = getattr(request.state, "current_user", None)
-        list_users = getattr(auth, "list_users", None)
-        if list_users is not None:
-            try:
-                users = await list_users((current_user or {}).get("token", ""))
-            except Exception:
-                users = []
-            for u in users:
-                uid = u.get("id")
-                if uid is not None:
-                    user_display_map[uid] = (
-                        u.get("display_name") or u.get("username") or ""
-                    )
-
-        def _resolve_user_label(item: dict[str, Any]) -> str:
-            uid = item.get("user_id")
-            if uid in user_display_map and user_display_map[uid]:
-                return user_display_map[uid]
-            return item.get("username") or ""
-
+        user_display_map = await resolve_user_display_map(request)
         for item in filtered:
-            item["_display_username"] = _resolve_user_label(item)
+            item["_display_username"] = resolve_user_label(item, user_display_map)
 
     sort = request.query_params.get("sort", "created_at")
     order = request.query_params.get("order", "desc")
@@ -944,84 +1034,140 @@ def _serialize_export(
     return output.getvalue(), "text/csv; charset=utf-8", "csv"
 
 
+def _parse_correct_map(raw: str | None) -> dict[str, dict[str, Any]]:
+    """集計ページから渡される正解指定(JSON)をパースする。
+
+    形式: {flat_key: {"mode": "single", "value": str}}
+          {flat_key: {"mode": "array", "list": [str], "ordered": bool}}
+    enumフィールドの正答数・正答率をダウンロードに含めるために使う。"""
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    result: dict[str, dict[str, Any]] = {}
+    for key, info in parsed.items():
+        if not isinstance(info, dict):
+            continue
+        if info.get("mode") == "array":
+            values = info.get("list")
+            if isinstance(values, list) and values:
+                result[str(key)] = {
+                    "mode": "array",
+                    "list": [str(v) for v in values],
+                    "ordered": bool(info.get("ordered")),
+                }
+        else:
+            value = info.get("value")
+            if value not in (None, ""):
+                result[str(key)] = {"mode": "single", "value": str(value)}
+    return result
+
+
+def _row_is_correct(
+    data: dict[str, Any], flat_key: str, info: dict[str, Any]
+) -> bool:
+    value = get_nested_value(data, flat_key)
+    if value is None:
+        return False
+    if info["mode"] == "array":
+        actual = [str(v) for v in (value if isinstance(value, list) else [value])]
+        expected = info["list"]
+        if len(actual) != len(expected):
+            return False
+        if info.get("ordered"):
+            return actual == expected
+        return sorted(actual) == sorted(expected)
+    if isinstance(value, list):
+        return False
+    return str(value) == info["value"]
+
+
+def _correctness_cells(
+    data: dict[str, Any], correct_map: dict[str, dict[str, Any]]
+) -> tuple[str, str]:
+    """1送信あたりの (正答数, 正答率) セル文字列を返す。正答数は個数のみ、
+    正答率は%なしの数値。画面表示と同じ表記。"""
+    total = len(correct_map)
+    if total == 0:
+        return "", ""
+    correct = sum(
+        1 for key, info in correct_map.items() if _row_is_correct(data, key, info)
+    )
+    return str(correct), str(round(correct / total * 100))
+
+
 @router.get("/forms/{form_id}/export", tags=["admin"])
 async def export_submissions(
     request: Request, form_id: str, _: Any = Depends(form_editor_guard)
 ) -> Response:
     storage = request.app.state.storage
-    form = storage.forms.get_form(form_id)
-    if not form:
-        raise HTTPException(status_code=404, detail="フォームが見つかりません")
-
-    fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
-    submissions = storage.submissions.list_submissions(form_id)
-    expanded_submissions: list[dict[str, Any]] = []
-    for submission in submissions:
-        data = submission.get("data_json", {})
-        for expanded_data in expand_group_array_rows(fields, data):
-            expanded_submissions.append({**submission, "data_json": expanded_data})
-    file_ids = collect_file_ids(submissions, fields)
-    file_names = resolve_file_names(storage.files, file_ids)
-    filtered = apply_filters(
-        expanded_submissions, fields, dict(request.query_params), file_names=file_names
+    form, fields, filtered, file_names = await gather_filtered_submissions(
+        request, form_id
     )
+    # 集計ページのグラフクリックによる絞り込み結果のみをダウンロードするため、
+    # 表示中の送信ID(ids)が指定されていればその送信に限定する。
+    ids_param = request.query_params.get("ids")
+    if ids_param is not None:
+        id_set = {token for token in ids_param.split(",") if token}
+        filtered = [s for s in filtered if s.get("id") in id_set]
     display_columns, master_lookup_by_field = build_submission_display_columns(
         storage, fields
     )
 
-    user_display_map: dict[int, str] = {}
-    auth = request.app.state.auth_provider
-    current_user = getattr(request.state, "current_user", None)
-    list_users = getattr(auth, "list_users", None)
-    if list_users is not None:
-        try:
-            users = await list_users((current_user or {}).get("token", ""))
-        except Exception:
-            users = []
-        for u in users:
-            uid = u.get("id")
-            if uid is not None:
-                user_display_map[uid] = u.get("display_name") or u.get("username") or ""
-
+    user_display_map = await resolve_user_display_map(request)
     for item in filtered:
-        uid = item.get("user_id")
-        item["_display_username"] = (
-            user_display_map.get(uid) if uid in user_display_map else None
-        ) or item.get("username") or ""
+        item["_display_username"] = resolve_user_label(item, user_display_map)
 
     sort = request.query_params.get("sort", "created_at")
     order = request.query_params.get("order", "desc")
     sort_submissions(filtered, sort, order, display_columns, master_lookup_by_field)
+
+    correct_map = _parse_correct_map(request.query_params.get("correct"))
+    include_correct = bool(correct_map)
 
     def _fmt(value: Any) -> str:
         if isinstance(value, datetime):
             return value.astimezone().strftime("%Y-%m-%dT%H:%M")
         return str(value or "")
 
-    headers = ["送信日時", "更新日時", "送信ユーザー"] + [
-        column["label"] for column in display_columns
-    ]
-    column_kinds = ["datetime", "datetime", ""] + [
-        _column_export_kind(column) for column in display_columns
-    ]
-    column_wraps = [False, False, False] + [
-        bool(column.get("field", {}).get("multiline")) for column in display_columns
-    ]
-    rows = [
-        [
+    correct_headers = ["正答数", "正答率"] if include_correct else []
+    headers = (
+        ["送信日時", "更新日時", "送信ユーザー"]
+        + correct_headers
+        + [column["label"] for column in display_columns]
+    )
+    column_kinds = (
+        ["datetime", "datetime", ""]
+        + ([""] * len(correct_headers))
+        + [_column_export_kind(column) for column in display_columns]
+    )
+    column_wraps = (
+        [False, False, False]
+        + ([False] * len(correct_headers))
+        + [bool(column.get("field", {}).get("multiline")) for column in display_columns]
+    )
+    rows = []
+    for submission in filtered:
+        data = submission.get("data_json", {})
+        row = [
             _fmt(submission.get("created_at")),
             _fmt(submission.get("updated_at")),
             submission.get("_display_username") or "",
         ]
-        + build_submission_row_values(
-            submission.get("data_json", {}),
+        if include_correct:
+            row += list(_correctness_cells(data, correct_map))
+        row += build_submission_row_values(
+            data,
             display_columns,
             master_lookup_by_field,
             file_names,
             temporal_style="iso",
         )
-        for submission in filtered
-    ]
+        rows.append(row)
 
     fmt = request.query_params.get("format", "csv")
     if fmt not in _EXPORT_FORMATS:
