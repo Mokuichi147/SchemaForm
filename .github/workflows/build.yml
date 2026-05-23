@@ -86,7 +86,8 @@ jobs:
           # x86_64 uv で x86_64 venv を作成し依存関係をインストール
           "$UV_X86" venv .venv-x86_64 --python 3.12
           UV_PROJECT_ENVIRONMENT="$(pwd)/.venv-x86_64" "$UV_X86" sync
-          UV_PROJECT_ENVIRONMENT="$(pwd)/.venv-x86_64" "$UV_X86" pip install pyinstaller
+          # uv pip install は UV_PROJECT_ENVIRONMENT を無視するため VIRTUAL_ENV で明示指定
+          VIRTUAL_ENV="$(pwd)/.venv-x86_64" "$UV_X86" pip install pyinstaller
 
           # x86_64 バイナリをビルド
           .venv-x86_64/bin/pyinstaller schemaform.spec --distpath dist_x86_64
