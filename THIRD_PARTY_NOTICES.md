@@ -15,9 +15,14 @@ This project uses third-party components. License texts and required notices are
 - orjson — MPL-2.0 / Apache-2.0 / MIT (mixed; see upstream) — https://pypi.org/project/orjson/
 - ulid-py — Apache-2.0 — https://pypi.org/project/ulid-py/
 - Typer — MIT — https://pypi.org/project/typer/
+- httpx — BSD License — https://pypi.org/project/httpx/
+- user-permission — MIT — https://pypi.org/project/user-permission/
+- openpyxl — MIT — https://pypi.org/project/openpyxl/
+- pyarrow — Apache-2.0 — https://pypi.org/project/pyarrow/
 
 ## Frontend CDN libraries
 - Tailwind CSS — MIT — https://github.com/tailwindlabs/tailwindcss
-- htmx — BSD 2-Clause — https://app.unpkg.com/htmx.org@1.3.0/files/LICENSE
+- htmx — BSD 2-Clause — https://unpkg.com/htmx.org@1.9.12/LICENSE
 - SortableJS — MIT — https://github.com/SortableJS/Sortable
 - flatpickr — MIT — https://github.com/flatpickr/flatpickr
+- Chart.js — MIT — https://github.com/chartjs/Chart.js
