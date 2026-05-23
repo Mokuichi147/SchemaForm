@@ -993,7 +993,9 @@ def _serialize_export(
             # Pad for cell margins plus the header's filter dropdown arrow,
             # then clamp so columns stay within a sensible range.
             width = max(8, min(content_width + 4, 60))
-            worksheet.column_dimensions[get_column_letter(col_index + 1)].width = width
+            col_dim = worksheet.column_dimensions[get_column_letter(col_index + 1)]
+            col_dim.width = width
+            col_dim.alignment = center_align
         # Enable Excel's filter dropdowns on the header row over all data.
         worksheet.auto_filter.ref = worksheet.dimensions
         buffer = io.BytesIO()
