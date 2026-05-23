@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from pathlib import Path
 
 ALLOWED_TYPES = {
@@ -20,7 +21,14 @@ ALLOWED_TYPES = {
 }
 KEY_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+def _get_base_dir() -> Path:
+    # PyInstaller で --onefile ビルドした場合、実行時に sys._MEIPASS へ展開される
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS)
+    return Path(__file__).resolve().parent.parent.parent
+
+
+BASE_DIR = _get_base_dir()
 
 
 class Settings:
