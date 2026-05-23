@@ -1,0 +1,148 @@
+name: Build Executables
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            artifact_suffix: linux-x86_64
+          - os: windows-latest
+            artifact_suffix: windows-x86_64
+          - os: macos-latest
+            artifact_suffix: macos-universal2
+            # arm64 + x86_64 両スライスを同一ランナー上でビルドし
+            # lipo で universal2 に合成（macos-13 ランナー不要）
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Install PyInstaller and pip-licenses
+        run: uv pip install pyinstaller pip-licenses
+
+      - name: Generate third-party license texts
+        # --with-license-file で全ライセンス本文を取得。失敗時はライセンス名のみで続行
+        run: >
+          uv run pip-licenses
+          --format=plain-vertical
+          --with-license-file
+          --no-license-path
+          --output-file=THIRD_PARTY_LICENSES.txt
+          || uv run pip-licenses
+          --format=markdown
+          --output-file=THIRD_PARTY_LICENSES.txt
+
+      # ── Linux / Windows: 通常ビルド ────────────────────────────────
+      - name: Build executable (Linux / Windows)
+        if: runner.os != 'macOS'
+        run: uv run pyinstaller schemaform.spec
+
+      - name: Rename artifact (Linux)
+        if: runner.os == 'Linux'
+        run: mv dist/schemaform dist/schemaform-${{ matrix.artifact_suffix }}
+
+      - name: Rename artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Move-Item dist\schemaform.exe dist\schemaform-${{ matrix.artifact_suffix }}.exe
+
+      # ── macOS: arm64 + x86_64 → lipo で universal2 ──────────────
+      - name: Build arm64 slice (macOS)
+        if: runner.os == 'macOS'
+        run: uv run pyinstaller schemaform.spec --distpath dist_arm64
+
+      - name: Install x86_64 uv and build x86_64 slice via Rosetta2 (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          UV_VERSION=$(uv --version | awk '{print $2}')
+          curl -fsSL -o /tmp/uv-x86.tar.gz \
+            "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-apple-darwin.tar.gz"
+          mkdir -p /tmp/uv-x86
+          tar -xzf /tmp/uv-x86.tar.gz -C /tmp/uv-x86
+
+          # x86_64 uv で x86_64 venv を作成し依存関係をインストール
+          /tmp/uv-x86/uv venv .venv-x86_64 --python 3.12
+          UV_PROJECT_ENVIRONMENT="$(pwd)/.venv-x86_64" /tmp/uv-x86/uv sync
+          UV_PROJECT_ENVIRONMENT="$(pwd)/.venv-x86_64" /tmp/uv-x86/uv pip install pyinstaller
+
+          # x86_64 バイナリをビルド
+          .venv-x86_64/bin/pyinstaller schemaform.spec --distpath dist_x86_64
+
+      - name: Create universal2 binary with lipo (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p dist
+          lipo -create dist_arm64/schemaform dist_x86_64/schemaform \
+               -output dist/schemaform-${{ matrix.artifact_suffix }}
+          lipo -info dist/schemaform-${{ matrix.artifact_suffix }}
+
+      # ── 成果物アップロード ─────────────────────────────────────────
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: schemaform-${{ matrix.artifact_suffix }}
+          path: dist/schemaform-${{ matrix.artifact_suffix }}*
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies and pip-licenses
+        run: uv sync && uv pip install pip-licenses
+
+      - name: Generate third-party license texts
+        run: >
+          uv run pip-licenses
+          --format=plain-vertical
+          --with-license-file
+          --no-license-path
+          --output-file=THIRD_PARTY_LICENSES.txt
+          || uv run pip-licenses
+          --format=markdown
+          --output-file=THIRD_PARTY_LICENSES.txt
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*
+            LICENSE
+            LICENSE-MIT
+            LICENSE-APACHE
+            THIRD_PARTY_NOTICES.md
+            THIRD_PARTY_LICENSES.txt
