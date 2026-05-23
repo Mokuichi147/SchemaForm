@@ -1,4 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
 from PyInstaller.utils.hooks import collect_all, collect_data_files
 
 block_cipher = None
@@ -12,6 +13,17 @@ datas += [
     ("templates", "templates"),
     ("static", "static"),
 ]
+
+# プロジェクト自身のライセンスファイルを同梱（配布時の表示義務を満たすため）
+datas += [
+    ("LICENSE", "."),
+    ("LICENSE-MIT", "."),
+    ("LICENSE-APACHE", "."),
+    ("THIRD_PARTY_NOTICES.md", "."),
+]
+# ビルド時に生成された依存ライブラリのライセンス全文ファイルを同梱
+if os.path.exists("THIRD_PARTY_LICENSES.txt"):
+    datas += [("THIRD_PARTY_LICENSES.txt", ".")]
 
 # 動的インポートを多用するパッケージを丸ごと収集
 for _pkg in [

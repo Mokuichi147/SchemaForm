@@ -19,10 +19,10 @@ jobs:
             artifact_suffix: linux-x86_64
           - os: windows-latest
             artifact_suffix: windows-x86_64
-          - os: macos-13
-            artifact_suffix: macos-x86_64
           - os: macos-latest
             artifact_suffix: macos-arm64
+            # macOS arm64 バイナリは Rosetta 2 により Intel Mac でも動作するため
+            # x86_64 向け別ビルド（macos-13: 割り当てが遅い）は不要
 
     runs-on: ${{ matrix.os }}
 
@@ -37,8 +37,20 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Install PyInstaller
-        run: uv pip install pyinstaller
+      - name: Install PyInstaller and pip-licenses
+        run: uv pip install pyinstaller pip-licenses
+
+      - name: Generate third-party license texts
+        # --with-license-file で全ライセンス本文を取得。失敗時はライセンス名のみで続行
+        run: >
+          uv run pip-licenses
+          --format=plain-vertical
+          --with-license-file
+          --no-license-path
+          --output-file=THIRD_PARTY_LICENSES.txt
+          || uv run pip-licenses
+          --format=markdown
+          --output-file=THIRD_PARTY_LICENSES.txt
 
       - name: Build executable
         run: uv run pyinstaller schemaform.spec
@@ -64,7 +76,29 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies and pip-licenses
+        run: uv sync && uv pip install pip-licenses
+
+      - name: Generate third-party license texts
+        run: >
+          uv run pip-licenses
+          --format=plain-vertical
+          --with-license-file
+          --no-license-path
+          --output-file=THIRD_PARTY_LICENSES.txt
+          || uv run pip-licenses
+          --format=markdown
+          --output-file=THIRD_PARTY_LICENSES.txt
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
@@ -72,4 +106,10 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: |
+            dist/*
+            LICENSE
+            LICENSE-MIT
+            LICENSE-APACHE
+            THIRD_PARTY_NOTICES.md
+            THIRD_PARTY_LICENSES.txt
