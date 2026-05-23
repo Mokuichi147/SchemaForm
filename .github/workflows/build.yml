@@ -83,10 +83,23 @@ jobs:
           UV_X86=$(find /tmp/uv-x86 -name uv -type f | head -1)
           chmod +x "$UV_X86"
 
-          # x86_64 uv で x86_64 venv を作成し依存関係をインストール
+          # x86_64 Python をダウンロード（システムの arm64 Python を使わないよう完全分離）
+          # UV_PYTHON_PREFERENCE=only-managed でシステム Python を無視し、
+          # UV_PYTHON_INSTALL_DIR で arm64 uv の管理 Python と競合しないよう分離する
+          UV_PYTHON_INSTALL_DIR=/tmp/uv-python-x86 \
+          UV_PYTHON_PREFERENCE=only-managed \
+          "$UV_X86" python install 3.12
+
+          # x86_64 venv を作成し依存関係をインストール
+          UV_PYTHON_INSTALL_DIR=/tmp/uv-python-x86 \
+          UV_PYTHON_PREFERENCE=only-managed \
           "$UV_X86" venv .venv-x86_64 --python 3.12
-          UV_PROJECT_ENVIRONMENT="$(pwd)/.venv-x86_64" "$UV_X86" sync
-          # uv pip install は UV_PROJECT_ENVIRONMENT を無視するため VIRTUAL_ENV で明示指定
+
+          UV_PYTHON_INSTALL_DIR=/tmp/uv-python-x86 \
+          UV_PYTHON_PREFERENCE=only-managed \
+          UV_PROJECT_ENVIRONMENT="$(pwd)/.venv-x86_64" \
+          "$UV_X86" sync
+
           VIRTUAL_ENV="$(pwd)/.venv-x86_64" "$UV_X86" pip install pyinstaller
 
           # x86_64 バイナリをビルド
