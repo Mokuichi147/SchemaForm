@@ -79,11 +79,14 @@ jobs:
             "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-apple-darwin.tar.gz"
           mkdir -p /tmp/uv-x86
           tar -xzf /tmp/uv-x86.tar.gz -C /tmp/uv-x86
+          # アーカイブ内のサブディレクトリ構造に依存しないよう find で探す
+          UV_X86=$(find /tmp/uv-x86 -name uv -type f | head -1)
+          chmod +x "$UV_X86"
 
           # x86_64 uv で x86_64 venv を作成し依存関係をインストール
-          /tmp/uv-x86/uv venv .venv-x86_64 --python 3.12
-          UV_PROJECT_ENVIRONMENT="$(pwd)/.venv-x86_64" /tmp/uv-x86/uv sync
-          UV_PROJECT_ENVIRONMENT="$(pwd)/.venv-x86_64" /tmp/uv-x86/uv pip install pyinstaller
+          "$UV_X86" venv .venv-x86_64 --python 3.12
+          UV_PROJECT_ENVIRONMENT="$(pwd)/.venv-x86_64" "$UV_X86" sync
+          UV_PROJECT_ENVIRONMENT="$(pwd)/.venv-x86_64" "$UV_X86" pip install pyinstaller
 
           # x86_64 バイナリをビルド
           .venv-x86_64/bin/pyinstaller schemaform.spec --distpath dist_x86_64
