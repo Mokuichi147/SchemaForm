@@ -941,6 +941,7 @@ def _serialize_export(
         center_wrap_align = Alignment(vertical="center", wrap_text=True)
         header_font = Font(bold=True)
         workbook = Workbook()
+        workbook._named_styles["Normal"].alignment = center_align
         worksheet = workbook.active
         worksheet.title = "submissions"
         worksheet.append(headers)
