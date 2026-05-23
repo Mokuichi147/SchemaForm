@@ -6,15 +6,15 @@
     <h1 class="text-2xl font-semibold">送信一覧</h1>
     <p class="text-sm text-slate-600">{{ form.name }} の送信内容を確認します。</p>
   </div>
-  <div class="flex gap-2">
-    <button type="button" id="open-filter-modal" class="rounded border border-slate-300 px-3 py-2 text-sm">フィルター</button>
+  <div class="flex flex-wrap gap-2">
+    <button type="button" id="open-filter-modal" class="whitespace-nowrap rounded border border-slate-300 px-3 py-2 text-sm">フィルター</button>
     <form id="import-form" method="post" action="/forms/{{ form.id }}/import" enctype="multipart/form-data" class="inline">
       <input type="file" id="import-file-input" name="file" accept=".csv,.tsv" required class="hidden" />
-      <button type="button" id="open-import-modal" class="rounded border border-slate-300 px-3 py-2 text-sm">取り込み</button>
+      <button type="button" id="open-import-modal" class="whitespace-nowrap rounded border border-slate-300 px-3 py-2 text-sm">取り込み</button>
     </form>
-    <a href="/forms/{{ form.id }}/aggregate?{{ build_query(query, page=None) }}" class="rounded border border-slate-300 px-3 py-2 text-sm">集計</a>
-    <a href="/f/{{ form.public_id }}" class="rounded border border-slate-300 px-3 py-2 text-sm">入力ページ</a>
-    <button type="button" id="open-download-modal" class="rounded border border-slate-300 px-3 py-2 text-sm">ダウンロード</button>
+    <a href="/forms/{{ form.id }}/aggregate?{{ build_query(query, page=None) }}" class="whitespace-nowrap rounded border border-slate-300 px-3 py-2 text-sm">集計</a>
+    <a href="/f/{{ form.public_id }}" class="whitespace-nowrap rounded border border-slate-300 px-3 py-2 text-sm">入力ページ</a>
+    <button type="button" id="open-download-modal" class="whitespace-nowrap rounded border border-slate-300 px-3 py-2 text-sm">ダウンロード</button>
   </div>
 </div>
 
