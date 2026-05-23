@@ -20,9 +20,9 @@ jobs:
           - os: windows-latest
             artifact_suffix: windows-x86_64
           - os: macos-latest
-            artifact_suffix: macos-arm64
-            # macOS arm64 バイナリは Rosetta 2 により Intel Mac でも動作するため
-            # x86_64 向け別ビルド（macos-13: 割り当てが遅い）は不要
+            artifact_suffix: macos-universal2
+            # arm64 + x86_64 両スライスを同一ランナー上でビルドし
+            # lipo で universal2 に合成（macos-13 ランナー不要）
 
     runs-on: ${{ matrix.os }}
 
@@ -52,11 +52,13 @@ jobs:
           --format=markdown
           --output-file=THIRD_PARTY_LICENSES.txt
 
-      - name: Build executable
+      # ── Linux / Windows: 通常ビルド ────────────────────────────────
+      - name: Build executable (Linux / Windows)
+        if: runner.os != 'macOS'
         run: uv run pyinstaller schemaform.spec
 
-      - name: Rename artifact (Linux / macOS)
-        if: runner.os != 'Windows'
+      - name: Rename artifact (Linux)
+        if: runner.os == 'Linux'
         run: mv dist/schemaform dist/schemaform-${{ matrix.artifact_suffix }}
 
       - name: Rename artifact (Windows)
@@ -64,6 +66,37 @@ jobs:
         shell: pwsh
         run: Move-Item dist\schemaform.exe dist\schemaform-${{ matrix.artifact_suffix }}.exe
 
+      # ── macOS: arm64 + x86_64 → lipo で universal2 ──────────────
+      - name: Build arm64 slice (macOS)
+        if: runner.os == 'macOS'
+        run: uv run pyinstaller schemaform.spec --distpath dist_arm64
+
+      - name: Install x86_64 uv and build x86_64 slice via Rosetta2 (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          UV_VERSION=$(uv --version | awk '{print $2}')
+          curl -fsSL -o /tmp/uv-x86.tar.gz \
+            "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-apple-darwin.tar.gz"
+          mkdir -p /tmp/uv-x86
+          tar -xzf /tmp/uv-x86.tar.gz -C /tmp/uv-x86
+
+          # x86_64 uv で x86_64 venv を作成し依存関係をインストール
+          /tmp/uv-x86/uv venv .venv-x86_64 --python 3.12
+          UV_PROJECT_ENVIRONMENT="$(pwd)/.venv-x86_64" /tmp/uv-x86/uv sync
+          UV_PROJECT_ENVIRONMENT="$(pwd)/.venv-x86_64" /tmp/uv-x86/uv pip install pyinstaller
+
+          # x86_64 バイナリをビルド
+          .venv-x86_64/bin/pyinstaller schemaform.spec --distpath dist_x86_64
+
+      - name: Create universal2 binary with lipo (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p dist
+          lipo -create dist_arm64/schemaform dist_x86_64/schemaform \
+               -output dist/schemaform-${{ matrix.artifact_suffix }}
+          lipo -info dist/schemaform-${{ matrix.artifact_suffix }}
+
+      # ── 成果物アップロード ─────────────────────────────────────────
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
