@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import time
 from datetime import timedelta
 from typing import Any, Protocol
 
@@ -163,6 +164,13 @@ class UserPermissionAuthProvider:
                 payload = _decode_jwt_payload_unverified(token)
                 if payload is None or "sub" not in payload:
                     return None
+                exp = payload.get("exp")
+                if exp is not None:
+                    try:
+                        if time.time() >= float(exp):
+                            return None
+                    except (TypeError, ValueError):
+                        return None
                 user_id = int(payload["sub"])
                 user = await self._db.users.get_by_id(user_id, token=token)
                 if user is None:
