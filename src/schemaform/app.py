@@ -8,9 +8,13 @@ from urllib.parse import urlencode
 
 import markupsafe
 from fastapi import FastAPI, Request
-from fastapi.responses import RedirectResponse
+from fastapi.exception_handlers import (
+    http_exception_handler as default_http_exception_handler,
+)
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from schemaform.auth import LoginRequired, get_auth_provider
 from schemaform.config import BASE_DIR, Settings, ensure_dirs
@@ -308,6 +312,60 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         next_q = urlencode({"next": exc.next_path}) if exc.next_path else ""
         target = f"/login?{next_q}" if next_q else "/login"
         return RedirectResponse(target, status_code=303)
+
+    default_error_messages = {
+        400: "リクエストの内容が正しくありません",
+        403: "この操作を行う権限がありません",
+        404: "ページが見つかりません",
+        500: "サーバーでエラーが発生しました",
+    }
+
+    def render_error_page(
+        request: Request, status_code: int, message: str | None = None
+    ) -> Response:
+        text = message or default_error_messages.get(
+            status_code, "エラーが発生しました"
+        )
+        return templates.TemplateResponse(
+            "error.html",
+            {
+                "request": request,
+                "status_code": status_code,
+                "message": text,
+                "title": f"{status_code} エラー",
+            },
+            status_code=status_code,
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_exception_handler(
+        request: Request, exc: StarletteHTTPException
+    ):
+        accepts_html = "text/html" in request.headers.get("accept", "")
+        # セッション切れ等で未ログインの状態で 401/403 に当たった HTML 画面は、
+        # ログインページへ誘導する。
+        if exc.status_code in (401, 403):
+            user = getattr(request.state, "current_user", None)
+            if accepts_html and user is None and get_auth_enabled(request):
+                path = request.url.path
+                if request.url.query:
+                    path = f"{path}?{request.url.query}"
+                next_q = urlencode({"next": path})
+                return RedirectResponse(f"/login?{next_q}", status_code=303)
+        # それ以外の HTML リクエストには、生の JSON ではなく整形した
+        # エラーページを返す。
+        if accepts_html:
+            detail = exc.detail if isinstance(exc.detail, str) else None
+            return render_error_page(request, exc.status_code, detail)
+        return await default_http_exception_handler(request, exc)
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(request: Request, exc: Exception):
+        if "text/html" in request.headers.get("accept", ""):
+            return render_error_page(request, 500)
+        return JSONResponse(
+            {"detail": "Internal Server Error"}, status_code=500
+        )
 
     app.include_router(auth_router)
     app.include_router(admin_router)
