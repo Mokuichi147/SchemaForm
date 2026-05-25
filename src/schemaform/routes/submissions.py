@@ -1229,8 +1229,27 @@ def _wrap_arrays_from_schema(
                     _wrap_arrays_from_schema(children, data[key])
 
 
+def _normalize_date_text(text: str) -> str:
+    """Coerce an imported ``date`` cell that carries a time component to a plain date.
+
+    Excel reads a date-formatted cell back as a midnight datetime, so a ``date``
+    field would otherwise receive e.g. ``2026-05-21T00:00:00``; keep only the
+    date component. ``datetime``/``time`` fields are intentionally left untouched
+    so any seconds (or finer precision) the source provided are preserved.
+    """
+    text = (text or "").strip()
+    if not text:
+        return text
+    if _parse_temporal("date", text, keep_tz=True) is not None:
+        return text
+    dt = _parse_temporal("datetime", text, keep_tz=True)
+    if dt is not None:
+        return dt.date().isoformat()
+    return text
+
+
 def _convert_cell_value(raw: str, field: dict[str, Any]) -> Any:
-    """Convert a raw CSV cell string to the appropriate Python type."""
+    """Convert a raw imported cell string to the appropriate Python type."""
     field_type = field.get("type", "string")
     if raw == "":
         return None
@@ -1245,7 +1264,127 @@ def _convert_cell_value(raw: str, field: dict[str, Any]) -> Any:
         return normalize_number(raw, field_type == "integer")
     if field_type == "boolean":
         return parse_bool(raw)
+    if field_type == "date":
+        return _normalize_date_text(raw)
     return raw
+
+
+_IMPORT_TEXT_ENCODINGS = ("utf-8-sig", "shift_jis")
+
+
+def _decode_import_text(content: bytes) -> str:
+    for encoding in _IMPORT_TEXT_ENCODINGS:
+        try:
+            return content.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    raise HTTPException(
+        status_code=400, detail="ファイルのエンコーディングを認識できません"
+    )
+
+
+def _cell_to_text(value: Any) -> str:
+    """Render a parsed cell (str/number/bool/temporal/None) as import text.
+
+    Normalizes non-text cell values (e.g. the numbers and datetimes openpyxl /
+    pyarrow yield) to plain strings: booleans as ``true``/``false``, whole-valued
+    floats without a trailing ``.0``, and temporal values in ISO notation,
+    keeping whatever precision the source provides.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (datetime, date, time)):
+        return value.isoformat()
+    if isinstance(value, float):
+        return str(int(value)) if value.is_integer() else str(value)
+    return str(value)
+
+
+def _read_csv_table(content: bytes) -> tuple[list[str], list[list[str]]]:
+    text = _decode_import_text(content)
+    rows = list(csv.reader(io.StringIO(text)))
+    if not rows:
+        raise HTTPException(status_code=400, detail="ファイルが空です")
+    return rows[0], rows[1:]
+
+
+def _read_xlsx_table(content: bytes) -> tuple[list[str], list[list[str]]]:
+    from openpyxl import load_workbook
+
+    try:
+        workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Excelファイルを読み込めません")
+    try:
+        rows_iter = workbook.active.iter_rows(values_only=True)
+        try:
+            header_row = next(rows_iter)
+        except StopIteration:
+            raise HTTPException(status_code=400, detail="ファイルが空です")
+        headers = [_cell_to_text(cell) for cell in header_row]
+        rows = [[_cell_to_text(cell) for cell in row] for row in rows_iter]
+    finally:
+        workbook.close()
+    return headers, rows
+
+
+def _read_parquet_table(content: bytes) -> tuple[list[str], list[list[str]]]:
+    import pyarrow.parquet as pq
+
+    try:
+        table = pq.read_table(io.BytesIO(content))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Parquetファイルを読み込めません")
+    headers = list(table.column_names)
+    columns = [column.to_pylist() for column in table.columns]
+    rows = [
+        [_cell_to_text(columns[col][row]) for col in range(len(headers))]
+        for row in range(table.num_rows)
+    ]
+    return headers, rows
+
+
+def _read_json_table(content: bytes) -> tuple[list[str], list[list[str]]]:
+    text = _decode_import_text(content)
+    try:
+        parsed = json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        raise HTTPException(status_code=400, detail="JSONファイルを読み込めません")
+    if not isinstance(parsed, list):
+        raise HTTPException(status_code=400, detail="JSONの形式が不正です")
+    records = [record for record in parsed if isinstance(record, dict)]
+    headers: list[str] = []
+    seen: set[str] = set()
+    for record in records:
+        for key in record:
+            if key not in seen:
+                seen.add(key)
+                headers.append(key)
+    rows = [
+        [_cell_to_text(record.get(header)) for header in headers]
+        for record in records
+    ]
+    return headers, rows
+
+
+def _read_import_table(
+    filename: str, content: bytes
+) -> tuple[list[str], list[list[str]]]:
+    """Read an uploaded file into (headers, rows-of-strings).
+
+    Supports the formats offered for download: Excel (.xlsx), CSV (.csv),
+    Parquet (.parquet) and JSON (.json).
+    """
+    name = (filename or "").lower()
+    if name.endswith(".xlsx"):
+        return _read_xlsx_table(content)
+    if name.endswith(".parquet"):
+        return _read_parquet_table(content)
+    if name.endswith(".json"):
+        return _read_json_table(content)
+    return _read_csv_table(content)
 
 
 @router.post(
@@ -1267,43 +1406,23 @@ async def import_submissions(
         raise HTTPException(status_code=400, detail="ファイルを選択してください")
 
     content = await upload.read()
-    try:
-        text = content.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        try:
-            text = content.decode("shift_jis")
-        except UnicodeDecodeError:
-            raise HTTPException(
-                status_code=400, detail="ファイルのエンコーディングを認識できません"
-            )
-
     filename = getattr(upload, "filename", "") or ""
-    if filename.lower().endswith(".tsv"):
-        delimiter = "\t"
-    else:
-        delimiter = ","
-
-    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
-    try:
-        headers = next(reader)
-    except StopIteration:
-        raise HTTPException(status_code=400, detail="ファイルが空です")
+    headers, data_rows = _read_import_table(filename, content)
 
     fields = fields_from_schema(form["schema_json"], form.get("field_order", []))
     field_map = _build_import_field_map(fields)
 
-    col_field_map: list[dict[str, Any] | None] = []
-    for header in headers:
-        header_stripped = header.strip()
-        col_field_map.append(field_map.get(header_stripped))
+    col_field_map: list[dict[str, Any] | None] = [
+        field_map.get(header.strip()) for header in headers
+    ]
 
     validator = Draft7Validator(form["schema_json"])
 
     now = now_utc()
     imported_count = 0
     skipped_count = 0
-    for row in reader:
-        if not any(cell.strip() for cell in row):
+    for row in data_rows:
+        if not any(str(cell).strip() for cell in row):
             continue
         data: dict[str, Any] = {}
         for col_idx, cell in enumerate(row):
@@ -1313,7 +1432,7 @@ async def import_submissions(
             if field_info is None:
                 continue
             flat_key = field_info["flat_key"]
-            value = _convert_cell_value(cell.strip(), field_info)
+            value = _convert_cell_value(str(cell).strip(), field_info)
             if value is not None:
                 set_nested_value(data, flat_key, value)
 
