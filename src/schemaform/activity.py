@@ -117,6 +117,80 @@ def build_submission_preview(
     return preview
 
 
+def _truncate(text: str, max_len: int) -> str:
+    return text if len(text) <= max_len else text[: max_len - 1] + "…"
+
+
+def build_form_field_summary(
+    fields: list[dict[str, Any]], *, max_fields: int = 4
+) -> str:
+    """フォームの項目構成を「項目: ラベル / ラベル ...」の短い文字列にまとめる。
+
+    作成・削除ログに付与し、どんな項目を持つフォームだったかを後から確認できるようにする。"""
+    labels = [str(f.get("label") or f.get("key") or "").strip() for f in fields]
+    labels = [label for label in labels if label]
+    total = len(labels)
+    if total == 0:
+        return ""
+    shown = " / ".join(labels[:max_fields])
+    if total > max_fields:
+        return _truncate(f"項目: {shown} ほか（全{total}項目）", 80)
+    return _truncate(f"項目: {shown}", 80)
+
+
+def build_form_change_detail(
+    old: dict[str, Any] | None, updates: dict[str, Any]
+) -> str:
+    """フォーム更新で変更された箇所を列挙した文字列を作る。
+
+    変更前後の比較で、名称・説明・項目・公開範囲などのどこが変わったかを示す。"""
+    if not old:
+        return ""
+    changes: list[str] = []
+    new_name = updates.get("name")
+    if new_name is not None and new_name != old.get("name"):
+        changes.append(f"名称「{old.get('name') or ''}」→「{new_name}」")
+    if "description" in updates and updates["description"] != old.get("description"):
+        changes.append("説明を変更")
+    if ("schema_json" in updates and updates["schema_json"] != old.get("schema_json")) or (
+        "field_order" in updates and updates["field_order"] != old.get("field_order")
+    ):
+        changes.append("項目を変更")
+    if (
+        "publish_group_ids" in updates
+        and updates["publish_group_ids"] != old.get("publish_group_ids")
+    ) or (
+        "allow_anonymous" in updates
+        and bool(updates["allow_anonymous"]) != bool(old.get("allow_anonymous"))
+    ):
+        changes.append("公開範囲を変更")
+    if "edit_group_ids" in updates and updates["edit_group_ids"] != old.get(
+        "edit_group_ids"
+    ):
+        changes.append("編集範囲を変更")
+    webhook_keys = (
+        "webhook_url",
+        "webhook_on_submit",
+        "webhook_on_delete",
+        "webhook_on_edit",
+    )
+    if any(
+        key in updates and updates[key] != old.get(key) for key in webhook_keys
+    ):
+        changes.append("Webhook設定を変更")
+    if "allow_view_others" in updates and bool(updates["allow_view_others"]) != bool(
+        old.get("allow_view_others")
+    ):
+        changes.append("他ユーザー送信の閲覧設定を変更")
+    if "disallow_edit_submissions" in updates and bool(
+        updates["disallow_edit_submissions"]
+    ) != bool(old.get("disallow_edit_submissions")):
+        changes.append("送信内容の変更可否を変更")
+    if not changes:
+        return ""
+    return _truncate(" / ".join(changes), 100)
+
+
 def aggregate_form_summary(
     rows: Iterable[tuple[Any, Any, Any, Any]],
 ) -> list[dict[str, Any]]:
