@@ -32,6 +32,20 @@ async def _user_label(auth: Any, user_id: int, token: str) -> str:
     return f"ID {user_id}"
 
 
+async def _group_label(auth: Any, group_id: int, token: str) -> str:
+    """操作ログ用にグループ名を解決する。失敗時は ID を返す。
+
+    メンバー操作が成功した後のログ用呼び出しで例外を投げて 500 を返さないよう、
+    取得失敗は握り潰してフォールバックする。"""
+    try:
+        group = await auth.get_group(group_id, token)
+        if group and group.get("name"):
+            return group["name"]
+    except Exception:
+        pass
+    return f"ID {group_id}"
+
+
 async def admin_guard(request: Request) -> None:
     await request.app.state.auth_provider.require_admin(request)
 
@@ -200,8 +214,7 @@ async def add_member(
             f"/admin/groups/{group_id}?error=メンバー追加に失敗しました",
             status_code=303,
         )
-    group = await auth.get_group(group_id, token)
-    group_name = (group or {}).get("name") or f"ID {group_id}"
+    group_name = await _group_label(auth, group_id, token)
     member = await _user_label(auth, user_id, token)
     log_activity(
         request,
@@ -280,8 +293,7 @@ async def remove_member(
             f"/admin/groups/{group_id}?error=メンバー削除に失敗しました",
             status_code=303,
         )
-    group = await auth.get_group(group_id, token)
-    group_name = (group or {}).get("name") or f"ID {group_id}"
+    group_name = await _group_label(auth, group_id, token)
     member = await _user_label(auth, user_id, token)
     log_activity(
         request,
