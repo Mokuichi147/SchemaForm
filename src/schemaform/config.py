@@ -71,6 +71,14 @@ class Settings:
             "true",
             "yes",
         )
+        try:
+            self.password_min_length = int(
+                os.getenv("PASSWORD_MIN_LENGTH", "8")
+            )
+        except ValueError:
+            self.password_min_length = 8
+        if self.password_min_length < 1:
+            self.password_min_length = 1
         self.host = os.getenv("HOST", "0.0.0.0")
         port_value = os.getenv("PORT", "8000")
         try:
