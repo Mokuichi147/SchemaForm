@@ -19,6 +19,11 @@ SUBMISSION_IMPORT = "submission_import"
 USER_CREATE = "user_create"
 USER_UPDATE_NAME = "user_update_name"
 USER_PASSWORD = "user_password"
+GROUP_CREATE = "group_create"
+GROUP_UPDATE = "group_update"
+GROUP_MEMBER_ADD = "group_member_add"
+GROUP_MEMBER_REMOVE = "group_member_remove"
+GROUP_PERMISSION = "group_permission"
 
 ACTION_LABELS: dict[str, str] = {
     FORM_CREATE: "フォーム作成",
@@ -33,6 +38,11 @@ ACTION_LABELS: dict[str, str] = {
     USER_CREATE: "ユーザー作成",
     USER_UPDATE_NAME: "表示名の変更",
     USER_PASSWORD: "パスワード変更",
+    GROUP_CREATE: "グループ作成",
+    GROUP_UPDATE: "グループ変更",
+    GROUP_MEMBER_ADD: "メンバー追加",
+    GROUP_MEMBER_REMOVE: "メンバー削除",
+    GROUP_PERMISSION: "権限変更",
 }
 
 ACTION_STYLES: dict[str, str] = {
@@ -48,6 +58,11 @@ ACTION_STYLES: dict[str, str] = {
     USER_CREATE: "bg-violet-100 text-violet-800",
     USER_UPDATE_NAME: "bg-violet-100 text-violet-800",
     USER_PASSWORD: "bg-violet-100 text-violet-800",
+    GROUP_CREATE: "bg-teal-100 text-teal-800",
+    GROUP_UPDATE: "bg-teal-100 text-teal-800",
+    GROUP_MEMBER_ADD: "bg-teal-100 text-teal-800",
+    GROUP_MEMBER_REMOVE: "bg-teal-100 text-teal-800",
+    GROUP_PERMISSION: "bg-teal-100 text-teal-800",
 }
 
 # 絞り込み用のカテゴリ（表示順）。空文字は全件。
@@ -59,6 +74,7 @@ ACTIVITY_CATEGORY_OPTIONS: list[tuple[str, str]] = [
     ("delete", "削除"),
     ("status", "公開状態の変更"),
     ("account", "アカウント操作"),
+    ("group", "グループ管理"),
 ]
 
 _CATEGORY_ACTIONS: dict[str, tuple[str, ...]] = {
@@ -68,6 +84,13 @@ _CATEGORY_ACTIONS: dict[str, tuple[str, ...]] = {
     "delete": (FORM_DELETE, SUBMISSION_DELETE),
     "status": (FORM_PUBLISH, FORM_STOP),
     "account": (USER_CREATE, USER_UPDATE_NAME, USER_PASSWORD),
+    "group": (
+        GROUP_CREATE,
+        GROUP_UPDATE,
+        GROUP_MEMBER_ADD,
+        GROUP_MEMBER_REMOVE,
+        GROUP_PERMISSION,
+    ),
 }
 
 
