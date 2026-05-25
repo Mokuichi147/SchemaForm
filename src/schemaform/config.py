@@ -33,54 +33,56 @@ BASE_DIR = _get_base_dir()
 
 class Settings:
     def __init__(self) -> None:
-        self.storage_backend = os.getenv("STORAGE_BACKEND", "sqlite").lower()
-        self.sqlite_path = Path(os.getenv("SQLITE_PATH", "./data/app.db"))
-        self.json_path = Path(os.getenv("JSON_PATH", "./data/jsonstore.json"))
-        self.upload_dir = Path(os.getenv("UPLOAD_DIR", "./data/uploads"))
-        max_bytes = os.getenv("UPLOAD_MAX_BYTES")
+        self.storage_backend = os.getenv("SCHEMAFORM_STORAGE_BACKEND", "sqlite").lower()
+        self.sqlite_path = Path(os.getenv("SCHEMAFORM_SQLITE_PATH", "./data/app.db"))
+        self.json_path = Path(
+            os.getenv("SCHEMAFORM_JSON_PATH", "./data/jsonstore.json")
+        )
+        self.upload_dir = Path(os.getenv("SCHEMAFORM_UPLOAD_DIR", "./data/uploads"))
+        max_bytes = os.getenv("SCHEMAFORM_UPLOAD_MAX_BYTES")
         self.upload_max_bytes = int(max_bytes) if max_bytes else None
-        self.solo = os.getenv("SOLO", "").lower() in ("1", "true", "yes")
-        db_value = os.getenv("USER_PERMISSION_DB")
+        self.solo = os.getenv("SCHEMAFORM_SOLO", "").lower() in ("1", "true", "yes")
+        db_value = os.getenv("SCHEMAFORM_USER_PERMISSION_DB")
         self.user_permission_db: str = db_value or "./data/users.db"
         self.user_permission_secret = Path(
-            os.getenv("USER_PERMISSION_SECRET", "./data/users.secret")
+            os.getenv("SCHEMAFORM_USER_PERMISSION_SECRET", "./data/users.secret")
         )
         self.file_url_secret = Path(
-            os.getenv("FILE_URL_SECRET", "./data/file_url.secret")
+            os.getenv("SCHEMAFORM_FILE_URL_SECRET", "./data/file_url.secret")
         )
         try:
             self.file_url_ttl_seconds = int(
-                os.getenv("FILE_URL_TTL_SECONDS", "86400")
+                os.getenv("SCHEMAFORM_FILE_URL_TTL_SECONDS", "86400")
             )
         except ValueError:
             self.file_url_ttl_seconds = 86400
         self.user_permission_admin_group = os.getenv(
-            "USER_PERMISSION_ADMIN_GROUP", "admins"
+            "SCHEMAFORM_USER_PERMISSION_ADMIN_GROUP", "admins"
         )
         self.user_permission_token_cookie = os.getenv(
-            "USER_PERMISSION_TOKEN_COOKIE", "sf_token"
+            "SCHEMAFORM_USER_PERMISSION_TOKEN_COOKIE", "sf_token"
         )
         try:
             self.user_permission_token_hours = int(
-                os.getenv("USER_PERMISSION_TOKEN_HOURS", "24")
+                os.getenv("SCHEMAFORM_USER_PERMISSION_TOKEN_HOURS", "24")
             )
         except ValueError:
             self.user_permission_token_hours = 24
-        self.allow_signup = os.getenv("ALLOW_SIGNUP", "true").lower() in (
+        self.allow_signup = os.getenv("SCHEMAFORM_ALLOW_SIGNUP", "true").lower() in (
             "1",
             "true",
             "yes",
         )
         try:
             self.password_min_length = int(
-                os.getenv("PASSWORD_MIN_LENGTH", "8")
+                os.getenv("SCHEMAFORM_PASSWORD_MIN_LENGTH", "8")
             )
         except ValueError:
             self.password_min_length = 8
         if self.password_min_length < 1:
             self.password_min_length = 1
-        self.host = os.getenv("HOST", "0.0.0.0")
-        port_value = os.getenv("PORT", "8000")
+        self.host = os.getenv("SCHEMAFORM_HOST", "0.0.0.0")
+        port_value = os.getenv("SCHEMAFORM_PORT", "8000")
         try:
             self.port = int(port_value)
         except ValueError:
