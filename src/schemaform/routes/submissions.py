@@ -1302,11 +1302,9 @@ def _cell_to_text(value: Any) -> str:
     return str(value)
 
 
-def _read_delimited_table(
-    content: bytes, delimiter: str
-) -> tuple[list[str], list[list[str]]]:
+def _read_csv_table(content: bytes) -> tuple[list[str], list[list[str]]]:
     text = _decode_import_text(content)
-    rows = list(csv.reader(io.StringIO(text), delimiter=delimiter))
+    rows = list(csv.reader(io.StringIO(text)))
     if not rows:
         raise HTTPException(status_code=400, detail="ファイルが空です")
     return rows[0], rows[1:]
@@ -1376,8 +1374,8 @@ def _read_import_table(
 ) -> tuple[list[str], list[list[str]]]:
     """Read an uploaded file into (headers, rows-of-strings).
 
-    Supports the same formats offered for download: Excel (.xlsx), CSV (.csv),
-    TSV (.tsv), Parquet (.parquet) and JSON (.json).
+    Supports the formats offered for download: Excel (.xlsx), CSV (.csv),
+    Parquet (.parquet) and JSON (.json).
     """
     name = (filename or "").lower()
     if name.endswith(".xlsx"):
@@ -1386,8 +1384,7 @@ def _read_import_table(
         return _read_parquet_table(content)
     if name.endswith(".json"):
         return _read_json_table(content)
-    delimiter = "\t" if name.endswith(".tsv") else ","
-    return _read_delimited_table(content, delimiter)
+    return _read_csv_table(content)
 
 
 @router.post(

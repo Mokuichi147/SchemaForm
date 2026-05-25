@@ -9,7 +9,7 @@
   <div class="flex flex-wrap gap-2">
     <button type="button" id="open-filter-modal" class="whitespace-nowrap rounded border border-slate-300 px-3 py-2 text-sm">フィルター</button>
     <form id="import-form" method="post" action="/forms/{{ form.id }}/import" enctype="multipart/form-data" class="inline">
-      <input type="file" id="import-file-input" name="file" accept=".csv,.tsv,.xlsx,.parquet,.json" required class="hidden" />
+      <input type="file" id="import-file-input" name="file" accept=".csv,.xlsx,.parquet,.json" required class="hidden" />
       <button type="button" id="open-import-modal" class="whitespace-nowrap rounded border border-slate-300 px-3 py-2 text-sm">取り込み</button>
     </form>
     <a href="/forms/{{ form.id }}/aggregate?{{ build_query(query, page=None) }}" class="whitespace-nowrap rounded border border-slate-300 px-3 py-2 text-sm">集計</a>
