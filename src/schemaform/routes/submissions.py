@@ -1229,27 +1229,23 @@ def _wrap_arrays_from_schema(
                     _wrap_arrays_from_schema(children, data[key])
 
 
-def _normalize_temporal_text(kind: str, text: str) -> str:
-    """Normalize an imported temporal cell to the form's stored notation.
+def _normalize_date_text(text: str) -> str:
+    """Coerce an imported ``date`` cell that carries a time component to a plain date.
 
-    Accepts the ISO text emitted by the CSV/JSON/Parquet export as well as the
-    datetime values openpyxl yields for Excel cells (where a date cell is read
-    back as a midnight datetime). Unparseable text is returned unchanged so it
-    still reaches schema validation.
+    Excel reads a date-formatted cell back as a midnight datetime, so a ``date``
+    field would otherwise receive e.g. ``2026-05-21T00:00:00``; keep only the
+    date component. ``datetime``/``time`` fields are intentionally left untouched
+    so any seconds (or finer precision) the source provided are preserved.
     """
     text = (text or "").strip()
     if not text:
         return text
-    parsed = _parse_temporal(kind, text, keep_tz=True)
-    if parsed is None and kind in ("date", "time"):
-        dt = _parse_temporal("datetime", text, keep_tz=True)
-        if dt is not None:
-            parsed = dt.date() if kind == "date" else dt.time()
-    if parsed is None:
+    if _parse_temporal("date", text, keep_tz=True) is not None:
         return text
-    if kind == "date":
-        return parsed.isoformat()
-    return parsed.isoformat(timespec="minutes")
+    dt = _parse_temporal("datetime", text, keep_tz=True)
+    if dt is not None:
+        return dt.date().isoformat()
+    return text
 
 
 def _convert_cell_value(raw: str, field: dict[str, Any]) -> Any:
@@ -1268,8 +1264,8 @@ def _convert_cell_value(raw: str, field: dict[str, Any]) -> Any:
         return normalize_number(raw, field_type == "integer")
     if field_type == "boolean":
         return parse_bool(raw)
-    if field_type in _TEMPORAL_KINDS:
-        return _normalize_temporal_text(field_type, raw)
+    if field_type == "date":
+        return _normalize_date_text(raw)
     return raw
 
 
@@ -1290,20 +1286,17 @@ def _decode_import_text(content: bytes) -> str:
 def _cell_to_text(value: Any) -> str:
     """Render a parsed cell (str/number/bool/temporal/None) as import text.
 
-    Mirrors the string form the CSV export uses so every download format
-    re-imports identically: booleans as ``true``/``false``, whole-valued floats
-    without a trailing ``.0``, and temporal values in ISO notation.
+    Normalizes non-text cell values (e.g. the numbers and datetimes openpyxl /
+    pyarrow yield) to plain strings: booleans as ``true``/``false``, whole-valued
+    floats without a trailing ``.0``, and temporal values in ISO notation,
+    keeping whatever precision the source provides.
     """
     if value is None:
         return ""
     if isinstance(value, bool):
         return "true" if value else "false"
-    if isinstance(value, datetime):
-        return value.isoformat(timespec="minutes")
-    if isinstance(value, date):
+    if isinstance(value, (datetime, date, time)):
         return value.isoformat()
-    if isinstance(value, time):
-        return value.isoformat(timespec="minutes")
     if isinstance(value, float):
         return str(int(value)) if value.is_integer() else str(value)
     return str(value)
