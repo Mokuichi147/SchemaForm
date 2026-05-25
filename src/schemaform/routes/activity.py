@@ -9,6 +9,8 @@ from schemaform.activity import (
     ACTION_LABELS,
     ACTION_STYLES,
     ACTIVITY_CATEGORY_OPTIONS,
+    SUBMISSION_CREATE,
+    SUBMISSION_UPDATE,
     category_actions,
 )
 
@@ -56,6 +58,21 @@ async def activity_log(
         summary = repo.form_activity_summary()
 
     existing_form_ids = {f["id"] for f in storage.forms.list_forms()}
+
+    # 現存する送信のみリンク可能にする（同一ユーザー・同一内容でも個別の送信を特定できるよう、
+    # 詳細欄に送信IDの短縮表示とリンクを出す）。
+    candidate_ids = {
+        a["submission_id"]
+        for a in activities
+        if a.get("submission_id")
+        and a["action"] in (SUBMISSION_CREATE, SUBMISSION_UPDATE)
+    }
+    existing_submission_ids = {
+        sid
+        for sid in candidate_ids
+        if storage.submissions.get_submission(sid) is not None
+    }
+
     total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
 
     return templates.TemplateResponse(
@@ -65,6 +82,7 @@ async def activity_log(
             "activities": activities,
             "summary": summary[:10],
             "existing_form_ids": existing_form_ids,
+            "existing_submission_ids": existing_submission_ids,
             "action_labels": ACTION_LABELS,
             "action_styles": ACTION_STYLES,
             "category_options": ACTIVITY_CATEGORY_OPTIONS,

@@ -104,7 +104,19 @@
             {% endif %}
           </td>
           <td class="px-4 py-3 text-slate-600">{{ a.username or '-' }}</td>
-          <td class="px-4 py-3 text-slate-500 whitespace-normal break-all max-w-xs">{{ a.detail or '' }}</td>
+          <td class="px-4 py-3 text-slate-500 whitespace-normal break-all max-w-xs">
+            {% if a.submission_id and a.action.startswith('submission') %}
+            <div class="mb-0.5">
+              {% if a.form_id in existing_form_ids and a.submission_id in existing_submission_ids %}
+              <a href="/forms/{{ a.form_id }}/submissions/{{ a.submission_id }}/edit"
+                 class="font-mono text-xs text-sky-700 hover:underline">送信 #{{ a.submission_id[-6:] }}</a>
+              {% else %}
+              <span class="font-mono text-xs text-slate-400" title="{{ a.submission_id }}">送信 #{{ a.submission_id[-6:] }}（削除済み）</span>
+              {% endif %}
+            </div>
+            {% endif %}
+            {% if a.detail %}<div>{{ a.detail }}</div>{% endif %}
+          </td>
         </tr>
         {% else %}
         <tr><td colspan="5" class="px-4 py-6 text-center text-slate-400">操作ログがありません</td></tr>
