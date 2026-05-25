@@ -46,17 +46,18 @@ curl -i "http://localhost:8000/api/forms/<form_id>/submissions?limit=50"
 ```
 
 ## 環境変数
-- `STORAGE_BACKEND=sqlite|json`
-- `SQLITE_PATH=./data/app.db`
-- `JSON_PATH=./data/jsonstore.json`
-- `UPLOAD_DIR=./data/uploads`
-- `UPLOAD_MAX_BYTES`（未指定なら無制限）
-- `FILE_URL_SECRET=./data/file_url.secret`（`/files/{file_id}` の署名付きURL生成に使う秘密鍵ファイル。未存在なら自動生成）
-- `FILE_URL_TTL_SECONDS=86400`（署名付きファイルURLの有効期間。デフォルト24時間）
-- `AUTH_MODE=none|ldap`（ldapは未実装）
-- `PASSWORD_MIN_LENGTH=8`（アカウント作成・パスワード変更時の最小文字数）
-- `HOST=0.0.0.0`
-- `PORT=8000`
+他サービスと衝突しないよう、すべて `SCHEMAFORM_` プレフィックスを付けています。
+
+- `SCHEMAFORM_STORAGE_BACKEND=sqlite|json`
+- `SCHEMAFORM_SQLITE_PATH=./data/app.db`
+- `SCHEMAFORM_JSON_PATH=./data/jsonstore.json`
+- `SCHEMAFORM_UPLOAD_DIR=./data/uploads`
+- `SCHEMAFORM_UPLOAD_MAX_BYTES`（未指定なら無制限）
+- `SCHEMAFORM_FILE_URL_SECRET=./data/file_url.secret`（`/files/{file_id}` の署名付きURL生成に使う秘密鍵ファイル。未存在なら自動生成）
+- `SCHEMAFORM_FILE_URL_TTL_SECONDS=86400`（署名付きファイルURLの有効期間。デフォルト24時間）
+- `SCHEMAFORM_PASSWORD_MIN_LENGTH=8`（アカウント作成・パスワード変更時の最小文字数）
+- `SCHEMAFORM_HOST=0.0.0.0`
+- `SCHEMAFORM_PORT=8000`
 
 ## JsonSchema 対応範囲
 - `string | number | integer | boolean | enum | array(items=primitive|file)`
