@@ -219,6 +219,14 @@ def get_signup_enabled(request: Request) -> bool:
     return bool(getattr(auth, "signup_supported", False))
 
 
+def get_password_min_length(request: Request) -> int:
+    """パスワードの最小文字数（テンプレート用）。"""
+    settings: Settings | None = getattr(request.app.state, "settings", None)
+    if settings is None:
+        return 8
+    return settings.password_min_length
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
     ensure_dirs(settings)
@@ -294,6 +302,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     templates.env.globals["get_current_user"] = get_current_user
     templates.env.globals["get_auth_enabled"] = get_auth_enabled
     templates.env.globals["get_signup_enabled"] = get_signup_enabled
+    templates.env.globals["get_password_min_length"] = get_password_min_length
     templates.env.globals["can_create_form"] = can_create_form
     templates.env.globals["can_edit_form"] = can_edit_form
     templates.env.globals["can_view_form"] = can_view_form

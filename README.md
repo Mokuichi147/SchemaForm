@@ -54,6 +54,7 @@ curl -i "http://localhost:8000/api/forms/<form_id>/submissions?limit=50"
 - `FILE_URL_SECRET=./data/file_url.secret`（`/files/{file_id}` の署名付きURL生成に使う秘密鍵ファイル。未存在なら自動生成）
 - `FILE_URL_TTL_SECONDS=86400`（署名付きファイルURLの有効期間。デフォルト24時間）
 - `AUTH_MODE=none|ldap`（ldapは未実装）
+- `PASSWORD_MIN_LENGTH=8`（アカウント作成・パスワード変更時の最小文字数）
 - `HOST=0.0.0.0`
 - `PORT=8000`
 

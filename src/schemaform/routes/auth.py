@@ -136,13 +136,15 @@ async def signup(
     username = username.strip()
     display_name = display_name.strip()
 
+    min_length = request.app.state.settings.password_min_length
+
     errors: list[str] = []
     if not username:
         errors.append("ユーザーIDを入力してください")
     if not password:
         errors.append("パスワードを入力してください")
-    if password and len(password) < 8:
-        errors.append("パスワードは 8 文字以上にしてください")
+    if password and len(password) < min_length:
+        errors.append(f"パスワードは {min_length} 文字以上にしてください")
     if password and password != password_confirm:
         errors.append("パスワードと確認用パスワードが一致しません")
 
@@ -260,13 +262,15 @@ async def password_update(
     user = await auth.require_login(request)
     templates = request.app.state.templates
 
+    min_length = request.app.state.settings.password_min_length
+
     errors: list[str] = []
     if not current_password or not new_password:
         errors.append("現パスワードと新パスワードを入力してください")
     if new_password and new_password != new_password_confirm:
         errors.append("新パスワードと確認用パスワードが一致しません")
-    if new_password and len(new_password) < 8:
-        errors.append("新パスワードは 8 文字以上にしてください")
+    if new_password and len(new_password) < min_length:
+        errors.append(f"新パスワードは {min_length} 文字以上にしてください")
     if new_password and new_password == current_password:
         errors.append("新パスワードは現パスワードと異なるものにしてください")
 
