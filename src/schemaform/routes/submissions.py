@@ -761,10 +761,18 @@ async def perform_update_submission(
     except KeyError:
         raise HTTPException(status_code=404, detail="送信データが見つかりません")
 
-    from schemaform.activity import SUBMISSION_UPDATE, log_activity
+    from schemaform.activity import (
+        SUBMISSION_UPDATE,
+        build_submission_preview,
+        log_activity,
+    )
 
     log_activity(
-        request, SUBMISSION_UPDATE, form=form, submission_id=submission_id
+        request,
+        SUBMISSION_UPDATE,
+        form=form,
+        submission_id=submission_id,
+        detail=build_submission_preview(fields, submission),
     )
 
     if (

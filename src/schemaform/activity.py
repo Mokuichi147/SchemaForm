@@ -65,6 +65,58 @@ def category_actions(category: str | None) -> list[str] | None:
     return list(_CATEGORY_ACTIONS.get(category or "", ())) or None
 
 
+def _scalar_text(value: Any) -> str:
+    if isinstance(value, bool):
+        return "はい" if value else "いいえ"
+    return str(value)
+
+
+def _preview_value(field_type: str, value: Any) -> str:
+    if field_type == "file":
+        if isinstance(value, list):
+            return f"ファイル{len(value)}件" if value else ""
+        return "ファイル" if value else ""
+    if isinstance(value, list):
+        return ", ".join(_scalar_text(v) for v in value if v not in (None, ""))
+    if isinstance(value, dict):
+        return ""
+    return _scalar_text(value)
+
+
+def build_submission_preview(
+    fields: list[dict[str, Any]],
+    data: dict[str, Any] | None,
+    *,
+    max_fields: int = 3,
+    max_len: int = 60,
+) -> str:
+    """送信データの主要項目を「ラベル=値」の短い文字列にまとめる。
+
+    操作ログの詳細欄に表示し、送信がどんな内容だったかを後から確認できるようにする。
+    グループはスキップし、ファイルは件数のみ示す。"""
+    if not isinstance(data, dict):
+        return ""
+    parts: list[str] = []
+    for field in fields:
+        if len(parts) >= max_fields:
+            break
+        if field.get("type") == "group":
+            continue
+        key = field.get("key")
+        value = data.get(key)
+        if value in (None, "", [], {}):
+            continue
+        text = _preview_value(field.get("type", ""), value)
+        if not text:
+            continue
+        label = field.get("label") or key
+        parts.append(f"{label}={text}")
+    preview = " / ".join(parts)
+    if len(preview) > max_len:
+        preview = preview[: max_len - 1] + "…"
+    return preview
+
+
 def aggregate_form_summary(
     rows: Iterable[tuple[Any, Any, Any, Any]],
 ) -> list[dict[str, Any]]:
