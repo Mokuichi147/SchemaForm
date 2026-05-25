@@ -284,6 +284,12 @@ async def submit_form(request: Request, public_id: str) -> HTMLResponse:
     }
     storage.submissions.create_submission(submission_record)
 
+    from schemaform.activity import SUBMISSION_CREATE, log_activity
+
+    log_activity(
+        request, SUBMISSION_CREATE, form=form, submission_id=submission_id
+    )
+
     if form.get("webhook_url") and form.get("webhook_on_submit"):
         from schemaform.webhook import send_webhook
 

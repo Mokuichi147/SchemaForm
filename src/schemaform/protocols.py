@@ -43,8 +43,28 @@ class SettingsRepository(Protocol):
     def set_form_creator_groups(self, group_ids: list[int]) -> None: ...
 
 
+class ActivityRepository(Protocol):
+    def log_activity(self, activity: dict[str, Any]) -> None: ...
+
+    def list_activities(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        actions: list[str] | None = None,
+        form_id: str | None = None,
+    ) -> list[dict[str, Any]]: ...
+
+    def count_activities(
+        self, *, actions: list[str] | None = None, form_id: str | None = None
+    ) -> int: ...
+
+    def form_activity_summary(self) -> list[dict[str, Any]]: ...
+
+
 class Storage(Protocol):
     forms: FormRepository
     submissions: SubmissionRepository
     files: FileRepository
     settings: SettingsRepository
+    activities: ActivityRepository

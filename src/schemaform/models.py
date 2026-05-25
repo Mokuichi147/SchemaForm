@@ -50,6 +50,20 @@ class SettingModel(Base):
     value = Column(Text)
 
 
+class ActivityModel(Base):
+    __tablename__ = "activities"
+
+    id = Column(String, primary_key=True)
+    action = Column(String, index=True)
+    form_id = Column(String, index=True, nullable=True)
+    form_name = Column(String, nullable=True)
+    submission_id = Column(String, nullable=True)
+    user_id = Column(Integer, nullable=True)
+    username = Column(String, nullable=True)
+    detail = Column(Text, nullable=True)
+    created_at = Column(DateTime, index=True)
+
+
 class FileModel(Base):
     __tablename__ = "files"
 

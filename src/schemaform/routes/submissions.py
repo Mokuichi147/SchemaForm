@@ -761,6 +761,12 @@ async def perform_update_submission(
     except KeyError:
         raise HTTPException(status_code=404, detail="送信データが見つかりません")
 
+    from schemaform.activity import SUBMISSION_UPDATE, log_activity
+
+    log_activity(
+        request, SUBMISSION_UPDATE, form=form, submission_id=submission_id
+    )
+
     if (
         form.get("webhook_url")
         and form.get("webhook_on_edit")
@@ -1338,6 +1344,16 @@ async def import_submissions(
             }
         )
         imported_count += 1
+
+    if imported_count:
+        from schemaform.activity import SUBMISSION_IMPORT, log_activity
+
+        log_activity(
+            request,
+            SUBMISSION_IMPORT,
+            form=form,
+            detail=f"{imported_count}件取り込み",
+        )
 
     return RedirectResponse(f"/forms/{form_id}/submissions", status_code=303)
 

@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex flex-wrap items-center justify-between gap-3">
+  <div>
+    <h1 class="text-2xl font-semibold">アクティビティ</h1>
+    <p class="text-sm text-slate-600">フォームの作成・送信・変更・削除などの操作ログを確認できます。</p>
+  </div>
+  <div class="flex items-center gap-2">
+    <a href="/forms" class="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100">フォーム一覧</a>
+  </div>
+</div>
+
+<section class="mt-6 rounded-lg border border-slate-200 bg-white p-6">
+  <h2 class="text-sm font-semibold text-slate-700">アクティブなフォーム</h2>
+  <p class="mt-1 text-xs text-slate-500">送信数の多い順に上位10件を表示します。</p>
+  <div class="mt-4 overflow-x-auto">
+    <table class="min-w-full divide-y divide-slate-200 text-sm">
+      <thead class="bg-slate-100 text-left">
+        <tr>
+          <th class="px-4 py-2 w-10">#</th>
+          <th class="px-4 py-2">フォーム</th>
+          <th class="px-4 py-2 text-right">送信</th>
+          <th class="px-4 py-2 text-right">変更</th>
+          <th class="px-4 py-2 text-right">削除</th>
+          <th class="px-4 py-2 text-right">合計</th>
+          <th class="px-4 py-2">最終操作</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for row in summary %}
+        <tr>
+          <td class="px-4 py-2 text-slate-500">{{ loop.index }}</td>
+          <td class="px-4 py-2">
+            {% if row.form_id in existing_form_ids %}
+            <a href="/forms/{{ row.form_id }}/submissions" class="text-slate-900 hover:underline">{{ row.form_name or row.form_id }}</a>
+            {% else %}
+            <span class="text-slate-500">{{ row.form_name or row.form_id }}</span>
+            <span class="ml-1 text-xs text-slate-400">(削除済み)</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-2 text-right tabular-nums">{{ row.submissions }}</td>
+          <td class="px-4 py-2 text-right tabular-nums">{{ row.updates }}</td>
+          <td class="px-4 py-2 text-right tabular-nums">{{ row.deletes }}</td>
+          <td class="px-4 py-2 text-right font-medium tabular-nums">{{ row.total }}</td>
+          <td class="px-4 py-2 text-slate-600">
+            <time class="js-local-dt" data-iso="{{ iso_dt(row.last_activity_at) }}">{{ format_dt(row.last_activity_at) }}</time>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="px-4 py-6 text-center text-slate-400">アクティビティがありません</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="mt-6">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h2 class="text-sm font-semibold text-slate-700">操作ログ</h2>
+    <form method="get" action="/admin/activity" class="flex items-center gap-2">
+      <label class="text-xs text-slate-500" for="category">操作種別</label>
+      <select id="category" name="category" onchange="this.form.submit()"
+              class="rounded border border-slate-300 px-3 py-1.5 text-sm">
+        {% for value, label in category_options %}
+        <option value="{{ value }}" {% if value == category %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <noscript><button type="submit" class="rounded border border-slate-300 px-3 py-1.5 text-sm">絞り込み</button></noscript>
+    </form>
+  </div>
+
+  <div class="mt-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+    <table class="min-w-full divide-y divide-slate-200 text-sm">
+      <thead class="bg-slate-100 text-left">
+        <tr>
+          <th class="px-4 py-3">日時</th>
+          <th class="px-4 py-3">操作</th>
+          <th class="px-4 py-3">対象フォーム</th>
+          <th class="px-4 py-3">実行ユーザー</th>
+          <th class="px-4 py-3">詳細</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for a in activities %}
+        <tr>
+          <td class="px-4 py-3 text-slate-600">
+            <time class="js-local-dt" data-iso="{{ iso_dt(a.created_at) }}">{{ format_dt(a.created_at) }}</time>
+          </td>
+          <td class="px-4 py-3">
+            <span class="rounded px-2 py-0.5 text-xs {{ action_styles.get(a.action, 'bg-slate-100 text-slate-700') }}">
+              {{ action_labels.get(a.action, a.action) }}
+            </span>
+          </td>
+          <td class="px-4 py-3">
+            {% if a.form_id %}
+              {% if a.form_id in existing_form_ids %}
+              <a href="/forms/{{ a.form_id }}/submissions" class="text-slate-900 hover:underline">{{ a.form_name or a.form_id }}</a>
+              {% else %}
+              <span class="text-slate-500">{{ a.form_name or a.form_id }}</span>
+              <span class="ml-1 text-xs text-slate-400">(削除済み)</span>
+              {% endif %}
+            {% else %}
+            <span class="text-slate-400">-</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-3 text-slate-600">{{ a.username or '-' }}</td>
+          <td class="px-4 py-3 text-slate-500">{{ a.detail or '' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="px-4 py-6 text-center text-slate-400">操作ログがありません</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if total_pages > 1 %}
+  <div class="mt-4 flex items-center justify-between text-sm text-slate-600">
+    <span>{{ total }} 件中 {{ page }} / {{ total_pages }} ページ</span>
+    <div class="flex gap-2">
+      {% if page > 1 %}
+      <a href="?category={{ category }}&page={{ page - 1 }}" class="rounded border border-slate-300 px-3 py-1.5 hover:bg-slate-100">前へ</a>
+      {% else %}
+      <span class="rounded border border-slate-200 px-3 py-1.5 text-slate-300">前へ</span>
+      {% endif %}
+      {% if page < total_pages %}
+      <a href="?category={{ category }}&page={{ page + 1 }}" class="rounded border border-slate-300 px-3 py-1.5 hover:bg-slate-100">次へ</a>
+      {% else %}
+      <span class="rounded border border-slate-200 px-3 py-1.5 text-slate-300">次へ</span>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

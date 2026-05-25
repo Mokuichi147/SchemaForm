@@ -241,6 +241,12 @@ async def delete_submission(
 
     storage.submissions.delete_submission(submission_id)
 
+    from schemaform.activity import SUBMISSION_DELETE, log_activity
+
+    log_activity(
+        request, SUBMISSION_DELETE, form=form, submission_id=submission_id
+    )
+
     if (
         form
         and submission
