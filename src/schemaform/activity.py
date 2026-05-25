@@ -16,6 +16,9 @@ SUBMISSION_CREATE = "submission_create"
 SUBMISSION_UPDATE = "submission_update"
 SUBMISSION_DELETE = "submission_delete"
 SUBMISSION_IMPORT = "submission_import"
+USER_CREATE = "user_create"
+USER_UPDATE_NAME = "user_update_name"
+USER_PASSWORD = "user_password"
 
 ACTION_LABELS: dict[str, str] = {
     FORM_CREATE: "フォーム作成",
@@ -27,6 +30,9 @@ ACTION_LABELS: dict[str, str] = {
     SUBMISSION_UPDATE: "送信変更",
     SUBMISSION_DELETE: "送信削除",
     SUBMISSION_IMPORT: "送信インポート",
+    USER_CREATE: "ユーザー作成",
+    USER_UPDATE_NAME: "表示名の変更",
+    USER_PASSWORD: "パスワード変更",
 }
 
 ACTION_STYLES: dict[str, str] = {
@@ -39,24 +45,29 @@ ACTION_STYLES: dict[str, str] = {
     SUBMISSION_DELETE: "bg-rose-100 text-rose-800",
     FORM_PUBLISH: "bg-indigo-100 text-indigo-800",
     FORM_STOP: "bg-slate-200 text-slate-700",
+    USER_CREATE: "bg-violet-100 text-violet-800",
+    USER_UPDATE_NAME: "bg-violet-100 text-violet-800",
+    USER_PASSWORD: "bg-violet-100 text-violet-800",
 }
 
 # 絞り込み用のカテゴリ（表示順）。空文字は全件。
 ACTIVITY_CATEGORY_OPTIONS: list[tuple[str, str]] = [
     ("", "すべての操作"),
-    ("create", "フォーム作成"),
+    ("create", "作成"),
     ("submit", "送信"),
     ("update", "変更"),
     ("delete", "削除"),
     ("status", "公開状態の変更"),
+    ("account", "アカウント操作"),
 ]
 
 _CATEGORY_ACTIONS: dict[str, tuple[str, ...]] = {
-    "create": (FORM_CREATE,),
+    "create": (FORM_CREATE, USER_CREATE),
     "submit": (SUBMISSION_CREATE, SUBMISSION_IMPORT),
-    "update": (FORM_UPDATE, SUBMISSION_UPDATE),
+    "update": (FORM_UPDATE, SUBMISSION_UPDATE, USER_UPDATE_NAME, USER_PASSWORD),
     "delete": (FORM_DELETE, SUBMISSION_DELETE),
     "status": (FORM_PUBLISH, FORM_STOP),
+    "account": (USER_CREATE, USER_UPDATE_NAME, USER_PASSWORD),
 }
 
 
@@ -241,8 +252,13 @@ def log_activity(
     form_name: str | None = None,
     submission_id: str | None = None,
     detail: str = "",
+    username: str | None = None,
+    user_id: int | None = None,
 ) -> None:
-    """操作ログを 1 件記録する。記録失敗が本来の操作を妨げないよう例外は握り潰す。"""
+    """操作ログを 1 件記録する。記録失敗が本来の操作を妨げないよう例外は握り潰す。
+
+    既定では実行者を request.state.current_user から解決するが、ログイン前のサインアップ
+    などでは username/user_id を明示的に渡して上書きできる。"""
     try:
         storage = request.app.state.storage
         repo = getattr(storage, "activities", None)
@@ -252,12 +268,16 @@ def log_activity(
             form_id = form_id or form.get("id")
             form_name = form_name or form.get("name")
         user = getattr(request.state, "current_user", None)
-        if user:
-            user_id = user.get("id")
-            username = user.get("display_name") or user.get("username") or None
-        else:
-            user_id = None
-            username = None
+        resolved_user_id = user.get("id") if user else None
+        resolved_username = (
+            (user.get("display_name") or user.get("username") or None)
+            if user
+            else None
+        )
+        if user_id is not None:
+            resolved_user_id = user_id
+        if username is not None:
+            resolved_username = username
         repo.log_activity(
             {
                 "id": new_ulid(),
@@ -265,8 +285,8 @@ def log_activity(
                 "form_id": form_id,
                 "form_name": form_name,
                 "submission_id": submission_id,
-                "user_id": user_id,
-                "username": username,
+                "user_id": resolved_user_id,
+                "username": resolved_username,
                 "detail": detail or "",
                 "created_at": now_utc(),
             }
