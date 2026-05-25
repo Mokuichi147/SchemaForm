@@ -75,7 +75,7 @@
         <tr>
           <th class="px-4 py-3">日時</th>
           <th class="px-4 py-3">操作</th>
-          <th class="px-4 py-3">対象フォーム</th>
+          <th class="px-4 py-3">対象</th>
           <th class="px-4 py-3">送信</th>
           <th class="px-4 py-3">実行ユーザー</th>
           <th class="px-4 py-3">詳細</th>
@@ -100,6 +100,8 @@
               <span class="text-slate-500">{{ a.form_name or a.form_id }}</span>
               <span class="ml-1 text-xs text-slate-400">(削除済み)</span>
               {% endif %}
+            {% elif a.form_name %}
+            <span class="text-slate-700">{{ a.form_name }}</span>
             {% else %}
             <span class="text-slate-400">-</span>
             {% endif %}

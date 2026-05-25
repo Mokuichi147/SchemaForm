@@ -94,7 +94,7 @@ async def create_group(
             f"/admin/groups?error={err or 'グループの作成に失敗しました'}",
             status_code=303,
         )
-    log_activity(request, GROUP_CREATE, detail=f"グループ「{name}」を作成")
+    log_activity(request, GROUP_CREATE, form_name=name)
     return RedirectResponse(
         "/admin/groups?notice=グループを作成しました", status_code=303
     )
@@ -173,7 +173,7 @@ async def update_group(
             f"/admin/groups/{group_id}?error=グループの更新に失敗しました",
             status_code=303,
         )
-    log_activity(request, GROUP_UPDATE, detail=f"グループ「{name}」を更新")
+    log_activity(request, GROUP_UPDATE, form_name=name)
     return RedirectResponse(
         f"/admin/groups/{group_id}?notice=グループを更新しました",
         status_code=303,
@@ -206,7 +206,8 @@ async def add_member(
     log_activity(
         request,
         GROUP_MEMBER_ADD,
-        detail=f"「{group_name}」に {member} を追加",
+        form_name=group_name,
+        detail=member,
     )
     return RedirectResponse(
         f"/admin/groups/{group_id}?notice=メンバーを追加しました",
@@ -247,10 +248,8 @@ async def update_permissions(
     log_activity(
         request,
         GROUP_PERMISSION,
-        detail=(
-            f"「{group_name}」のフォーム作成権限を"
-            f"{'付与' if enable else '解除'}"
-        ),
+        form_name=group_name,
+        detail=f"フォーム作成権限を{'付与' if enable else '解除'}",
     )
 
     return RedirectResponse(
@@ -287,7 +286,8 @@ async def remove_member(
     log_activity(
         request,
         GROUP_MEMBER_REMOVE,
-        detail=f"「{group_name}」から {member} を削除",
+        form_name=group_name,
+        detail=member,
     )
     return RedirectResponse(
         f"/admin/groups/{group_id}?notice=メンバーを削除しました",
