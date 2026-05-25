@@ -172,12 +172,20 @@ def build_form_field_summary(
     return _truncate(f"項目: {shown}", 80)
 
 
+def _publish_scope_label(publish_group_ids: Any, allow_anonymous: Any) -> str:
+    if allow_anonymous:
+        return "全員に公開"
+    if publish_group_ids:
+        return "グループ限定"
+    return "ログインユーザーに公開"
+
+
 def build_form_change_detail(
     old: dict[str, Any] | None, updates: dict[str, Any]
 ) -> str:
     """フォーム更新で変更された箇所を列挙した文字列を作る。
 
-    変更前後の比較で、名称・説明・項目・公開範囲などのどこが変わったかを示す。"""
+    変更前後の比較で、名称・説明・項目・公開範囲などのどこが何に変わったかを示す。"""
     if not old:
         return ""
     changes: list[str] = []
@@ -197,7 +205,11 @@ def build_form_change_detail(
         "allow_anonymous" in updates
         and bool(updates["allow_anonymous"]) != bool(old.get("allow_anonymous"))
     ):
-        changes.append("公開範囲を変更")
+        scope = _publish_scope_label(
+            updates.get("publish_group_ids", old.get("publish_group_ids")),
+            updates.get("allow_anonymous", old.get("allow_anonymous")),
+        )
+        changes.append(f"公開範囲を「{scope}」に変更")
     if "edit_group_ids" in updates and updates["edit_group_ids"] != old.get(
         "edit_group_ids"
     ):
@@ -215,11 +227,13 @@ def build_form_change_detail(
     if "allow_view_others" in updates and bool(updates["allow_view_others"]) != bool(
         old.get("allow_view_others")
     ):
-        changes.append("他ユーザー送信の閲覧設定を変更")
+        state = "許可" if updates["allow_view_others"] else "禁止"
+        changes.append(f"他ユーザーの送信閲覧を{state}に変更")
     if "disallow_edit_submissions" in updates and bool(
         updates["disallow_edit_submissions"]
     ) != bool(old.get("disallow_edit_submissions")):
-        changes.append("送信内容の変更可否を変更")
+        state = "禁止" if updates["disallow_edit_submissions"] else "許可"
+        changes.append(f"送信内容の変更を{state}に変更")
     if not changes:
         return ""
     return _truncate(" / ".join(changes), 100)
