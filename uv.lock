@@ -690,7 +690,7 @@ requires-dist = [
     { name = "tinydb", specifier = ">=4.8.0" },
     { name = "typer", specifier = ">=0.12.0" },
     { name = "ulid-py", specifier = ">=1.1.0" },
-    { name = "user-permission", specifier = ">=0.5.0" },
+    { name = "user-permission", specifier = ">=0.5.3" },
     { name = "uvicorn", specifier = ">=0.30.0" },
 ]
 
@@ -814,15 +814,15 @@ wheels = [
 
 [[package]]
 name = "user-permission"
-version = "0.5.0"
+version = "0.5.3"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/e2/be/cb1da223cd280d86d3b98c472ed22497b71398b6c2b052f735e8231dadd8/user_permission-0.5.0.tar.gz", hash = "sha256:668649aada5765eb7eda6d93dcecba4f0db614281e988b39d92ef5e04b404e85", size = 39607, upload-time = "2026-05-17T23:09:48.63Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/73/7c/d6316aeb6b2ee6ae1195b9af9d920131e9975033e25fbb709ebd218118c6/user_permission-0.5.3.tar.gz", hash = "sha256:e0ba8095ff49626596fb6bca54b09f497dcbf19c6600395a44c4cc331e0b4cb2", size = 42054, upload-time = "2026-05-26T14:25:36.876Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4a/ef/4eb6a7b7f6ebf6ca87f499c57a8a546eaf82ff4cfa833a391f1ccc08c08a/user_permission-0.5.0-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:a90709a026e729c107b49b7459e652c65b8b428da15598c38c78cdfdc805e04e", size = 3751383, upload-time = "2026-05-17T23:09:38.437Z" },
-    { url = "https://files.pythonhosted.org/packages/25/c7/7ed3a7ab024bb9293865857657628dc2a3d8545201738ac2421d09327961/user_permission-0.5.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:4a2aa274c6ac95e942054337b38b20da895b82ddb3d9be414b5a6a3699b2dd32", size = 3527216, upload-time = "2026-05-17T23:09:40.635Z" },
-    { url = "https://files.pythonhosted.org/packages/52/b6/5ca4f16071b7de1027c3a7ae85c50d63908da78e64fc8bef66a0ec0acc11/user_permission-0.5.0-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:84b285b1895c5fc070ca0cd16c87a6a60948ab3f44cc354b1f7d2b5c08884c80", size = 3643220, upload-time = "2026-05-17T23:09:43Z" },
-    { url = "https://files.pythonhosted.org/packages/00/30/dcecd3ba69ec59a40ef935549b206a6030d502306e002b9d74197c768a81/user_permission-0.5.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:8ebfe1b0443bfbb36a344a00dc82b4acdb59dc5962368e6bf5b5f9e79ef821e2", size = 3911990, upload-time = "2026-05-17T23:09:45.525Z" },
-    { url = "https://files.pythonhosted.org/packages/d1/a9/649b647d064fd008a518c02dd6ff011e603b3fbdf66586ad0a4cd7ef4dd8/user_permission-0.5.0-cp39-abi3-win_amd64.whl", hash = "sha256:728ce3236a11963e85974ec8379f637fcc51d709783c72b00493f3bf8c76f225", size = 4042131, upload-time = "2026-05-17T23:09:47.268Z" },
+    { url = "https://files.pythonhosted.org/packages/0d/aa/8f47b25fd96d21865598cf84a89373c575892ef173b0d0bee2a817a23382/user_permission-0.5.3-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:a3fc8b7774deffee4953edf3f034f63b71b7260bf03288e6ba914a91738787ad", size = 3957410, upload-time = "2026-05-26T14:25:28.675Z" },
+    { url = "https://files.pythonhosted.org/packages/9c/fc/2bbd4e3ae8af1b0225ebcbaadb47dbf30de008a224b1ac29261e1410df9e/user_permission-0.5.3-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:1aac809d9be07adf57c8a8ebb6d6aa1942f0e027221ff536e3568b9faca66042", size = 3714651, upload-time = "2026-05-26T14:25:30.54Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/97/8101a0fdd37054d8092b8b284912828637c3a7c8a6d181a91dd07916742b/user_permission-0.5.3-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:84cdef1a50b02f41f0042a9a15cb9b33b83f9810d19a5f69054fb08d8b92185c", size = 3839668, upload-time = "2026-05-26T14:25:32.438Z" },
+    { url = "https://files.pythonhosted.org/packages/fc/76/d6a4f0ab2bae31bb43f8f6faaf42f083e556184491c5c26f83dfc59ae662/user_permission-0.5.3-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:11fba3ecac4b2e0ee0c03b5d26a627051b58ab68021caac91fae04b0c7312417", size = 4120245, upload-time = "2026-05-26T14:25:33.986Z" },
+    { url = "https://files.pythonhosted.org/packages/66/ac/fa7240aed4b625425be147cb5244da21db562ae5d603c71d99026865c3d4/user_permission-0.5.3-cp39-abi3-win_amd64.whl", hash = "sha256:3cb31f33ff2c724e02e8446f0208a9b3b790dfbe230f028b4e9da69ec235baa6", size = 4334991, upload-time = "2026-05-26T14:25:35.452Z" },
 ]
 
 [[package]]

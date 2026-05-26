@@ -1,28 +1,11 @@
 from __future__ import annotations
 
-import base64
-import json
-import time
 from datetime import timedelta
 from typing import Any, Protocol
 
 from fastapi import HTTPException, Request
 
 from schemaform.config import Settings
-
-
-def _decode_jwt_payload_unverified(token: str) -> dict[str, Any] | None:
-    """JWT の payload を署名検証なしで取り出す。リレー側で検証する前提。"""
-    try:
-        payload_b64 = token.split(".")[1]
-    except IndexError:
-        return None
-    pad = "=" * (-len(payload_b64) % 4)
-    try:
-        raw = base64.urlsafe_b64decode(payload_b64 + pad)
-        return json.loads(raw)
-    except Exception:
-        return None
 
 
 class LoginRequired(Exception):
@@ -104,11 +87,8 @@ class UserPermissionAuthProvider:
         await self._db.close()
 
     async def login(self, username: str, password: str) -> str | None:
-        expires = timedelta(hours=self._token_hours)
-        if self._is_relay:
-            return await self._db.users.authenticate(username, password)
         return await self._db.users.authenticate(
-            username, password, expires_delta=expires
+            username, password, expires_delta=timedelta(hours=self._token_hours)
         )
 
     @property
@@ -127,31 +107,17 @@ class UserPermissionAuthProvider:
 
         戻り値は (成功フラグ, トークン or エラーメッセージ)。
         """
-        if self._is_relay:
+        try:
             created = await self._db.users.create(
                 username, password, display_name=display_name or username
             )
-            if created is None:
-                return False, (
-                    "このユーザーIDは既に使用されているか、アカウント作成に失敗しました"
-                )
-            token = await self._db.users.authenticate(username, password)
-            if not token:
-                return False, "アカウントは作成されましたが、ログインに失敗しました"
-            return True, token
-
-        existing = await self._db.users.get_by_username(username)
-        if existing is not None:
-            return False, "このユーザーIDは既に使用されています"
-        try:
-            await self._db.users.create(
-                username, password, display_name=display_name or username
-            )
         except Exception:
-            return False, "アカウントの作成に失敗しました"
-        token = await self._db.users.authenticate(
-            username, password, expires_delta=timedelta(hours=self._token_hours)
-        )
+            created = None
+        if created is None:
+            return False, (
+                "このユーザーIDは既に使用されているか、アカウント作成に失敗しました"
+            )
+        token = await self.login(username, password)
         if not token:
             return False, "アカウントは作成されましたが、ログインに失敗しました"
         return True, token
@@ -160,30 +126,12 @@ class UserPermissionAuthProvider:
         self, token: str
     ) -> tuple[int, str, str] | None:
         try:
-            if self._is_relay:
-                payload = _decode_jwt_payload_unverified(token)
-                if payload is None or "sub" not in payload:
-                    return None
-                exp = payload.get("exp")
-                if exp is not None:
-                    try:
-                        if time.time() >= float(exp):
-                            return None
-                    except (TypeError, ValueError):
-                        return None
-                user_id = int(payload["sub"])
-                user = await self._db.users.get_by_id(user_id, token=token)
-                if user is None:
-                    return None
-                return (user.id, user.username, user.display_name or "")
-            payload = self._db.token_manager.verify_token(token)
-            user_id = int(payload["sub"])
-            username = str(payload.get("username", ""))
-            user = await self._db.users.get_by_id(user_id)
-            display_name = user.display_name if user else ""
-            return (user_id, username, display_name or "")
+            user = await self._db.verify_token_and_get_user(token)
         except Exception:
             return None
+        if user is None:
+            return None
+        return (user.id, user.username, user.display_name or "")
 
     async def _fetch_groups(
         self, user_id: int, token: str
