@@ -6,6 +6,16 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from schemaform.activity import (
+    FORM_CREATE,
+    FORM_DELETE,
+    FORM_PUBLISH,
+    FORM_STOP,
+    FORM_UPDATE,
+    build_form_change_detail,
+    build_form_field_summary,
+    log_activity,
+)
 from schemaform.master import build_master_display_candidates
 from schemaform.schema import (
     fields_from_schema,
@@ -339,6 +349,13 @@ async def create_form(request: Request, _: Any = Depends(form_creator_guard)) ->
             "updated_at": now,
         }
     )
+    log_activity(
+        request,
+        FORM_CREATE,
+        form_id=form_id,
+        form_name=name,
+        detail=build_form_field_summary(fields),
+    )
     return RedirectResponse(f"/forms/{form_id}", status_code=303)
 
 
@@ -471,7 +488,9 @@ async def update_form(
         "edit_group_ids": edit_group_ids,
         "updated_at": now_utc(),
     }
+    change_detail = build_form_change_detail(form, updates)
     updated = storage.forms.update_form(form_id, updates)
+    log_activity(request, FORM_UPDATE, form=updated, detail=change_detail)
     return RedirectResponse(f"/forms/{updated['id']}", status_code=303)
 
 
@@ -483,6 +502,7 @@ async def publish_form(
     form = storage.forms.get_form(form_id)
     _ensure_form_editable(request, form)
     storage.forms.set_status(form_id, "active")
+    log_activity(request, FORM_PUBLISH, form=form)
     target = resolve_redirect_target(request.query_params.get("next"))
     return RedirectResponse(target, status_code=303)
 
@@ -495,6 +515,7 @@ async def stop_form(
     form = storage.forms.get_form(form_id)
     _ensure_form_editable(request, form)
     storage.forms.set_status(form_id, "inactive")
+    log_activity(request, FORM_STOP, form=form)
     target = resolve_redirect_target(request.query_params.get("next"))
     return RedirectResponse(target, status_code=303)
 
@@ -506,5 +527,9 @@ async def delete_form(
     storage = request.app.state.storage
     form = storage.forms.get_form(form_id)
     _ensure_form_editable(request, form)
+    delete_detail = build_form_field_summary(
+        fields_from_schema(form["schema_json"], form.get("field_order", []))
+    )
     storage.forms.delete_form(form_id)
+    log_activity(request, FORM_DELETE, form=form, detail=delete_detail)
     return RedirectResponse("/forms", status_code=303)

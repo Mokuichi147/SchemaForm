@@ -8,6 +8,7 @@
   <div class="flex items-center gap-2">
     {% set _u = get_current_user(request) %}
     {% if get_auth_enabled(request) and _u and _u.is_admin %}
+    <a href="/admin/activity" class="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100">アクティビティ</a>
     <a href="/admin/groups" class="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100">グループ管理</a>
     {% endif %}
     <a href="/forms/new" class="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white">新規フォーム</a>

@@ -8,6 +8,7 @@ from typing import Any, Iterable
 from filelock import FileLock
 from tinydb import Query, TinyDB
 
+from schemaform.activity import aggregate_form_summary
 from schemaform.utils import now_utc, parse_dt, to_iso
 
 
@@ -264,6 +265,82 @@ class JSONSettingsRepo(JSONRepoBase):
         self.set("form_creator_groups", normalized)
 
 
+class JSONActivityRepo(JSONRepoBase):
+    def log_activity(self, activity: dict[str, Any]) -> None:
+        record = {
+            "id": activity["id"],
+            "action": activity["action"],
+            "form_id": activity.get("form_id"),
+            "form_name": activity.get("form_name"),
+            "submission_id": activity.get("submission_id"),
+            "user_id": activity.get("user_id"),
+            "username": activity.get("username"),
+            "detail": activity.get("detail") or "",
+            "created_at": to_iso(activity["created_at"]),
+        }
+        with self._db() as db:
+            db.table("activities").insert(record)
+
+    def list_activities(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        actions: list[str] | None = None,
+        form_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        with self._db() as db:
+            items = db.table("activities").all()
+        rows = [self._from_record(item) for item in items]
+        if actions:
+            action_set = set(actions)
+            rows = [r for r in rows if r["action"] in action_set]
+        if form_id:
+            rows = [r for r in rows if r["form_id"] == form_id]
+        rows.sort(key=lambda r: r["created_at"], reverse=True)
+        return rows[offset : offset + limit]
+
+    def count_activities(
+        self, *, actions: list[str] | None = None, form_id: str | None = None
+    ) -> int:
+        with self._db() as db:
+            items = db.table("activities").all()
+        if actions:
+            action_set = set(actions)
+            items = [i for i in items if i.get("action") in action_set]
+        if form_id:
+            items = [i for i in items if i.get("form_id") == form_id]
+        return len(items)
+
+    def form_activity_summary(self) -> list[dict[str, Any]]:
+        with self._db() as db:
+            items = db.table("activities").all()
+        return aggregate_form_summary(
+            (
+                item.get("form_id"),
+                item.get("form_name"),
+                item.get("action"),
+                parse_dt(item.get("created_at")),
+            )
+            for item in items
+            if item.get("form_id")
+        )
+
+    @staticmethod
+    def _from_record(record: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id": record["id"],
+            "action": record.get("action", ""),
+            "form_id": record.get("form_id"),
+            "form_name": record.get("form_name"),
+            "submission_id": record.get("submission_id"),
+            "user_id": record.get("user_id"),
+            "username": record.get("username"),
+            "detail": record.get("detail", ""),
+            "created_at": parse_dt(record.get("created_at")),
+        }
+
+
 class JSONStorage:
     def __init__(self, path: Path) -> None:
         self._lock = FileLock(f"{path}.lock")
@@ -271,3 +348,4 @@ class JSONStorage:
         self.submissions = JSONSubmissionRepo(path, self._lock)
         self.files = JSONFileRepo(path, self._lock)
         self.settings = JSONSettingsRepo(path, self._lock)
+        self.activities = JSONActivityRepo(path, self._lock)

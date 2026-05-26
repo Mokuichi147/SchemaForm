@@ -5,7 +5,45 @@ from typing import Any
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from schemaform.activity import (
+    GROUP_CREATE,
+    GROUP_MEMBER_ADD,
+    GROUP_MEMBER_REMOVE,
+    GROUP_PERMISSION,
+    GROUP_UPDATE,
+    log_activity,
+)
+
 router = APIRouter()
+
+
+async def _user_label(auth: Any, user_id: int, token: str) -> str:
+    """操作ログ用にユーザーの表示名を解決する。失敗時は ID を返す。"""
+    try:
+        for user in await auth.list_users(token):
+            if user.get("id") == user_id:
+                return (
+                    user.get("display_name")
+                    or user.get("username")
+                    or f"ID {user_id}"
+                )
+    except Exception:
+        pass
+    return f"ID {user_id}"
+
+
+async def _group_label(auth: Any, group_id: int, token: str) -> str:
+    """操作ログ用にグループ名を解決する。失敗時は ID を返す。
+
+    メンバー操作が成功した後のログ用呼び出しで例外を投げて 500 を返さないよう、
+    取得失敗は握り潰してフォールバックする。"""
+    try:
+        group = await auth.get_group(group_id, token)
+        if group and group.get("name"):
+            return group["name"]
+    except Exception:
+        pass
+    return f"ID {group_id}"
 
 
 async def admin_guard(request: Request) -> None:
@@ -70,6 +108,7 @@ async def create_group(
             f"/admin/groups?error={err or 'グループの作成に失敗しました'}",
             status_code=303,
         )
+    log_activity(request, GROUP_CREATE, form_name=name)
     return RedirectResponse(
         "/admin/groups?notice=グループを作成しました", status_code=303
     )
@@ -148,6 +187,7 @@ async def update_group(
             f"/admin/groups/{group_id}?error=グループの更新に失敗しました",
             status_code=303,
         )
+    log_activity(request, GROUP_UPDATE, form_name=name)
     return RedirectResponse(
         f"/admin/groups/{group_id}?notice=グループを更新しました",
         status_code=303,
@@ -174,6 +214,14 @@ async def add_member(
             f"/admin/groups/{group_id}?error=メンバー追加に失敗しました",
             status_code=303,
         )
+    group_name = await _group_label(auth, group_id, token)
+    member = await _user_label(auth, user_id, token)
+    log_activity(
+        request,
+        GROUP_MEMBER_ADD,
+        form_name=group_name,
+        detail=member,
+    )
     return RedirectResponse(
         f"/admin/groups/{group_id}?notice=メンバーを追加しました",
         status_code=303,
@@ -209,6 +257,14 @@ async def update_permissions(
         current.discard(group_id)
     storage.settings.set_form_creator_groups(sorted(current))
 
+    group_name = group.get("name") or f"ID {group_id}"
+    log_activity(
+        request,
+        GROUP_PERMISSION,
+        form_name=group_name,
+        detail=f"フォーム作成権限を{'付与' if enable else '解除'}",
+    )
+
     return RedirectResponse(
         f"/admin/groups/{group_id}?notice=権限を更新しました",
         status_code=303,
@@ -237,6 +293,14 @@ async def remove_member(
             f"/admin/groups/{group_id}?error=メンバー削除に失敗しました",
             status_code=303,
         )
+    group_name = await _group_label(auth, group_id, token)
+    member = await _user_label(auth, user_id, token)
+    log_activity(
+        request,
+        GROUP_MEMBER_REMOVE,
+        form_name=group_name,
+        detail=member,
+    )
     return RedirectResponse(
         f"/admin/groups/{group_id}?notice=メンバーを削除しました",
         status_code=303,

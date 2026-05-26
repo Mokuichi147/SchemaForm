@@ -20,6 +20,7 @@ from schemaform.auth import LoginRequired, get_auth_provider
 from schemaform.config import BASE_DIR, Settings, ensure_dirs
 from schemaform.file_formats import file_accept_for_constraints
 from schemaform.file_signing import load_or_create_secret
+from schemaform.routes.activity import router as activity_router
 from schemaform.routes.admin import router as admin_router
 from schemaform.routes.admin_groups import router as admin_groups_router
 from schemaform.routes.aggregate import router as aggregate_router
@@ -379,6 +380,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(admin_router)
     app.include_router(admin_groups_router)
+    app.include_router(activity_router)
     app.include_router(user_router)
     app.include_router(public_router)
     app.include_router(submissions_router)

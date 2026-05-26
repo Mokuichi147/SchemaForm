@@ -175,6 +175,15 @@ async def signup(
             status_code=400,
         )
 
+    from schemaform.activity import USER_CREATE, log_activity
+
+    log_activity(
+        request,
+        USER_CREATE,
+        username=display_name or username,
+        detail=f"ユーザーID: {username}",
+    )
+
     response = RedirectResponse(next_path, status_code=303)
     response.set_cookie(
         key=auth.cookie_name,
@@ -221,6 +230,7 @@ async def account_update(
             status_code=400,
         )
 
+    old_display_name = user.get("display_name") or user.get("username") or ""
     ok = await update(user["id"], user.get("token", ""), display_name)
     if not ok:
         return templates.TemplateResponse(
@@ -233,6 +243,14 @@ async def account_update(
             },
             status_code=400,
         )
+
+    from schemaform.activity import USER_UPDATE_NAME, log_activity
+
+    log_activity(
+        request,
+        USER_UPDATE_NAME,
+        detail=f"表示名「{old_display_name}」→「{display_name}」",
+    )
 
     user = {**user, "display_name": display_name}
     return templates.TemplateResponse(
@@ -303,6 +321,10 @@ async def password_update(
             },
             status_code=401,
         )
+
+    from schemaform.activity import USER_PASSWORD, log_activity
+
+    log_activity(request, USER_PASSWORD)
 
     return templates.TemplateResponse(
         "account.html",

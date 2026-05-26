@@ -241,6 +241,28 @@ async def delete_submission(
 
     storage.submissions.delete_submission(submission_id)
 
+    from schemaform.activity import (
+        SUBMISSION_DELETE,
+        build_submission_preview,
+        log_activity,
+    )
+
+    preview = ""
+    if form is not None:
+        preview_fields = fields_from_schema(
+            form["schema_json"], form.get("field_order", [])
+        )
+        preview = build_submission_preview(
+            preview_fields, submission.get("data_json")
+        )
+    log_activity(
+        request,
+        SUBMISSION_DELETE,
+        form=form,
+        submission_id=submission_id,
+        detail=preview,
+    )
+
     if (
         form
         and submission

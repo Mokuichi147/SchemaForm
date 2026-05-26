@@ -3,10 +3,18 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, func, text
 from sqlalchemy.orm import sessionmaker
 
-from schemaform.models import Base, FileModel, FormModel, SettingModel, SubmissionModel
+from schemaform.activity import aggregate_form_summary
+from schemaform.models import (
+    ActivityModel,
+    Base,
+    FileModel,
+    FormModel,
+    SettingModel,
+    SubmissionModel,
+)
 from schemaform.utils import dumps_json, loads_json, now_utc
 
 
@@ -289,6 +297,90 @@ class SQLiteSettingsRepo:
         self.set("form_creator_groups", normalized)
 
 
+class SQLiteActivityRepo:
+    def __init__(self, session_factory: sessionmaker) -> None:
+        self._Session = session_factory
+
+    def log_activity(self, activity: dict[str, Any]) -> None:
+        with self._Session() as session:
+            row = ActivityModel(
+                id=activity["id"],
+                action=activity["action"],
+                form_id=activity.get("form_id"),
+                form_name=activity.get("form_name"),
+                submission_id=activity.get("submission_id"),
+                user_id=activity.get("user_id"),
+                username=activity.get("username"),
+                detail=activity.get("detail") or "",
+                created_at=activity["created_at"],
+            )
+            session.add(row)
+            session.commit()
+
+    def list_activities(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        actions: list[str] | None = None,
+        form_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        with self._Session() as session:
+            query = session.query(ActivityModel)
+            if actions:
+                query = query.filter(ActivityModel.action.in_(list(actions)))
+            if form_id:
+                query = query.filter(ActivityModel.form_id == form_id)
+            rows = (
+                query.order_by(ActivityModel.created_at.desc())
+                .offset(offset)
+                .limit(limit)
+                .all()
+            )
+            return [self._to_dict(row) for row in rows]
+
+    def count_activities(
+        self, *, actions: list[str] | None = None, form_id: str | None = None
+    ) -> int:
+        with self._Session() as session:
+            query = session.query(func.count(ActivityModel.id))
+            if actions:
+                query = query.filter(ActivityModel.action.in_(list(actions)))
+            if form_id:
+                query = query.filter(ActivityModel.form_id == form_id)
+            return int(query.scalar() or 0)
+
+    def form_activity_summary(self) -> list[dict[str, Any]]:
+        with self._Session() as session:
+            rows = (
+                session.query(
+                    ActivityModel.form_id,
+                    ActivityModel.form_name,
+                    ActivityModel.action,
+                    ActivityModel.created_at,
+                )
+                .filter(ActivityModel.form_id.isnot(None))
+                .all()
+            )
+        return aggregate_form_summary(
+            (row[0], row[1], row[2], row[3]) for row in rows
+        )
+
+    @staticmethod
+    def _to_dict(row: ActivityModel) -> dict[str, Any]:
+        return {
+            "id": row.id,
+            "action": row.action,
+            "form_id": row.form_id,
+            "form_name": row.form_name,
+            "submission_id": row.submission_id,
+            "user_id": row.user_id,
+            "username": row.username,
+            "detail": row.detail or "",
+            "created_at": row.created_at,
+        }
+
+
 class SQLiteStorage:
     def __init__(self, db_path: Path) -> None:
         self._engine = create_engine(f"sqlite:///{db_path}", future=True)
@@ -299,6 +391,7 @@ class SQLiteStorage:
         self.submissions = SQLiteSubmissionRepo(self._Session)
         self.files = SQLiteFileRepo(self._Session)
         self.settings = SQLiteSettingsRepo(self._Session)
+        self.activities = SQLiteActivityRepo(self._Session)
 
     def _migrate_add_webhook_columns(self) -> None:
         with self._engine.connect() as conn:
