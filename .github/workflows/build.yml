@@ -32,7 +32,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.12"
+          python-version: "3.12.10"
 
       - name: Install dependencies
         run: uv sync
@@ -88,12 +88,12 @@ jobs:
           # UV_PYTHON_INSTALL_DIR で arm64 uv の管理 Python と競合しないよう分離する
           UV_PYTHON_INSTALL_DIR=/tmp/uv-python-x86 \
           UV_PYTHON_PREFERENCE=only-managed \
-          "$UV_X86" python install 3.12
+          "$UV_X86" python install 3.12.10
 
           # x86_64 venv を作成し依存関係をインストール
           UV_PYTHON_INSTALL_DIR=/tmp/uv-python-x86 \
           UV_PYTHON_PREFERENCE=only-managed \
-          "$UV_X86" venv .venv-x86_64 --python 3.12
+          "$UV_X86" venv .venv-x86_64 --python 3.12.10
 
           UV_PYTHON_INSTALL_DIR=/tmp/uv-python-x86 \
           UV_PYTHON_PREFERENCE=only-managed \
@@ -131,7 +131,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.12"
+          python-version: "3.12.10"
 
       - name: Install dependencies and pip-licenses
         run: uv sync && uv pip install pip-licenses
