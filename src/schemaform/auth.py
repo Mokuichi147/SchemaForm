@@ -87,7 +87,7 @@ class UserPermissionAuthProvider:
         await self._db.close()
 
     async def login(self, username: str, password: str) -> str | None:
-        return await self._db.users.authenticate(
+        return await self._db.login(
             username, password, expires_delta=timedelta(hours=self._token_hours)
         )
 
@@ -133,11 +133,9 @@ class UserPermissionAuthProvider:
             return None
         return (user.id, user.username, user.display_name or "")
 
-    async def _fetch_groups(
-        self, user_id: int, token: str
-    ) -> list[tuple[int, str, bool]]:
+    async def _fetch_groups(self, user_id: int) -> list[tuple[int, str, bool]]:
         try:
-            groups = await self._db.groups.get_user_groups(user_id, token=token)
+            groups = await self._db.groups.get_user_groups(user_id)
             return [
                 (int(g.id), g.name, bool(getattr(g, "is_admin", False)))
                 for g in groups
@@ -155,7 +153,7 @@ class UserPermissionAuthProvider:
             request.state.current_user = None
             return
         user_id, username, display_name = verified
-        group_info = await self._fetch_groups(user_id, token)
+        group_info = await self._fetch_groups(user_id)
         groups = [
             {"id": gid, "name": name, "is_admin": flag}
             for gid, name, flag in group_info
@@ -188,9 +186,7 @@ class UserPermissionAuthProvider:
     ) -> bool:
         """表示名（user-permission の display_name）を更新する。成功時 True。"""
         try:
-            result = await self._db.users.update(
-                user_id, display_name=display_name, token=token
-            )
+            result = await self._db.users.update(user_id, display_name=display_name)
         except Exception:
             return False
         return result is not None
@@ -204,16 +200,14 @@ class UserPermissionAuthProvider:
         new_password: str,
     ) -> bool:
         """現パスワード検証後に新パスワードへ更新する。成功時 True。"""
-        verified = await self._db.users.authenticate(username, current_password)
+        verified = await self._db.login(username, current_password)
         if not verified:
             return False
-        result = await self._db.users.update(
-            user_id, password=new_password, token=token
-        )
+        result = await self._db.users.update(user_id, password=new_password)
         return result is not None
 
     async def list_users(self, token: str) -> list[dict[str, Any]]:
-        users = await self._db.users.list_all(token=token)
+        users = await self._db.users.list_all()
         return [
             {
                 "id": u.id,
@@ -224,7 +218,7 @@ class UserPermissionAuthProvider:
         ]
 
     async def list_groups(self, token: str) -> list[dict[str, Any]]:
-        groups = await self._db.groups.list_all(token=token)
+        groups = await self._db.groups.list_all()
         return [
             {
                 "id": g.id,
@@ -238,7 +232,7 @@ class UserPermissionAuthProvider:
     async def get_group(
         self, group_id: int, token: str
     ) -> dict[str, Any] | None:
-        g = await self._db.groups.get_by_id(group_id, token=token)
+        g = await self._db.groups.get_by_id(group_id)
         if g is None:
             return None
         return {
@@ -252,7 +246,7 @@ class UserPermissionAuthProvider:
         self, name: str, description: str, token: str
     ) -> tuple[bool, str | None]:
         try:
-            res = await self._db.groups.create(name, description, token=token)
+            res = await self._db.groups.create(name, description)
         except Exception:
             return False, "グループの作成に失敗しました"
         if res is None:
@@ -275,7 +269,7 @@ class UserPermissionAuthProvider:
         if not kwargs:
             return True
         try:
-            res = await self._db.groups.update(group_id, **kwargs, token=token)
+            res = await self._db.groups.update(group_id, **kwargs)
         except Exception:
             return False
         return res is not None
@@ -283,7 +277,7 @@ class UserPermissionAuthProvider:
     async def get_group_members(
         self, group_id: int, token: str
     ) -> list[dict[str, Any]]:
-        users = await self._db.groups.get_members(group_id, token=token)
+        users = await self._db.groups.get_members(group_id)
         return [
             {
                 "id": u.id,
@@ -297,7 +291,7 @@ class UserPermissionAuthProvider:
         self, group_id: int, user_id: int, token: str
     ) -> bool:
         try:
-            return await self._db.groups.add_user(group_id, user_id, token=token)
+            return await self._db.groups.add_user(group_id, user_id)
         except Exception:
             return False
 
@@ -305,9 +299,7 @@ class UserPermissionAuthProvider:
         self, group_id: int, user_id: int, token: str
     ) -> bool:
         try:
-            return await self._db.groups.remove_user(
-                group_id, user_id, token=token
-            )
+            return await self._db.groups.remove_user(group_id, user_id)
         except Exception:
             return False
 
