@@ -157,15 +157,11 @@ async def _create_admin(
     display_name: str,
     group_name: str,
 ) -> None:
-    from user_permission import Database
+    from schemaform.auth import is_relay_backend, open_database
 
     backend = settings.user_permission_db
-    if str(backend).startswith(("http://", "https://")):
-        db = Database(backend)
-        is_relay = True
-    else:
-        db = Database(backend, secret=str(settings.user_permission_secret))
-        is_relay = False
+    is_relay = is_relay_backend(backend)
+    db = open_database(backend, settings.user_permission_secret)
 
     await db.connect()
     try:

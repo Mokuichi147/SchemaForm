@@ -47,6 +47,23 @@ class NoAuthProvider:
         return None
 
 
+def is_relay_backend(backend: str) -> bool:
+    """バックエンド指定が HTTP リレー（URL）かどうかを判定する。"""
+    return str(backend).startswith(("http://", "https://"))
+
+
+def open_database(backend: str, secret: Any) -> Any:
+    """バックエンドに応じて user-permission の Database を生成する。
+
+    リレー（URL）は secret を取らず、ローカル DB のみ署名鍵ファイルを渡す。
+    """
+    from user_permission import Database
+
+    if is_relay_backend(backend):
+        return Database(backend)
+    return Database(backend, secret=str(secret))
+
+
 class UserPermissionAuthProvider:
     """user-permission ライブラリを用いた認証プロバイダ。
 
@@ -54,16 +71,10 @@ class UserPermissionAuthProvider:
     """
 
     def __init__(self, settings: Settings) -> None:
-        from user_permission import Database
-
         self._settings = settings
         backend = settings.user_permission_db
-        if str(backend).startswith(("http://", "https://")):
-            self._db = Database(backend)
-            self._is_relay = True
-        else:
-            self._db = Database(backend, secret=str(settings.user_permission_secret))
-            self._is_relay = False
+        self._is_relay = is_relay_backend(backend)
+        self._db = open_database(backend, settings.user_permission_secret)
         self._admin_group = settings.user_permission_admin_group
         self._cookie = settings.user_permission_token_cookie
         self._token_hours = settings.user_permission_token_hours
@@ -87,7 +98,7 @@ class UserPermissionAuthProvider:
         await self._db.close()
 
     async def login(self, username: str, password: str) -> str | None:
-        return await self._db.users.authenticate(
+        return await self._db.login(
             username, password, expires_delta=timedelta(hours=self._token_hours)
         )
 
@@ -204,7 +215,7 @@ class UserPermissionAuthProvider:
         new_password: str,
     ) -> bool:
         """現パスワード検証後に新パスワードへ更新する。成功時 True。"""
-        verified = await self._db.users.authenticate(username, current_password)
+        verified = await self._db.login(username, current_password)
         if not verified:
             return False
         result = await self._db.users.update(

@@ -60,34 +60,14 @@ async def form_creator_guard(request: Request) -> None:
 async def _list_all_groups(request: Request) -> list[dict[str, Any]]:
     """認可済みユーザーで取得できる全グループ一覧（公開先選択用）。"""
     auth = request.app.state.auth_provider
-    user = getattr(request.state, "current_user", None)
     list_groups = getattr(auth, "list_groups", None)
-    if list_groups is not None:
-        try:
-            groups = await list_groups(user.get("token", "") if user else "")
-        except Exception:
-            groups = []
-        if groups:
-            return _normalize_group_options(groups)
-
-    settings = getattr(request.app.state, "settings", None)
-    if settings is None or str(settings.user_permission_db).startswith(
-        ("http://", "https://")
-    ):
+    if list_groups is None:
         return []
+    user = getattr(request.state, "current_user", None)
     try:
-        from user_permission import Database
-
-        db = Database(
-            settings.user_permission_db, secret=str(settings.user_permission_secret)
-        )
-        await db.connect()
-        try:
-            groups = await db.groups.list_all()
-        finally:
-            await db.close()
+        groups = await list_groups(user.get("token", "") if user else "")
     except Exception:
-        return []
+        groups = []
     return _normalize_group_options(groups)
 
 
