@@ -140,6 +140,15 @@
           <canvas class="js-chart" data-chart="{{ {'type': 'bar', 'labels': agg.histogram.labels, 'counts': agg.histogram.counts, 'label': '件数', 'ckind': 'numeric', 'field': agg.key, 'flabel': agg.label, 'ranges': agg.histogram.ranges, 'mode': agg.histogram.mode} | tojson_attr }}"></canvas>
         </div>
         {% endif %}
+        {% for g in agg.groups %}
+        <div class="mt-4 border-t border-slate-100 pt-3">
+          <div class="text-sm font-medium text-slate-700">{{ g.label }}別の集計</div>
+          <div class="relative mt-2 h-64">
+            <canvas class="js-grouped-chart" data-grouped="{{ {'labels': g.labels, 'sums': g.sums, 'stats': g.stats} | tojson_attr }}"></canvas>
+          </div>
+          <p class="mt-1 text-xs text-slate-400">バーは合計。ホバーで件数・合計・平均・中央値・最大・最小を表示します。</p>
+        </div>
+        {% endfor %}
       {% endif %}
     </div>
     {% endfor %}
@@ -452,6 +461,49 @@
       try { spec = JSON.parse(canvas.dataset.chart); } catch (e) { return; }
       const chart = new Chart(canvas, buildConfig(spec));
       if (canvas.id) charts[canvas.id] = { chart, spec };
+    });
+
+    // ---- ラベル別集計（グループ内の数値をラベル値ごとに合計し、ホバーで全統計を表示） ----
+    document.querySelectorAll("canvas.js-grouped-chart").forEach((canvas) => {
+      let spec;
+      try { spec = JSON.parse(canvas.dataset.grouped); } catch (e) { return; }
+      const colors = spec.labels.map((_, i) => palette[i % palette.length]);
+      new Chart(canvas, {
+        type: "bar",
+        data: {
+          labels: spec.labels,
+          datasets: [{
+            label: "合計",
+            data: spec.sums,
+            backgroundColor: colors,
+            borderColor: colors,
+            borderWidth: 1,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => {
+                  const s = (spec.stats && spec.stats[ctx.dataIndex]) || {};
+                  return [
+                    "件数: " + (s.count ?? "—"),
+                    "合計: " + (s.sum ?? "—"),
+                    "平均: " + (s.avg ?? "—"),
+                    "中央値: " + (s.median ?? "—"),
+                    "最大: " + (s.max ?? "—"),
+                    "最小: " + (s.min ?? "—"),
+                  ];
+                },
+              },
+            },
+          },
+          scales: { y: { beginAtZero: true } },
+        },
+      });
     });
 
     // 件数の推移（送信日時の間隔で粒度を自動選択、手動切替も可能）
