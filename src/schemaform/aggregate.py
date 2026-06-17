@@ -22,6 +22,17 @@ def _format_stat(value: float | None) -> str:
     return "—" if value is None else _format_num(value)
 
 
+def _median(values: list[float]) -> float | None:
+    """数値リストの中央値を返す（空なら None）。"""
+    if not values:
+        return None
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2 == 1:
+        return ordered[mid]
+    return (ordered[mid - 1] + ordered[mid]) / 2
+
+
 def _iter_field_values(
     submissions: list[dict[str, Any]], flat_key: str
 ) -> Iterator[Any]:
@@ -174,6 +185,7 @@ def _numeric(
         "count": str(int(_apply_aggregate("count", values))),
         "sum": _format_stat(_apply_aggregate("sum", values)),
         "avg": _format_stat(_apply_aggregate("avg", values)),
+        "median": _format_stat(_median(values)),
         "min": _format_stat(_apply_aggregate("min", values)),
         "max": _format_stat(_apply_aggregate("max", values)),
     }
