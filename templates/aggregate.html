@@ -140,15 +140,30 @@
           <canvas class="js-chart" data-chart="{{ {'type': 'bar', 'labels': agg.histogram.labels, 'counts': agg.histogram.counts, 'label': '件数', 'ckind': 'numeric', 'field': agg.key, 'flabel': agg.label, 'ranges': agg.histogram.ranges, 'mode': agg.histogram.mode} | tojson_attr }}"></canvas>
         </div>
         {% endif %}
-        {% for g in agg.groups %}
-        <div class="mt-4 border-t border-slate-100 pt-3">
-          <div class="text-sm font-medium text-slate-700">{{ g.label }}別の集計</div>
-          <div class="relative mt-2 h-64">
-            <canvas class="js-grouped-chart" data-grouped="{{ {'labels': g.labels, 'sums': g.sums, 'stats': g.stats} | tojson_attr }}"></canvas>
+        {% if agg.groups %}
+        <div class="mt-4 border-t border-slate-100 pt-3 js-group-block">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-sm font-medium text-slate-700">ラベル別の集計</span>
+            {% if agg.groups|length > 1 %}
+            <select class="js-group-select rounded border border-slate-300 px-2 py-1 text-sm">
+              {% for g in agg.groups %}
+              <option value="{{ loop.index0 }}">{{ g.label }}別</option>
+              {% endfor %}
+            </select>
+            {% else %}
+            <span class="text-sm text-slate-500">（{{ agg.groups[0].label }}別）</span>
+            {% endif %}
           </div>
+          {% for g in agg.groups %}
+          <div class="js-group-chart-wrap mt-2{% if not loop.first %} hidden{% endif %}">
+            <div class="relative h-64">
+              <canvas class="js-grouped-chart" data-grouped="{{ {'labels': g.labels, 'sums': g.sums, 'stats': g.stats} | tojson_attr }}"></canvas>
+            </div>
+          </div>
+          {% endfor %}
           <p class="mt-1 text-xs text-slate-400">バーは合計。ホバーで件数・合計・平均・中央値・最大・最小を表示します。</p>
         </div>
-        {% endfor %}
+        {% endif %}
       {% endif %}
     </div>
     {% endfor %}
@@ -463,10 +478,14 @@
       if (canvas.id) charts[canvas.id] = { chart, spec };
     });
 
-    // ---- ラベル別集計（グループ内の数値をラベル値ごとに合計し、ホバーで全統計を表示） ----
-    document.querySelectorAll("canvas.js-grouped-chart").forEach((canvas) => {
+    // ---- ラベル別集計（数値をラベル値ごとに合計し、ホバーで全統計を表示） ----
+    // 表示中のグラフだけを描画する（hidden な canvas は Chart.js のサイズが
+    // 0 になるため、セレクトで選ばれて表示されたタイミングで遅延描画する）。
+    function renderGroupedCanvas(canvas) {
+      if (!canvas || canvas.dataset.rendered) return;
       let spec;
       try { spec = JSON.parse(canvas.dataset.grouped); } catch (e) { return; }
+      canvas.dataset.rendered = "1";
       const colors = spec.labels.map((_, i) => palette[i % palette.length]);
       new Chart(canvas, {
         type: "bar",
@@ -503,6 +522,20 @@
           },
           scales: { y: { beginAtZero: true } },
         },
+      });
+    }
+
+    document.querySelectorAll(".js-group-block").forEach((block) => {
+      const wraps = block.querySelectorAll(".js-group-chart-wrap");
+      // 初期表示（先頭）のグラフを描画。
+      if (wraps[0]) renderGroupedCanvas(wraps[0].querySelector("canvas.js-grouped-chart"));
+      const select = block.querySelector(".js-group-select");
+      if (!select) return;
+      select.addEventListener("change", () => {
+        const idx = parseInt(select.value, 10);
+        wraps.forEach((w, i) => w.classList.toggle("hidden", i !== idx));
+        const wrap = wraps[idx];
+        if (wrap) renderGroupedCanvas(wrap.querySelector("canvas.js-grouped-chart"));
       });
     });
 
