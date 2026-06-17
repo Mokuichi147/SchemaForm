@@ -280,19 +280,26 @@ def _grouped_breakdowns(
     submissions: list[dict[str, Any]],
     num_key: str,
 ) -> list[dict[str, Any]]:
-    """数値フィールドと同じグループ内にある数値以外のフィールドごとに、
-    ラベル別集計を構築する。グループ外（トップレベル）の場合は何も返さない。"""
-    parent = _parent_prefix(num_key)
-    if not parent:
-        return []
+    """数値フィールドを、数値以外のフィールドの値ごとに集計（Group By）する。
+
+    「グループ化」はフォーム上のグループフィールドではなく Group By の意味で、
+    集計の対象は次のいずれかでペアが成立する組み合わせに限る:
+
+    * ラベルがトップレベル（全行で単一値）。任意の数値を集計できる。
+    * ラベルと数値が同じグループ内（同一行でペアになる）。
+
+    別々の配列グループ同士は行展開でデカルト積になり件数が水増しされるため除外する。
+    """
+    num_parent = _parent_prefix(num_key)
     breakdowns: list[dict[str, Any]] = []
     for field in flat_fields:
         flat_key = field["flat_key"]
         if flat_key == num_key:
             continue
-        if _parent_prefix(flat_key) != parent:
-            continue
         if field.get("type") in NON_LABEL_TYPES:
+            continue
+        label_parent = _parent_prefix(flat_key)
+        if label_parent != "" and label_parent != num_parent:
             continue
         bd = _grouped_breakdown(submissions, num_key, field, flat_key)
         if bd:
