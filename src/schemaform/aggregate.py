@@ -252,7 +252,7 @@ def _grouped_breakdown(
     if not buckets:
         return None
 
-    # バーは合計の降順で並べ、ラベルが多すぎる場合は末尾を「その他」へまとめる。
+    # バーは合計の降順で並べ、項目が多すぎる場合は末尾を「その他」へまとめる。
     ordered = sorted(order, key=lambda k: sum(buckets[k]), reverse=True)
     if len(ordered) > MAX_GROUP_LABELS:
         head = ordered[: MAX_GROUP_LABELS - 1]
@@ -263,14 +263,25 @@ def _grouped_breakdown(
         buckets["その他"] = other
         ordered = head + ["その他"]
 
-    sums = [round(sum(buckets[k]), 2) for k in ordered]
+    def _num(value: float | None) -> float:
+        return round(value, 2) if value is not None else 0
+
+    # 棒グラフで切り替え表示するための指標ごとの数値配列。
+    metrics = {
+        "count": [len(buckets[k]) for k in ordered],
+        "sum": [_num(_apply_aggregate("sum", buckets[k])) for k in ordered],
+        "avg": [_num(_apply_aggregate("avg", buckets[k])) for k in ordered],
+        "median": [_num(_median(buckets[k])) for k in ordered],
+        "max": [_num(_apply_aggregate("max", buckets[k])) for k in ordered],
+        "min": [_num(_apply_aggregate("min", buckets[k])) for k in ordered],
+    }
     stats = [_stats_for(buckets[k]) for k in ordered]
     return {
         "key": num_key,
         "label_key": label_key,
         "label": label_field.get("label") or label_field.get("flat_label") or label_key,
         "labels": ordered,
-        "sums": sums,
+        "metrics": metrics,
         "stats": stats,
     }
 

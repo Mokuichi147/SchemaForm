@@ -143,7 +143,7 @@
         {% if agg.groups %}
         <div class="mt-4 border-t border-slate-100 pt-3 js-group-block">
           <div class="flex flex-wrap items-center gap-2">
-            <span class="text-sm font-medium text-slate-700">ラベル別の集計</span>
+            <span class="text-sm font-medium text-slate-700">項目別の集計</span>
             {% if agg.groups|length > 1 %}
             <select class="js-group-select rounded border border-slate-300 px-2 py-1 text-sm">
               {% for g in agg.groups %}
@@ -153,15 +153,23 @@
             {% else %}
             <span class="text-sm text-slate-500">（{{ agg.groups[0].label }}別）</span>
             {% endif %}
+            <select class="js-group-metric rounded border border-slate-300 px-2 py-1 text-sm">
+              <option value="count">件数</option>
+              <option value="sum" selected>合計</option>
+              <option value="avg">平均</option>
+              <option value="median">中央値</option>
+              <option value="max">最大</option>
+              <option value="min">最小</option>
+            </select>
           </div>
           {% for g in agg.groups %}
           <div class="js-group-chart-wrap mt-2{% if not loop.first %} hidden{% endif %}">
             <div class="relative h-64">
-              <canvas class="js-grouped-chart" data-grouped="{{ {'labels': g.labels, 'sums': g.sums, 'stats': g.stats} | tojson_attr }}"></canvas>
+              <canvas class="js-grouped-chart" data-grouped="{{ {'labels': g.labels, 'metrics': g.metrics, 'stats': g.stats} | tojson_attr }}"></canvas>
             </div>
           </div>
           {% endfor %}
-          <p class="mt-1 text-xs text-slate-400">バーは合計。ホバーで件数・合計・平均・中央値・最大・最小を表示します。</p>
+          <p class="mt-1 text-xs text-slate-400">ホバーで件数・合計・平均・中央値・最大・最小を表示します。</p>
         </div>
         {% endif %}
       {% endif %}
@@ -478,22 +486,34 @@
       if (canvas.id) charts[canvas.id] = { chart, spec };
     });
 
-    // ---- ラベル別集計（数値をラベル値ごとに合計し、ホバーで全統計を表示） ----
+    // ---- 項目別集計（数値を項目の値ごとに集計し、指標を切り替えて棒グラフ表示） ----
     // 表示中のグラフだけを描画する（hidden な canvas は Chart.js のサイズが
     // 0 になるため、セレクトで選ばれて表示されたタイミングで遅延描画する）。
-    function renderGroupedCanvas(canvas) {
-      if (!canvas || canvas.dataset.rendered) return;
+    const GROUP_METRIC_LABELS = {
+      count: "件数", sum: "合計", avg: "平均", median: "中央値", max: "最大", min: "最小",
+    };
+
+    function renderGroupedCanvas(canvas, metric) {
+      if (!canvas) return;
       let spec;
       try { spec = JSON.parse(canvas.dataset.grouped); } catch (e) { return; }
-      canvas.dataset.rendered = "1";
+      const metricLabel = GROUP_METRIC_LABELS[metric] || metric;
+      const data = (spec.metrics && spec.metrics[metric]) || [];
+      const existing = groupedCharts.get(canvas);
+      if (existing) {
+        existing.data.datasets[0].label = metricLabel;
+        existing.data.datasets[0].data = data;
+        existing.update();
+        return;
+      }
       const colors = spec.labels.map((_, i) => palette[i % palette.length]);
-      new Chart(canvas, {
+      const chart = new Chart(canvas, {
         type: "bar",
         data: {
           labels: spec.labels,
           datasets: [{
-            label: "合計",
-            data: spec.sums,
+            label: metricLabel,
+            data: data,
             backgroundColor: colors,
             borderColor: colors,
             borderWidth: 1,
@@ -523,20 +543,34 @@
           scales: { y: { beginAtZero: true } },
         },
       });
+      groupedCharts.set(canvas, chart);
     }
 
+    const groupedCharts = new WeakMap();
     document.querySelectorAll(".js-group-block").forEach((block) => {
       const wraps = block.querySelectorAll(".js-group-chart-wrap");
+      const itemSelect = block.querySelector(".js-group-select");
+      const metricSelect = block.querySelector(".js-group-metric");
+      const currentMetric = () => (metricSelect ? metricSelect.value : "sum");
+      const visibleCanvas = () => {
+        const wrap = Array.from(wraps).find((w) => !w.classList.contains("hidden"));
+        return wrap ? wrap.querySelector("canvas.js-grouped-chart") : null;
+      };
       // 初期表示（先頭）のグラフを描画。
-      if (wraps[0]) renderGroupedCanvas(wraps[0].querySelector("canvas.js-grouped-chart"));
-      const select = block.querySelector(".js-group-select");
-      if (!select) return;
-      select.addEventListener("change", () => {
-        const idx = parseInt(select.value, 10);
-        wraps.forEach((w, i) => w.classList.toggle("hidden", i !== idx));
-        const wrap = wraps[idx];
-        if (wrap) renderGroupedCanvas(wrap.querySelector("canvas.js-grouped-chart"));
-      });
+      renderGroupedCanvas(visibleCanvas(), currentMetric());
+      if (itemSelect) {
+        itemSelect.addEventListener("change", () => {
+          const idx = parseInt(itemSelect.value, 10);
+          wraps.forEach((w, i) => w.classList.toggle("hidden", i !== idx));
+          const wrap = wraps[idx];
+          if (wrap) renderGroupedCanvas(wrap.querySelector("canvas.js-grouped-chart"), currentMetric());
+        });
+      }
+      if (metricSelect) {
+        metricSelect.addEventListener("change", () => {
+          renderGroupedCanvas(visibleCanvas(), currentMetric());
+        });
+      }
     });
 
     // 件数の推移（送信日時の間隔で粒度を自動選択、手動切替も可能）
