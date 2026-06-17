@@ -141,14 +141,6 @@
           <div class="text-3xl font-semibold tabular-nums text-slate-900">
             <span class="js-numeric-value">{{ agg.stats.count }}</span>
           </div>
-          <dl class="mt-3 grid grid-cols-3 gap-x-3 gap-y-1 text-xs text-slate-500">
-            <div><dt class="inline">件数</dt> <dd class="inline tabular-nums text-slate-700">{{ agg.stats.count }}</dd></div>
-            <div><dt class="inline">合計</dt> <dd class="inline tabular-nums text-slate-700">{{ agg.stats.sum }}</dd></div>
-            <div><dt class="inline">平均</dt> <dd class="inline tabular-nums text-slate-700">{{ agg.stats.avg }}</dd></div>
-            <div><dt class="inline">中央値</dt> <dd class="inline tabular-nums text-slate-700">{{ agg.stats.median }}</dd></div>
-            <div><dt class="inline">最大</dt> <dd class="inline tabular-nums text-slate-700">{{ agg.stats.max }}</dd></div>
-            <div><dt class="inline">最小</dt> <dd class="inline tabular-nums text-slate-700">{{ agg.stats.min }}</dd></div>
-          </dl>
         </div>
         {% if agg.histogram.labels %}
         <div class="relative mt-3 h-64">
