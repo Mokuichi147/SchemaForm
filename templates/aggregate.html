@@ -84,18 +84,6 @@
           <button type="button" class="js-chart-toggle rounded border border-slate-300 px-2 py-1" data-target="{{ canvas_id }}" data-mode="bar">棒</button>
           <button type="button" class="js-chart-toggle rounded border border-slate-300 px-2 py-1" data-target="{{ canvas_id }}" data-mode="pie">円</button>
         </div>
-        {% elif agg.kind == 'numeric' %}
-        <label class="flex items-center gap-1 text-xs text-slate-500">
-          <span>集計</span>
-          <select class="js-numeric-agg rounded border border-slate-300 px-2 py-1 text-sm" data-field="{{ agg.key }}">
-            <option value="count">件数</option>
-            <option value="sum">合計</option>
-            <option value="avg">平均</option>
-            <option value="median">中央値</option>
-            <option value="max">最大</option>
-            <option value="min">最小</option>
-          </select>
-        </label>
         {% endif %}
       </div>
 
@@ -137,11 +125,16 @@
         {% endif %}
         {% endif %}
       {% elif agg.kind == 'numeric' %}
-        <div class="mt-3" data-numeric-field="{{ agg.key }}" data-stats="{{ agg.stats | tojson_attr }}">
-          <div class="text-3xl font-semibold tabular-nums text-slate-900">
-            <span class="js-numeric-value">{{ agg.stats.count }}</span>
-          </div>
-        </div>
+        <table class="mt-3 w-full text-sm">
+          <tbody class="divide-y divide-slate-100">
+            <tr><td class="py-1 text-slate-500">件数</td><td class="py-1 text-right tabular-nums">{{ agg.stats.count }}</td></tr>
+            <tr><td class="py-1 text-slate-500">合計</td><td class="py-1 text-right tabular-nums">{{ agg.stats.sum }}</td></tr>
+            <tr><td class="py-1 text-slate-500">平均</td><td class="py-1 text-right tabular-nums">{{ agg.stats.avg }}</td></tr>
+            <tr><td class="py-1 text-slate-500">中央値</td><td class="py-1 text-right tabular-nums">{{ agg.stats.median }}</td></tr>
+            <tr><td class="py-1 text-slate-500">最大</td><td class="py-1 text-right tabular-nums">{{ agg.stats.max }}</td></tr>
+            <tr><td class="py-1 text-slate-500">最小</td><td class="py-1 text-right tabular-nums">{{ agg.stats.min }}</td></tr>
+          </tbody>
+        </table>
         {% if agg.histogram.labels %}
         <div class="relative mt-3 h-64">
           <canvas class="js-chart" data-chart="{{ {'type': 'bar', 'labels': agg.histogram.labels, 'counts': agg.histogram.counts, 'label': '件数', 'ckind': 'numeric', 'field': agg.key, 'flabel': agg.label, 'ranges': agg.histogram.ranges, 'mode': agg.histogram.mode} | tojson_attr }}"></canvas>
@@ -504,34 +497,6 @@
         entry.chart = new Chart(document.getElementById(button.dataset.target), buildConfig(nextSpec));
         entry.spec = nextSpec;
       });
-    });
-
-    // ---- 数値フィールドの集計方法切り替え（件数/合計/平均/中央値/最大/最小） ----
-    document.querySelectorAll(".js-numeric-agg").forEach((select) => {
-      const card = select.closest(".rounded-lg");
-      if (!card) return;
-      const container = card.querySelector("[data-numeric-field]");
-      const valueEl = card.querySelector(".js-numeric-value");
-      if (!container || !valueEl) return;
-      let stats = {};
-      try { stats = JSON.parse(container.dataset.stats || "{}"); } catch (e) {}
-      const storageKey = "sf-numagg:" + formId + ":" + select.dataset.field;
-
-      const apply = () => {
-        const v = stats[select.value];
-        valueEl.textContent = (v === undefined || v === null) ? "—" : v;
-      };
-
-      let saved = "";
-      try { saved = localStorage.getItem(storageKey) || ""; } catch (e) {}
-      if (saved && Array.from(select.options).some((o) => o.value === saved)) {
-        select.value = saved;
-      }
-      select.addEventListener("change", () => {
-        try { localStorage.setItem(storageKey, select.value); } catch (e) {}
-        apply();
-      });
-      apply();
     });
 
     // ---- グラフクリックによる絞り込み（ドリルダウン） ----
