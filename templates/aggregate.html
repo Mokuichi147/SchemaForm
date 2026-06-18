@@ -162,6 +162,10 @@
             <option value="max">最大</option>
             <option value="min">最小</option>
           </select>
+          <div class="flex gap-1 text-xs">
+            <button type="button" class="js-group-chart-toggle rounded border border-slate-300 px-2 py-1" data-mode="bar">棒</button>
+            <button type="button" class="js-group-chart-toggle rounded border border-slate-300 px-2 py-1" data-mode="pie">円</button>
+          </div>
         </div>
       </div>
       {% for g in agg.groups %}
@@ -171,7 +175,6 @@
         </div>
       </div>
       {% endfor %}
-      <p class="mt-1 text-xs text-slate-400">ホバーで件数・合計・平均・中央値・最大・最小を表示します。</p>
     </div>
     {% endif %}
     {% endfor %}
@@ -493,24 +496,57 @@
       count: "件数", sum: "合計", avg: "平均", median: "中央値", max: "最大", min: "最小",
     };
 
-    function renderGroupedCanvas(canvas, metric) {
+    function groupedTooltipLabel(ctx) {
+      const arr = ctx.chart.$groupStats || [];
+      const s = arr[ctx.dataIndex] || {};
+      return [
+        "件数: " + (s.count ?? "—"),
+        "合計: " + (s.sum ?? "—"),
+        "平均: " + (s.avg ?? "—"),
+        "中央値: " + (s.median ?? "—"),
+        "最大: " + (s.max ?? "—"),
+        "最小: " + (s.min ?? "—"),
+      ];
+    }
+
+    function renderGroupedCanvas(canvas, metric, type) {
       if (!canvas) return;
       let spec;
       try { spec = JSON.parse(canvas.dataset.grouped); } catch (e) { return; }
+      type = type || "bar";
+      const isPie = type === "pie";
       const metricLabel = GROUP_METRIC_LABELS[metric] || metric;
-      const data = (spec.metrics && spec.metrics[metric]) || [];
+      // ラベルごとに色を固定し、棒・円で同じ項目が同色になるようにする。
+      const colorByLabel = {};
+      spec.labels.forEach((label, i) => { colorByLabel[label] = palette[i % palette.length]; });
+      let rows = spec.labels.map((label, i) => ({
+        label,
+        value: (spec.metrics && spec.metrics[metric] || [])[i],
+        stat: (spec.stats || [])[i],
+      }));
+      if (isPie) rows = rows.slice().sort((a, b) => (b.value || 0) - (a.value || 0));
+      const labels = rows.map((r) => r.label);
+      const data = rows.map((r) => r.value);
+      const stats = rows.map((r) => r.stat);
+      const colors = rows.map((r) => colorByLabel[r.label]);
+
       const existing = groupedCharts.get(canvas);
-      if (existing) {
+      if (existing && existing.config.type === type) {
+        existing.data.labels = labels;
         existing.data.datasets[0].label = metricLabel;
         existing.data.datasets[0].data = data;
+        existing.data.datasets[0].backgroundColor = colors;
+        existing.data.datasets[0].borderColor = colors;
+        existing.$groupStats = stats;
         existing.update();
         return;
       }
-      const colors = spec.labels.map((_, i) => palette[i % palette.length]);
+      if (existing) existing.destroy();
+
       const chart = new Chart(canvas, {
-        type: "bar",
+        type: type,
         data: {
-          labels: spec.labels,
+          labels: labels,
           datasets: [{
             label: metricLabel,
             data: data,
@@ -523,26 +559,13 @@
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { display: false },
-            tooltip: {
-              callbacks: {
-                label: (ctx) => {
-                  const s = (spec.stats && spec.stats[ctx.dataIndex]) || {};
-                  return [
-                    "件数: " + (s.count ?? "—"),
-                    "合計: " + (s.sum ?? "—"),
-                    "平均: " + (s.avg ?? "—"),
-                    "中央値: " + (s.median ?? "—"),
-                    "最大: " + (s.max ?? "—"),
-                    "最小: " + (s.min ?? "—"),
-                  ];
-                },
-              },
-            },
+            legend: { display: isPie },
+            tooltip: { callbacks: { label: groupedTooltipLabel } },
           },
-          scales: { y: { beginAtZero: true } },
+          scales: isPie ? {} : { y: { beginAtZero: true } },
         },
       });
+      chart.$groupStats = stats;
       groupedCharts.set(canvas, chart);
     }
 
@@ -551,26 +574,34 @@
       const wraps = block.querySelectorAll(".js-group-chart-wrap");
       const itemSelect = block.querySelector(".js-group-select");
       const metricSelect = block.querySelector(".js-group-metric");
+      const toggles = block.querySelectorAll(".js-group-chart-toggle");
+      let currentType = "bar";
       const currentMetric = () => (metricSelect ? metricSelect.value : "sum");
       const visibleCanvas = () => {
         const wrap = Array.from(wraps).find((w) => !w.classList.contains("hidden"));
         return wrap ? wrap.querySelector("canvas.js-grouped-chart") : null;
       };
       // 初期表示（先頭）のグラフを描画。
-      renderGroupedCanvas(visibleCanvas(), currentMetric());
+      renderGroupedCanvas(visibleCanvas(), currentMetric(), currentType);
       if (itemSelect) {
         itemSelect.addEventListener("change", () => {
           const idx = parseInt(itemSelect.value, 10);
           wraps.forEach((w, i) => w.classList.toggle("hidden", i !== idx));
           const wrap = wraps[idx];
-          if (wrap) renderGroupedCanvas(wrap.querySelector("canvas.js-grouped-chart"), currentMetric());
+          if (wrap) renderGroupedCanvas(wrap.querySelector("canvas.js-grouped-chart"), currentMetric(), currentType);
         });
       }
       if (metricSelect) {
         metricSelect.addEventListener("change", () => {
-          renderGroupedCanvas(visibleCanvas(), currentMetric());
+          renderGroupedCanvas(visibleCanvas(), currentMetric(), currentType);
         });
       }
+      toggles.forEach((button) => {
+        button.addEventListener("click", () => {
+          currentType = button.dataset.mode === "pie" ? "pie" : "bar";
+          renderGroupedCanvas(visibleCanvas(), currentMetric(), currentType);
+        });
+      });
     });
 
     // 件数の推移（送信日時の間隔で粒度を自動選択、手動切替も可能）
