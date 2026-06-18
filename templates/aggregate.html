@@ -125,15 +125,14 @@
         {% endif %}
         {% endif %}
       {% elif agg.kind == 'numeric' %}
-        <table class="mt-3 w-full text-sm">
-          <tbody class="divide-y divide-slate-100">
-            <tr><td class="py-1 text-slate-500">件数</td><td class="py-1 text-right tabular-nums">{{ agg.stats.count }}</td></tr>
-            <tr><td class="py-1 text-slate-500">合計</td><td class="py-1 text-right tabular-nums">{{ agg.stats.sum }}</td></tr>
-            <tr><td class="py-1 text-slate-500">平均</td><td class="py-1 text-right tabular-nums">{{ agg.stats.avg }}</td></tr>
-            <tr><td class="py-1 text-slate-500">最大</td><td class="py-1 text-right tabular-nums">{{ agg.stats.max }}</td></tr>
-            <tr><td class="py-1 text-slate-500">最小</td><td class="py-1 text-right tabular-nums">{{ agg.stats.min }}</td></tr>
-          </tbody>
-        </table>
+        <dl class="mt-3 grid grid-cols-3 gap-x-4 gap-y-1 text-sm">
+          <div class="flex items-baseline justify-between gap-2"><dt class="text-slate-500">件数</dt><dd class="tabular-nums">{{ agg.stats.count }}</dd></div>
+          <div class="flex items-baseline justify-between gap-2"><dt class="text-slate-500">合計</dt><dd class="tabular-nums">{{ agg.stats.sum }}</dd></div>
+          <div class="flex items-baseline justify-between gap-2"><dt class="text-slate-500">平均</dt><dd class="tabular-nums">{{ agg.stats.avg }}</dd></div>
+          <div class="flex items-baseline justify-between gap-2"><dt class="text-slate-500">中央値</dt><dd class="tabular-nums">{{ agg.stats.median }}</dd></div>
+          <div class="flex items-baseline justify-between gap-2"><dt class="text-slate-500">最大</dt><dd class="tabular-nums">{{ agg.stats.max }}</dd></div>
+          <div class="flex items-baseline justify-between gap-2"><dt class="text-slate-500">最小</dt><dd class="tabular-nums">{{ agg.stats.min }}</dd></div>
+        </dl>
         {% if agg.histogram.labels %}
         <div class="relative mt-3 h-64">
           <canvas class="js-chart" data-chart="{{ {'type': 'bar', 'labels': agg.histogram.labels, 'counts': agg.histogram.counts, 'label': '件数', 'ckind': 'numeric', 'field': agg.key, 'flabel': agg.label, 'ranges': agg.histogram.ranges, 'mode': agg.histogram.mode} | tojson_attr }}"></canvas>
@@ -141,6 +140,43 @@
         {% endif %}
       {% endif %}
     </div>
+    {% if agg.kind == 'numeric' and agg.groups %}
+    <div class="rounded-lg border border-slate-200 bg-white p-4 js-group-block">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <h2 class="text-base font-semibold text-slate-900">{{ agg.label }}（項目別）</h2>
+        <div class="flex flex-wrap items-center gap-2">
+          {% if agg.groups|length > 1 %}
+          <select class="js-group-select rounded border border-slate-300 px-2 py-1 text-sm">
+            {% for g in agg.groups %}
+            <option value="{{ loop.index0 }}">{{ g.label }}別</option>
+            {% endfor %}
+          </select>
+          {% else %}
+          <span class="text-sm text-slate-500">{{ agg.groups[0].label }}別</span>
+          {% endif %}
+          <select class="js-group-metric rounded border border-slate-300 px-2 py-1 text-sm">
+            <option value="count">件数</option>
+            <option value="sum" selected>合計</option>
+            <option value="avg">平均</option>
+            <option value="median">中央値</option>
+            <option value="max">最大</option>
+            <option value="min">最小</option>
+          </select>
+          <div class="flex gap-1 text-xs">
+            <button type="button" class="js-group-chart-toggle rounded border border-slate-300 px-2 py-1" data-mode="bar">棒</button>
+            <button type="button" class="js-group-chart-toggle rounded border border-slate-300 px-2 py-1" data-mode="pie">円</button>
+          </div>
+        </div>
+      </div>
+      {% for g in agg.groups %}
+      <div class="js-group-chart-wrap mt-3{% if not loop.first %} hidden{% endif %}">
+        <div class="relative h-64">
+          <canvas class="js-grouped-chart" data-grouped="{{ {'labels': g.labels, 'metrics': g.metrics, 'stats': g.stats} | tojson_attr }}"></canvas>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
     {% endfor %}
 
     <div id="correct-dist-section" class="hidden rounded-lg border border-slate-200 bg-white p-4">
@@ -451,6 +487,121 @@
       try { spec = JSON.parse(canvas.dataset.chart); } catch (e) { return; }
       const chart = new Chart(canvas, buildConfig(spec));
       if (canvas.id) charts[canvas.id] = { chart, spec };
+    });
+
+    // ---- 項目別集計（数値を項目の値ごとに集計し、指標を切り替えて棒グラフ表示） ----
+    // 表示中のグラフだけを描画する（hidden な canvas は Chart.js のサイズが
+    // 0 になるため、セレクトで選ばれて表示されたタイミングで遅延描画する）。
+    const GROUP_METRIC_LABELS = {
+      count: "件数", sum: "合計", avg: "平均", median: "中央値", max: "最大", min: "最小",
+    };
+
+    function groupedTooltipLabel(ctx) {
+      const arr = ctx.chart.$groupStats || [];
+      const s = arr[ctx.dataIndex] || {};
+      return [
+        "件数: " + (s.count ?? "—"),
+        "合計: " + (s.sum ?? "—"),
+        "平均: " + (s.avg ?? "—"),
+        "中央値: " + (s.median ?? "—"),
+        "最大: " + (s.max ?? "—"),
+        "最小: " + (s.min ?? "—"),
+      ];
+    }
+
+    function renderGroupedCanvas(canvas, metric, type) {
+      if (!canvas) return;
+      let spec;
+      try { spec = JSON.parse(canvas.dataset.grouped); } catch (e) { return; }
+      type = type || "bar";
+      const isPie = type === "pie";
+      const metricLabel = GROUP_METRIC_LABELS[metric] || metric;
+      // ラベルごとに色を固定し、棒・円で同じ項目が同色になるようにする。
+      const colorByLabel = {};
+      spec.labels.forEach((label, i) => { colorByLabel[label] = palette[i % palette.length]; });
+      let rows = spec.labels.map((label, i) => ({
+        label,
+        value: (spec.metrics && spec.metrics[metric] || [])[i],
+        stat: (spec.stats || [])[i],
+      }));
+      if (isPie) rows = rows.slice().sort((a, b) => (b.value || 0) - (a.value || 0));
+      const labels = rows.map((r) => r.label);
+      const data = rows.map((r) => r.value);
+      const stats = rows.map((r) => r.stat);
+      const colors = rows.map((r) => colorByLabel[r.label]);
+
+      const existing = groupedCharts.get(canvas);
+      if (existing && existing.config.type === type) {
+        existing.data.labels = labels;
+        existing.data.datasets[0].label = metricLabel;
+        existing.data.datasets[0].data = data;
+        existing.data.datasets[0].backgroundColor = colors;
+        existing.data.datasets[0].borderColor = colors;
+        existing.$groupStats = stats;
+        existing.update();
+        return;
+      }
+      if (existing) existing.destroy();
+
+      const chart = new Chart(canvas, {
+        type: type,
+        data: {
+          labels: labels,
+          datasets: [{
+            label: metricLabel,
+            data: data,
+            backgroundColor: colors,
+            borderColor: colors,
+            borderWidth: 1,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: isPie },
+            tooltip: { callbacks: { label: groupedTooltipLabel } },
+          },
+          scales: isPie ? {} : { y: { beginAtZero: true } },
+        },
+      });
+      chart.$groupStats = stats;
+      groupedCharts.set(canvas, chart);
+    }
+
+    const groupedCharts = new WeakMap();
+    document.querySelectorAll(".js-group-block").forEach((block) => {
+      const wraps = block.querySelectorAll(".js-group-chart-wrap");
+      const itemSelect = block.querySelector(".js-group-select");
+      const metricSelect = block.querySelector(".js-group-metric");
+      const toggles = block.querySelectorAll(".js-group-chart-toggle");
+      let currentType = "bar";
+      const currentMetric = () => (metricSelect ? metricSelect.value : "sum");
+      const visibleCanvas = () => {
+        const wrap = Array.from(wraps).find((w) => !w.classList.contains("hidden"));
+        return wrap ? wrap.querySelector("canvas.js-grouped-chart") : null;
+      };
+      // 初期表示（先頭）のグラフを描画。
+      renderGroupedCanvas(visibleCanvas(), currentMetric(), currentType);
+      if (itemSelect) {
+        itemSelect.addEventListener("change", () => {
+          const idx = parseInt(itemSelect.value, 10);
+          wraps.forEach((w, i) => w.classList.toggle("hidden", i !== idx));
+          const wrap = wraps[idx];
+          if (wrap) renderGroupedCanvas(wrap.querySelector("canvas.js-grouped-chart"), currentMetric(), currentType);
+        });
+      }
+      if (metricSelect) {
+        metricSelect.addEventListener("change", () => {
+          renderGroupedCanvas(visibleCanvas(), currentMetric(), currentType);
+        });
+      }
+      toggles.forEach((button) => {
+        button.addEventListener("click", () => {
+          currentType = button.dataset.mode === "pie" ? "pie" : "bar";
+          renderGroupedCanvas(visibleCanvas(), currentMetric(), currentType);
+        });
+      });
     });
 
     // 件数の推移（送信日時の間隔で粒度を自動選択、手動切替も可能）

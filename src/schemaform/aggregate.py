@@ -8,6 +8,10 @@ from schemaform.fields import flatten_fields, get_nested_value
 
 NUMERIC_TYPES = {"number", "integer", "calculated"}
 TRUTHY_STRINGS = {"true", "1", "yes", "on"}
+# ラベル別集計の「ラベル」に使わないフィールド型（数値とファイルは対象外）。
+NON_LABEL_TYPES = NUMERIC_TYPES | {"file"}
+# ラベル別集計の棒グラフに表示するラベルの最大数（超過分は「その他」へ集約）。
+MAX_GROUP_LABELS = 30
 
 
 def _format_num(value: float) -> str:
@@ -20,6 +24,17 @@ def _format_num(value: float) -> str:
 
 def _format_stat(value: float | None) -> str:
     return "—" if value is None else _format_num(value)
+
+
+def _median(values: list[float]) -> float | None:
+    """数値リストの中央値を返す（空なら None）。"""
+    if not values:
+        return None
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2 == 1:
+        return ordered[mid]
+    return (ordered[mid - 1] + ordered[mid]) / 2
 
 
 def _iter_field_values(
@@ -164,27 +179,143 @@ def _distribution_boolean(
     }
 
 
+def _stats_for(values: list[float]) -> dict[str, str]:
+    """数値リストから表示用の統計値（件数/合計/平均/中央値/最大/最小）を作る。"""
+    return {
+        "count": str(int(_apply_aggregate("count", values))),
+        "sum": _format_stat(_apply_aggregate("sum", values)),
+        "avg": _format_stat(_apply_aggregate("avg", values)),
+        "median": _format_stat(_median(values)),
+        "min": _format_stat(_apply_aggregate("min", values)),
+        "max": _format_stat(_apply_aggregate("max", values)),
+    }
+
+
 def _numeric(
     field: dict[str, Any], submissions: list[dict[str, Any]], flat_key: str
 ) -> dict[str, Any]:
     values: list[float] = []
     for value in _iter_field_values(submissions, flat_key):
         values.extend(_collect_numeric_values(value))
-    stats = {
-        "count": str(int(_apply_aggregate("count", values))),
-        "sum": _format_stat(_apply_aggregate("sum", values)),
-        "avg": _format_stat(_apply_aggregate("avg", values)),
-        "min": _format_stat(_apply_aggregate("min", values)),
-        "max": _format_stat(_apply_aggregate("max", values)),
-    }
     histogram = build_histogram(values, is_integer=field.get("type") == "integer")
     return {
         "key": flat_key,
         "label": field["flat_label"],
         "kind": "numeric",
-        "stats": stats,
+        "stats": _stats_for(values),
         "histogram": histogram,
     }
+
+
+def _parent_prefix(flat_key: str) -> str:
+    """ドット区切りの flat_key から親グループのプレフィックスを返す（無ければ空）。"""
+    return flat_key.rsplit(".", 1)[0] if "." in flat_key else ""
+
+
+def _group_label_str(value: Any, field: dict[str, Any]) -> str:
+    """ラベル別集計のグループキー（表示文字列）に正規化する。"""
+    if value is None or value == "":
+        return "(未入力)"
+    if field.get("type") == "boolean":
+        truthy = value is True or (
+            isinstance(value, str) and value.lower() in TRUTHY_STRINGS
+        )
+        return "true" if truthy else "false"
+    return str(value)
+
+
+def _grouped_breakdown(
+    submissions: list[dict[str, Any]],
+    num_key: str,
+    label_field: dict[str, Any],
+    label_key: str,
+) -> dict[str, Any] | None:
+    """数値フィールドを、同じグループ内のラベルフィールドの値ごとに集計する。
+
+    ラベル値ごとに数値を束ね、件数/合計/平均/中央値/最大/最小を算出する。バーの
+    高さには合計を使い、ホバー時のツールチップに全統計値を表示する。"""
+    buckets: dict[str, list[float]] = {}
+    order: list[str] = []
+    for submission in submissions:
+        data = submission.get("data_json", {})
+        nums = _collect_numeric_values(get_nested_value(data, num_key))
+        if not nums:
+            continue
+        raw = get_nested_value(data, label_key)
+        labels = raw if isinstance(raw, list) else [raw]
+        for lab in labels:
+            key = _group_label_str(lab, label_field)
+            if key not in buckets:
+                buckets[key] = []
+                order.append(key)
+            buckets[key].extend(nums)
+    if not buckets:
+        return None
+
+    # バーは合計の降順で並べ、項目が多すぎる場合は末尾を「その他」へまとめる。
+    ordered = sorted(order, key=lambda k: sum(buckets[k]), reverse=True)
+    if len(ordered) > MAX_GROUP_LABELS:
+        head = ordered[: MAX_GROUP_LABELS - 1]
+        rest = ordered[MAX_GROUP_LABELS - 1 :]
+        other: list[float] = []
+        for k in rest:
+            other.extend(buckets[k])
+        buckets["その他"] = other
+        ordered = head + ["その他"]
+
+    def _num(value: float | None) -> float:
+        return round(value, 2) if value is not None else 0
+
+    # 棒グラフで切り替え表示するための指標ごとの数値配列。
+    metrics = {
+        "count": [len(buckets[k]) for k in ordered],
+        "sum": [_num(_apply_aggregate("sum", buckets[k])) for k in ordered],
+        "avg": [_num(_apply_aggregate("avg", buckets[k])) for k in ordered],
+        "median": [_num(_median(buckets[k])) for k in ordered],
+        "max": [_num(_apply_aggregate("max", buckets[k])) for k in ordered],
+        "min": [_num(_apply_aggregate("min", buckets[k])) for k in ordered],
+    }
+    stats = [_stats_for(buckets[k]) for k in ordered]
+    return {
+        "key": num_key,
+        "label_key": label_key,
+        "label": label_field.get("label") or label_field.get("flat_label") or label_key,
+        "labels": ordered,
+        "metrics": metrics,
+        "stats": stats,
+    }
+
+
+def _grouped_breakdowns(
+    flat_fields: list[dict[str, Any]],
+    submissions: list[dict[str, Any]],
+    num_key: str,
+) -> list[dict[str, Any]]:
+    """数値フィールドを、数値以外のフィールドの値ごとに集計（Group By）する。
+
+    「グループ化」はフォーム上のグループフィールドではなく Group By の意味で、
+    集計の対象は次のいずれかでペアが成立する組み合わせに限る:
+
+    * ラベルがトップレベル（全行で単一値）。任意の数値を集計できる。
+    * ラベルと数値が同じグループ内（同一行でペアになる）。
+
+    別々の配列グループ同士は行展開でデカルト積になり件数が水増しされるため除外する。
+    """
+    num_parent = _parent_prefix(num_key)
+    breakdowns: list[dict[str, Any]] = []
+    for field in flat_fields:
+        flat_key = field["flat_key"]
+        if flat_key == num_key:
+            continue
+        if field.get("type") in NON_LABEL_TYPES:
+            continue
+        label_parent = _parent_prefix(flat_key)
+        if label_parent != "" and label_parent != num_parent:
+            continue
+        bd = _grouped_breakdown(submissions, num_key, field, flat_key)
+        if bd:
+            breakdowns.append(bd)
+    return breakdowns
 
 
 def to_utc_iso(value: Any) -> str | None:
@@ -237,7 +368,9 @@ def aggregate_submissions(
         elif field_type == "boolean":
             aggregations.append(_distribution_boolean(field, submissions, flat_key))
         elif field_type in NUMERIC_TYPES:
-            aggregations.append(_numeric(field, submissions, flat_key))
+            agg = _numeric(field, submissions, flat_key)
+            agg["groups"] = _grouped_breakdowns(flat_fields, submissions, flat_key)
+            aggregations.append(agg)
 
     distinct = _distinct_submissions(submissions)
     return {
