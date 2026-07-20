@@ -125,7 +125,7 @@ async def list_submissions(request: Request, form_id: str) -> HTMLResponse:
     if not form.get("allow_view_others", True) and not is_manager_view:
         await request.app.state.auth_provider.require_login(request)
 
-    filter_user_id: int | None = None
+    filter_user_id: str | None = None
     if not is_manager_view and not form.get("allow_view_others", True):
         filter_user_id = current_user.get("id") if current_user else None
 

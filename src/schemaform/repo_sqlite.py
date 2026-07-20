@@ -482,7 +482,7 @@ class SQLiteStorage:
                 )
             if "user_id" not in sub_columns:
                 conn.execute(
-                    text("ALTER TABLE submissions ADD COLUMN user_id INTEGER")
+                    text("ALTER TABLE submissions ADD COLUMN user_id TEXT")
                 )
             if "username" not in sub_columns:
                 conn.execute(
