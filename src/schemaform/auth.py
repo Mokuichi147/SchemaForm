@@ -135,7 +135,7 @@ class UserPermissionAuthProvider:
 
     async def _verify_and_fetch_user(
         self, token: str
-    ) -> tuple[int, str, str] | None:
+    ) -> tuple[str, str, str] | None:
         try:
             user = await self._db.verify_token_and_get_user(token)
         except Exception:
@@ -145,7 +145,7 @@ class UserPermissionAuthProvider:
         return (user.id, user.username, user.display_name or "")
 
     async def _fetch_groups(
-        self, user_id: int, token: str
+        self, user_id: str, token: str
     ) -> list[tuple[int, str, bool]]:
         try:
             groups = await self._db.groups.get_user_groups(user_id, token=token)
@@ -195,7 +195,7 @@ class UserPermissionAuthProvider:
             raise HTTPException(status_code=403, detail="管理者権限が必要です")
 
     async def update_display_name(
-        self, user_id: int, token: str, display_name: str
+        self, user_id: str, token: str, display_name: str
     ) -> bool:
         """表示名（user-permission の display_name）を更新する。成功時 True。"""
         try:
@@ -208,7 +208,7 @@ class UserPermissionAuthProvider:
 
     async def change_password(
         self,
-        user_id: int,
+        user_id: str,
         username: str,
         token: str,
         current_password: str,
@@ -305,7 +305,7 @@ class UserPermissionAuthProvider:
         ]
 
     async def add_group_member(
-        self, group_id: int, user_id: int, token: str
+        self, group_id: int, user_id: str, token: str
     ) -> bool:
         try:
             return await self._db.groups.add_user(group_id, user_id, token=token)
@@ -313,7 +313,7 @@ class UserPermissionAuthProvider:
             return False
 
     async def remove_group_member(
-        self, group_id: int, user_id: int, token: str
+        self, group_id: int, user_id: str, token: str
     ) -> bool:
         try:
             return await self._db.groups.remove_user(

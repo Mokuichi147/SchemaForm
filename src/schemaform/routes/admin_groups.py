@@ -17,7 +17,7 @@ from schemaform.activity import (
 router = APIRouter()
 
 
-async def _user_label(auth: Any, user_id: int, token: str) -> str:
+async def _user_label(auth: Any, user_id: str, token: str) -> str:
     """操作ログ用にユーザーの表示名を解決する。失敗時は ID を返す。"""
     try:
         for user in await auth.list_users(token):
@@ -200,7 +200,7 @@ async def update_group(
 async def add_member(
     request: Request,
     group_id: int,
-    user_id: int = Form(...),
+    user_id: str = Form(...),
     _: Any = Depends(admin_guard),
 ) -> RedirectResponse:
     auth = request.app.state.auth_provider
@@ -279,7 +279,7 @@ async def update_permissions(
 async def remove_member(
     request: Request,
     group_id: int,
-    user_id: int,
+    user_id: str,
     _: Any = Depends(admin_guard),
 ) -> RedirectResponse:
     auth = request.app.state.auth_provider

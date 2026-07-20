@@ -290,7 +290,7 @@ def log_activity(
     submission_id: str | None = None,
     detail: str = "",
     username: str | None = None,
-    user_id: int | None = None,
+    user_id: str | None = None,
 ) -> None:
     """操作ログを 1 件記録する。記録失敗が本来の操作を妨げないよう例外は握り潰す。
 

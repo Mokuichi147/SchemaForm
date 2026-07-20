@@ -66,9 +66,9 @@ async def form_editor_guard(request: Request, form_id: str) -> None:
         )
 
 
-async def resolve_user_display_map(request: Request) -> dict[int, str]:
+async def resolve_user_display_map(request: Request) -> dict[str, str]:
     """user_id → 表示名 のマップを認証プロバイダから構築する。"""
-    user_display_map: dict[int, str] = {}
+    user_display_map: dict[str, str] = {}
     auth = request.app.state.auth_provider
     current_user = getattr(request.state, "current_user", None)
     list_users = getattr(auth, "list_users", None)
@@ -85,7 +85,7 @@ async def resolve_user_display_map(request: Request) -> dict[int, str]:
     return user_display_map
 
 
-def resolve_user_label(item: dict[str, Any], user_display_map: dict[int, str]) -> str:
+def resolve_user_label(item: dict[str, Any], user_display_map: dict[str, str]) -> str:
     uid = item.get("user_id")
     if uid in user_display_map and user_display_map[uid]:
         return user_display_map[uid]
@@ -394,7 +394,7 @@ async def gather_filtered_submissions(
     request: Request,
     form_id: str,
     *,
-    filter_user_id: int | None = None,
+    filter_user_id: str | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]], dict[str, str]]:
     """フォーム・フィールド定義と、現在のクエリでフィルター済みの送信一覧、
     ファイル名マップを返す。
@@ -480,7 +480,7 @@ async def build_submission_list_context(
     form_id: str,
     *,
     include_user_display_map: bool,
-    filter_user_id: int | None = None,
+    filter_user_id: str | None = None,
 ) -> dict[str, Any]:
     """共通の送信一覧コンテキストを構築する。"""
     storage = request.app.state.storage
