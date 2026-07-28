@@ -16,6 +16,12 @@ from fastapi.responses import (
     Response,
 )
 
+from schemaform.aggregate import (
+    DRILL_PARAM,
+    apply_drill,
+    master_label_map,
+    parse_drill,
+)
 from schemaform.calculated import evaluate_formula
 from schemaform.file_signing import file_url_builder
 from schemaform.fields import (
@@ -42,6 +48,12 @@ from schemaform.master import (
     validate_master_references,
 )
 from schemaform.schema import fields_from_schema
+from schemaform.scoring import (
+    CORRECT_PARAM,
+    correctness_cells,
+    parse_correct_map,
+    score_of,
+)
 from schemaform.utils import new_ulid, now_utc
 
 router = APIRouter()
@@ -424,20 +436,21 @@ async def gather_filtered_submissions(
     return form, fields, filtered, file_names
 
 
-async def build_full_table_context(
+def build_table_context(
     request: Request,
     fields: list[dict[str, Any]],
     submissions: list[dict[str, Any]],
+    display_columns: list[dict[str, Any]],
+    master_lookup_by_field: dict[str, dict[str, dict[str, Any]]],
+    user_display_map: dict[str, str],
 ) -> dict[str, Any]:
-    """ページングなしで送信一覧と同じ表示行を構築する（集計ページの元データ表示用）。
+    """与えられた送信を、送信一覧と同じ表示行に変換する（集計ページの元データ表示用）。
 
-    送信一覧の表示列／値整形ロジックをそのまま再利用し、与えられた送信集合を
-    すべて行に変換する。送信ユーザーは認証プロバイダの表示名へ解決する。
+    表示列・ユーザー表示名は呼び出し側が用意したものを使う（集計側でも同じものを
+    使い回すため）。ファイル情報は渡された送信ぶんだけ解決するので、ページングした
+    行だけを渡せばその分しか読み込まない。
     """
     storage = request.app.state.storage
-    display_columns, master_lookup_by_field = build_submission_display_columns(
-        storage, fields
-    )
     file_ids = collect_file_ids(submissions, fields) | (
         collect_submission_master_display_file_ids(
             submissions, display_columns, master_lookup_by_field
@@ -445,7 +458,6 @@ async def build_full_table_context(
     )
     file_infos = resolve_file_infos(storage.files, file_ids, file_url_builder(request))
     file_names = {fid: info["name"] for fid, info in file_infos.items()}
-    user_display_map = await resolve_user_display_map(request)
 
     rows: list[dict[str, Any]] = []
     for item in submissions:
@@ -455,7 +467,8 @@ async def build_full_table_context(
                 "id": item["id"],
                 "created_at": item.get("created_at"),
                 "updated_at": item.get("updated_at"),
-                "username": resolve_user_label(item, user_display_map),
+                "username": item.get("_display_username")
+                or resolve_user_label(item, user_display_map),
                 "values": build_submission_row_values(
                     data,
                     display_columns,
@@ -1051,72 +1064,6 @@ def _serialize_export(
     return output.getvalue(), "text/csv; charset=utf-8", "csv"
 
 
-def _parse_correct_map(raw: str | None) -> dict[str, dict[str, Any]]:
-    """集計ページから渡される正解指定(JSON)をパースする。
-
-    形式: {flat_key: {"mode": "single", "value": str}}
-          {flat_key: {"mode": "array", "list": [str], "ordered": bool}}
-    enumフィールドの正答数・正答率をダウンロードに含めるために使う。"""
-    if not raw:
-        return {}
-    try:
-        parsed = json.loads(raw)
-    except (json.JSONDecodeError, ValueError, TypeError):
-        return {}
-    if not isinstance(parsed, dict):
-        return {}
-    result: dict[str, dict[str, Any]] = {}
-    for key, info in parsed.items():
-        if not isinstance(info, dict):
-            continue
-        if info.get("mode") == "array":
-            values = info.get("list")
-            if isinstance(values, list) and values:
-                result[str(key)] = {
-                    "mode": "array",
-                    "list": [str(v) for v in values],
-                    "ordered": bool(info.get("ordered")),
-                }
-        else:
-            value = info.get("value")
-            if value not in (None, ""):
-                result[str(key)] = {"mode": "single", "value": str(value)}
-    return result
-
-
-def _row_is_correct(
-    data: dict[str, Any], flat_key: str, info: dict[str, Any]
-) -> bool:
-    value = get_nested_value(data, flat_key)
-    if value is None:
-        return False
-    if info["mode"] == "array":
-        actual = [str(v) for v in (value if isinstance(value, list) else [value])]
-        expected = info["list"]
-        if len(actual) != len(expected):
-            return False
-        if info.get("ordered"):
-            return actual == expected
-        return sorted(actual) == sorted(expected)
-    if isinstance(value, list):
-        return False
-    return str(value) == info["value"]
-
-
-def _correctness_cells(
-    data: dict[str, Any], correct_map: dict[str, dict[str, Any]]
-) -> tuple[str, str]:
-    """1送信あたりの (正答数, 正答率) セル文字列を返す。正答数は個数のみ、
-    正答率は%なしの数値。画面表示と同じ表記。"""
-    total = len(correct_map)
-    if total == 0:
-        return "", ""
-    correct = sum(
-        1 for key, info in correct_map.items() if _row_is_correct(data, key, info)
-    )
-    return str(correct), str(round(correct / total * 100))
-
-
 @router.get("/forms/{form_id}/export", tags=["admin"])
 async def export_submissions(
     request: Request, form_id: str, _: Any = Depends(form_editor_guard)
@@ -1125,14 +1072,19 @@ async def export_submissions(
     form, fields, filtered, file_names = await gather_filtered_submissions(
         request, form_id
     )
-    # 集計ページのグラフクリックによる絞り込み結果のみをダウンロードするため、
-    # 表示中の送信ID(ids)が指定されていればその送信に限定する。
-    ids_param = request.query_params.get("ids")
-    if ids_param is not None:
-        id_set = {token for token in ids_param.split(",") if token}
-        filtered = [s for s in filtered if s.get("id") in id_set]
     display_columns, master_lookup_by_field = build_submission_display_columns(
         storage, fields
+    )
+
+    correct_map = parse_correct_map(request.query_params.get(CORRECT_PARAM))
+
+    # 集計ページのグラフクリックによる絞り込みを、画面とまったく同じ条件で再現する。
+    filtered = apply_drill(
+        filtered,
+        fields,
+        parse_drill(request.query_params.get(DRILL_PARAM)),
+        master_labels=master_label_map(master_lookup_by_field),
+        score_of=lambda item: score_of(item.get("data_json", {}), correct_map),
     )
 
     user_display_map = await resolve_user_display_map(request)
@@ -1143,7 +1095,6 @@ async def export_submissions(
     order = request.query_params.get("order", "desc")
     sort_submissions(filtered, sort, order, display_columns, master_lookup_by_field)
 
-    correct_map = _parse_correct_map(request.query_params.get("correct"))
     include_correct = bool(correct_map)
 
     def _fmt(value: Any) -> str:
@@ -1176,7 +1127,7 @@ async def export_submissions(
             submission.get("_display_username") or "",
         ]
         if include_correct:
-            row += list(_correctness_cells(data, correct_map))
+            row += list(correctness_cells(data, correct_map))
         row += build_submission_row_values(
             data,
             display_columns,
