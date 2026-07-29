@@ -466,20 +466,28 @@ def build_category_block(
             counts[label] += 1
 
     is_text = field_type == "string"
+    # 選択肢・真偽は取りうる値が決まっている（未使用の選択肢も0件で並べる）。
+    has_fixed_options = field_type in {"enum", "boolean"}
     items, other = _category_items(
         counts,
         order,
         flat_key,
         max_labels=MAX_TEXT_LABELS if is_text else MAX_CATEGORY_LABELS,
         # 定義順のある選択肢・真偽以外は件数の多い順に並べる。
-        sort_by_count=field_type not in {"enum", "boolean"},
+        sort_by_count=not has_fixed_options,
         # 自由記述は「その他」が巨大な棒になって上位が読めなくなるため、
         # グラフには入れず件数だけ添える。
         keep_other=not is_text,
     )
 
+    # 実際に回答された値の種類数。選択肢の定義数ではないので、0件の選択肢は数えない。
+    distinct = sum(
+        1 for label in order if counts[label] > 0 and label != EMPTY_LABEL
+    )
     # 回答がすべて異なる値なら、頻度のグラフは何も語らない。件数だけ伝える。
-    all_unique = answered > 5 and len(order) >= answered
+    # 取りうる値が決まっている項目は、1人1つずつ違う選択肢を選んだとしてもそれ自体が
+    # 分布なので対象にしない。
+    all_unique = not has_fixed_options and answered > 5 and distinct >= answered
 
     return {
         "kind": "category",
@@ -497,7 +505,7 @@ def build_category_block(
         "items": items,
         "total": sum(counts.values()),
         "answered": answered,
-        "distinct": len(order),
+        "distinct": distinct,
         "other_count": other,
         "note": (
             "すべて異なる値のため、グラフは表示しません"
