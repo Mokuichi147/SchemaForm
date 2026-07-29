@@ -1,160 +1,249 @@
 {% extends "base.html" %}
-{% from "_file_preview.html" import file_value as render_file_value %}
+{% from "_submission_table.html" import sort_header, column_headers, data_cells, pager %}
+{% from "_filter_modal.html" import filter_modal, download_modal %}
 {% block content %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 
-<div id="aggregate-root" data-form-id="{{ form.id }}">
+<div id="aggregate-root"
+     data-form-id="{{ form.id }}"
+     data-drill="{{ drill_encoded }}"
+     data-drill-param="{{ drill_param }}"
+     data-correct="{{ correct_encoded }}"
+     data-correct-param="{{ correct_param }}">
+
   <div class="flex flex-wrap items-center justify-between gap-3">
     <div>
       <h1 class="text-2xl font-semibold">集計</h1>
-      <p class="text-sm text-slate-600">{{ form.name }} の送信内容を集計します。</p>
+      <p class="text-sm text-slate-600">{{ form.name }}</p>
     </div>
-    <div class="flex gap-2">
-      <a href="/forms/{{ form.id }}/submissions?{{ build_query(query, page=None) }}" class="rounded border border-slate-300 px-3 py-2 text-sm">送信一覧へ戻る</a>
-    </div>
-  </div>
-
-  <div id="download-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 px-4 py-6">
-    <div class="w-full max-w-md rounded-lg border border-slate-200 bg-white shadow-xl">
-      <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-        <h2 class="text-base font-semibold text-slate-900">ダウンロード形式を選択</h2>
-        <button type="button" data-action="close-download-modal" class="rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700">閉じる</button>
-      </div>
-      <div class="p-4">
-        <p class="text-xs text-slate-500">現在の検索・フィルター条件に一致する送信内容をダウンロードします。</p>
-        <div class="mt-3 grid gap-2">
-          <a href="/forms/{{ form.id }}/export?{{ build_query(query, format='xlsx', page=None) }}" class="flex items-center justify-between rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
-            <span class="font-medium text-slate-900">Excel</span>
-            <span class="text-xs text-slate-500">.xlsx</span>
-          </a>
-          <a href="/forms/{{ form.id }}/export?{{ build_query(query, format='csv', page=None) }}" class="flex items-center justify-between rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
-            <span class="font-medium text-slate-900">CSV</span>
-            <span class="text-xs text-slate-500">.csv</span>
-          </a>
-          <a href="/forms/{{ form.id }}/export?{{ build_query(query, format='parquet', page=None) }}" class="flex items-center justify-between rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
-            <span class="font-medium text-slate-900">Parquet</span>
-            <span class="text-xs text-slate-500">.parquet</span>
-          </a>
-          <a href="/forms/{{ form.id }}/export?{{ build_query(query, format='json', page=None) }}" class="flex items-center justify-between rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
-            <span class="font-medium text-slate-900">JSON</span>
-            <span class="text-xs text-slate-500">.json</span>
-          </a>
-        </div>
-      </div>
+    <div class="flex flex-wrap gap-2">
+      <button type="button" id="open-filter-modal" class="whitespace-nowrap rounded border border-slate-300 px-3 py-2 text-sm">フィルター</button>
+      <button type="button" id="open-download-modal" class="whitespace-nowrap rounded border border-slate-300 px-3 py-2 text-sm">ダウンロード</button>
+      <a href="/forms/{{ form.id }}/submissions?{{ build_query(query, page=None, view=None, drill=None, correct=None) }}" class="whitespace-nowrap rounded border border-slate-300 px-3 py-2 text-sm">送信一覧へ戻る</a>
     </div>
   </div>
 
-  {% if total_submissions == 0 %}
-  <div class="mt-6 rounded-lg border border-slate-200 bg-white px-4 py-10 text-center text-slate-500">該当データがありません。</div>
-  {% else %}
+  {{ filter_modal(form, query, filter_fields, sort, order, none,
+                  '/forms/' ~ form.id ~ '/aggregate?view=' ~ view.id,
+                  {'view': view.id, correct_param: correct_encoded}) }}
 
-  <div class="mt-6 grid gap-4 lg:grid-cols-2">
-  {% if timeseries_timestamps %}
-  <div id="timeseries-section" class="rounded-lg border border-slate-200 bg-white p-4" data-timestamps="{{ timeseries_timestamps | tojson_attr }}">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <h2 class="text-base font-semibold text-slate-900">件数の推移</h2>
-      <label class="flex items-center gap-1 text-xs text-slate-500">
-        <span>粒度</span>
-        <select id="ts-unit-select" class="rounded border border-slate-300 px-2 py-1 text-sm">
-          <option value="auto">自動</option>
-          <option value="year">年</option>
-          <option value="month">月</option>
-          <option value="week">週</option>
-          <option value="day">日</option>
-          <option value="hour">時</option>
-          <option value="minute">分</option>
-          <option value="second">秒</option>
-        </select>
-      </label>
-    </div>
-    <div class="relative mt-3 h-64">
-      <canvas id="ts-chart"></canvas>
-    </div>
-    <p class="mt-2 text-xs text-slate-400">グラフをクリックすると、下の表に該当データのみを表示します。</p>
+  {{ download_modal(form, query, '画面に表示しているとおりの条件（フィルター・絞り込み・正解の設定）でダウンロードします。') }}
+
+  {# ---- 用途別テンプレートの切り替え ---- #}
+  <div class="mt-5 flex flex-wrap gap-1 border-b border-slate-200">
+    {% for item in views %}
+    <a href="?{{ build_query(query, view=item.id, page=None) }}"
+       {% if item.id == view.id %}aria-current="page"{% endif %}
+       class="-mb-px rounded-t border-b-2 px-4 py-2 text-sm {% if item.id == view.id %}border-slate-900 font-semibold text-slate-900{% else %}border-transparent text-slate-500 hover:text-slate-800{% endif %}">
+      {{ item.name }}
+    </a>
+    {% endfor %}
+  </div>
+  <p class="mt-2 text-sm text-slate-500">{{ view.summary }}</p>
+
+  {# ---- グラフのクリックで足された絞り込み条件 ---- #}
+  {% if drill_labels %}
+  <div class="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+    <span class="font-semibold">絞り込み中</span>
+    {% for label in drill_labels %}
+    <span class="rounded-full border border-sky-300 bg-white px-2.5 py-0.5 text-xs">{{ label }}</span>
+    {% endfor %}
+    <a href="?{{ build_query(query, drill=None, page=None) }}" class="ml-auto rounded border border-sky-300 bg-white px-2 py-0.5 text-xs">解除</a>
   </div>
   {% endif %}
 
-    {% for agg in aggregations %}
-    {% set canvas_id = 'chart-' ~ loop.index0 %}
-    <div class="rounded-lg border border-slate-200 bg-white p-4">
-      <div class="flex items-center justify-between gap-2">
-        <h2 class="text-base font-semibold text-slate-900">{{ agg.label }}</h2>
-        {% if agg.kind == 'distribution' %}
-        <div class="flex gap-1 text-xs">
-          <button type="button" class="js-chart-toggle rounded border border-slate-300 px-2 py-1" data-target="{{ canvas_id }}" data-mode="bar">棒</button>
-          <button type="button" class="js-chart-toggle rounded border border-slate-300 px-2 py-1" data-target="{{ canvas_id }}" data-mode="pie">円</button>
-        </div>
-        {% endif %}
-      </div>
+  {% if total_submissions == 0 %}
+  <div class="mt-6 rounded-lg border border-slate-200 bg-white px-4 py-10 text-center text-slate-500">
+    該当データがありません。
+    {% if drill_labels or query %}
+    <div class="mt-3">
+      <a href="/forms/{{ form.id }}/aggregate?view={{ view.id }}" class="rounded border border-slate-300 px-3 py-1.5 text-sm">条件をすべて解除</a>
+    </div>
+    {% endif %}
+  </div>
+  {% else %}
 
-      {% if agg.kind == 'distribution' %}
-        {% if agg.total == 0 %}
-        <p class="mt-3 text-sm text-slate-500">データなし</p>
-        {% else %}
-        <div class="relative mt-3 h-64">
-          <canvas id="{{ canvas_id }}" class="js-chart" data-chart="{{ {'type': 'bar', 'labels': agg.labels, 'counts': agg.counts, 'label': '件数', 'ckind': ('enum' if agg.is_enum else 'boolean'), 'field': agg.key, 'flabel': agg.label} | tojson_attr }}"></canvas>
+  {# ---- 要約 ---- #}
+  {% if kpi %}
+  <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    {% for item in kpi %}
+    <div class="rounded-lg border border-slate-200 bg-white px-4 py-3">
+      <div class="text-xs text-slate-500">{{ item.label }}</div>
+      <div class="mt-0.5 text-2xl font-semibold tabular-nums text-slate-900">
+        {%- if item.iso -%}
+        <time class="js-local-dt" data-iso="{{ item.iso }}">{{ item.value }}</time>
+        {%- else -%}
+        {{ item.value }}
+        {%- endif -%}
+      </div>
+      {% if item.note %}<div class="text-xs text-slate-400">{{ item.note }}</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# ---- テスト採点 ---- #}
+  {% if scoring %}
+  <div id="scoring-panel" class="mt-4 grid gap-4 lg:grid-cols-2">
+    <div class="rounded-lg border border-slate-200 bg-white p-4">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <h2 class="text-base font-semibold text-slate-900">正解の設定</h2>
+        <div class="flex gap-2">
+          <button type="button" data-restore-correct class="hidden rounded border border-slate-300 px-3 py-1.5 text-xs">前回の設定を読み込む</button>
+          {% if scoring.configured %}
+          <button type="button" data-clear-correct class="rounded border border-slate-300 px-3 py-1.5 text-xs">クリア</button>
+          {% endif %}
+          <button type="button" data-apply-correct class="rounded bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white">採点する</button>
         </div>
-        {% if agg.supports_correct %}
-        <div class="mt-3 border-t border-slate-100 pt-3" data-correct-field="{{ agg.key }}" data-correct-array="{{ '1' if agg.is_array else '' }}" data-correct-unique="{{ '1' if agg.unique_items else '' }}">
-          <div class="text-xs font-semibold text-slate-500">正解</div>
-          {% if agg.is_array %}
-          <div class="mt-2 flex items-center gap-2">
-            <select class="js-correct-add-select w-full max-w-xs rounded border border-slate-300 px-2 py-2 text-sm">
-              <option value="">選択してください</option>
-              {% for label in agg.labels %}
-              <option value="{{ label }}">{{ label }}</option>
-              {% endfor %}
-            </select>
-            <button type="button" class="js-correct-add shrink-0 rounded border border-slate-300 px-3 py-2 text-sm">追加</button>
+      </div>
+      <div class="mt-3 divide-y divide-slate-100">
+        {% for question in scoring.questions %}
+        <div class="py-3" data-question="{{ question.key }}"
+             data-array="{{ '1' if question.is_array else '' }}"
+             data-unique="{{ '1' if question.unique_items else '' }}"
+             data-selected="{{ (question.correct_info.list if question.correct_info and question.correct_info.mode == 'array' else []) | tojson_attr }}">
+          <div class="flex flex-wrap items-baseline justify-between gap-2">
+            <div class="text-sm font-medium text-slate-800">{{ question.label }}</div>
+            <div class="text-sm text-slate-600">
+              {% if question.rate is not none %}
+              正答率 <span class="font-semibold tabular-nums">{{ '%.1f' | format(question.rate) }}%</span>
+              <span class="text-xs text-slate-400">({{ question.correct }}/{{ question.answered }})</span>
+              {% else %}
+              <span class="text-xs text-slate-400">回答 {{ question.answered }}件</span>
+              {% endif %}
+            </div>
           </div>
-          <div class="js-correct-badges mt-2 flex flex-wrap gap-2"></div>
+          {% if question.is_array %}
+          <div class="mt-2 flex items-center gap-2">
+            <select data-add-select class="w-full max-w-xs rounded border border-slate-300 px-2 py-1.5 text-sm">
+              <option value="">選択してください</option>
+              {% for option in question.options %}<option value="{{ option }}">{{ option }}</option>{% endfor %}
+            </select>
+            <button type="button" data-add class="shrink-0 rounded border border-slate-300 px-3 py-1.5 text-sm">追加</button>
+          </div>
+          <div data-badges class="mt-2 flex flex-wrap gap-2"></div>
           <label class="mt-2 inline-flex items-center gap-1 text-xs text-slate-500">
-            <input type="checkbox" class="js-correct-ordered" />
+            <input type="checkbox" data-ordered {% if question.correct_info and question.correct_info.ordered %}checked{% endif %} />
             <span>順番も一致させる</span>
           </label>
           {% else %}
-          <select class="js-correct-single mt-2 w-full max-w-xs rounded border border-slate-300 px-2 py-2 text-sm">
+          <select class="mt-2 w-full max-w-xs rounded border border-slate-300 px-2 py-1.5 text-sm">
             <option value="">指定なし</option>
-            {% for label in agg.labels %}
-            <option value="{{ label }}">{{ label }}</option>
+            {% for option in question.options %}
+            <option value="{{ option }}" {% if question.correct_info and question.correct_info.value == option %}selected{% endif %}>{{ option }}</option>
             {% endfor %}
           </select>
           {% endif %}
-          <div class="mt-2 text-sm text-slate-700">正答率: <span class="js-correct-rate font-semibold" data-total="{{ agg.total }}">—</span></div>
         </div>
-        {% endif %}
-        {% endif %}
-      {% elif agg.kind == 'numeric' %}
-        <dl class="mt-3 grid grid-cols-3 gap-x-4 gap-y-1 text-sm">
-          <div class="flex items-baseline justify-between gap-2"><dt class="text-slate-500">件数</dt><dd class="tabular-nums">{{ agg.stats.count }}</dd></div>
-          <div class="flex items-baseline justify-between gap-2"><dt class="text-slate-500">合計</dt><dd class="tabular-nums">{{ agg.stats.sum }}</dd></div>
-          <div class="flex items-baseline justify-between gap-2"><dt class="text-slate-500">平均</dt><dd class="tabular-nums">{{ agg.stats.avg }}</dd></div>
-          <div class="flex items-baseline justify-between gap-2"><dt class="text-slate-500">中央値</dt><dd class="tabular-nums">{{ agg.stats.median }}</dd></div>
-          <div class="flex items-baseline justify-between gap-2"><dt class="text-slate-500">最大</dt><dd class="tabular-nums">{{ agg.stats.max }}</dd></div>
-          <div class="flex items-baseline justify-between gap-2"><dt class="text-slate-500">最小</dt><dd class="tabular-nums">{{ agg.stats.min }}</dd></div>
-        </dl>
-        {% if agg.histogram.labels %}
-        <div class="relative mt-3 h-64">
-          <canvas class="js-chart" data-chart="{{ {'type': 'bar', 'labels': agg.histogram.labels, 'counts': agg.histogram.counts, 'label': '件数', 'ckind': 'numeric', 'field': agg.key, 'flabel': agg.label, 'ranges': agg.histogram.ranges, 'mode': agg.histogram.mode} | tojson_attr }}"></canvas>
-        </div>
-        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="rounded-lg border border-slate-200 bg-white p-4">
+      <h2 class="text-base font-semibold text-slate-900">正答数の分布</h2>
+      {% if scoring.chart %}
+      <div class="mt-2 grid grid-cols-3 gap-2 text-sm">
+        <div><div class="text-xs text-slate-500">設問数</div><div class="text-lg font-semibold tabular-nums">{{ scoring.configured }}</div></div>
+        <div><div class="text-xs text-slate-500">平均点</div><div class="text-lg font-semibold tabular-nums">{{ '%.1f' | format(scoring.average_score) }}</div></div>
+        <div><div class="text-xs text-slate-500">平均正答率</div><div class="text-lg font-semibold tabular-nums">{{ '%.1f' | format(scoring.average_rate) }}%</div></div>
+      </div>
+      <div class="relative mt-3 h-64" data-chart-area>
+        <canvas data-chart="{{ scoring.chart | tojson_attr }}"></canvas>
+      </div>
+      <p class="mt-2 text-xs text-slate-400">グラフをクリックすると、その正答数の送信だけに絞り込みます。</p>
+      {% else %}
+      <p class="mt-3 text-sm text-slate-500">左で正解を設定して「採点する」を押すと表示されます。</p>
       {% endif %}
     </div>
-    {% if agg.kind == 'numeric' and agg.groups %}
-    <div class="rounded-lg border border-slate-200 bg-white p-4 js-group-block">
+  </div>
+  {% endif %}
+
+  {# ---- グラフ ---- #}
+  <div class="mt-4 grid gap-4 lg:grid-cols-2">
+    {% if timeseries_timestamps %}
+    <div id="timeseries-card" class="rounded-lg border border-slate-200 bg-white p-4" data-timestamps="{{ timeseries_timestamps | tojson_attr }}">
       <div class="flex flex-wrap items-center justify-between gap-2">
-        <h2 class="text-base font-semibold text-slate-900">{{ agg.label }}（項目別）</h2>
+        <h2 class="text-base font-semibold text-slate-900">件数の推移</h2>
+        <label class="flex items-center gap-1 text-xs text-slate-500">
+          <span>粒度</span>
+          <select data-ts-unit class="rounded border border-slate-300 px-2 py-1 text-sm">
+            <option value="auto">自動</option>
+            <option value="year">年</option>
+            <option value="month">月</option>
+            <option value="week">週</option>
+            <option value="day">日</option>
+            <option value="hour">時</option>
+            <option value="minute">分</option>
+            <option value="second">秒</option>
+          </select>
+        </label>
+      </div>
+      <div class="relative mt-3 h-64" data-chart-area>
+        <canvas></canvas>
+      </div>
+      <p class="mt-2 text-xs text-slate-400">グラフをクリックすると、その期間だけに絞り込みます。</p>
+    </div>
+    {% endif %}
+
+    {% for block in blocks %}
+    {% if block.kind == 'category' %}
+    <div class="rounded-lg border border-slate-200 bg-white p-4" data-card>
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 class="text-base font-semibold text-slate-900">{{ block.label }}</h2>
+          <p class="text-xs text-slate-400">
+            回答 {{ block.answered }}件 / {{ block.distinct }}種類{% if block.note %}（{{ block.note }}）{% endif %}
+          </p>
+        </div>
+        {% if block.chart %}
+        <div class="flex gap-1 text-xs">
+          <button type="button" data-chart-type="bar" class="rounded border border-slate-300 px-2 py-1 {% if block.chart.type == 'bar' %}bg-slate-900 text-white{% endif %}">棒</button>
+          <button type="button" data-chart-type="pie" class="rounded border border-slate-300 px-2 py-1 {% if block.chart.type == 'pie' %}bg-slate-900 text-white{% endif %}">円</button>
+        </div>
+        {% endif %}
+      </div>
+      {% if not block.total %}
+      <p class="mt-3 text-sm text-slate-500">データなし</p>
+      {% elif block.chart %}
+      <div class="relative mt-3 h-64" data-chart-area>
+        <canvas data-chart="{{ block.chart | tojson_attr }}"></canvas>
+      </div>
+      {% else %}
+      {# 全部ちがう値の自由記述。グラフの代わりに実際の値をいくつか見せる。 #}
+      <ul class="mt-3 space-y-1 text-sm text-slate-600">
+        {% for item in block["items"][:5] %}<li class="truncate">{{ item.label }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+
+    {% elif block.kind == 'numeric' %}
+    <div class="rounded-lg border border-slate-200 bg-white p-4" data-card>
+      <h2 class="text-base font-semibold text-slate-900">{{ block.label }}</h2>
+      <dl class="mt-3 grid grid-cols-3 gap-x-4 gap-y-1 text-sm">
+        {% for key, name in [('count', '件数'), ('sum', '合計'), ('avg', '平均'), ('median', '中央値'), ('max', '最大'), ('min', '最小')] %}
+        <div class="flex items-baseline justify-between gap-2"><dt class="text-slate-500">{{ name }}</dt><dd class="tabular-nums">{{ block.stats[key] }}</dd></div>
+        {% endfor %}
+      </dl>
+      {% if block.chart %}
+      <div class="relative mt-3 h-64" data-chart-area>
+        <canvas data-chart="{{ block.chart | tojson_attr }}"></canvas>
+      </div>
+      {% endif %}
+    </div>
+
+    {% elif block.kind == 'crosstab' %}
+    <div class="rounded-lg border border-slate-200 bg-white p-4" data-crosstab-card>
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <h2 class="text-base font-semibold text-slate-900">{{ block.label }}</h2>
         <div class="flex flex-wrap items-center gap-2">
-          {% if agg.groups|length > 1 %}
-          <select class="js-group-select rounded border border-slate-300 px-2 py-1 text-sm">
-            {% for g in agg.groups %}
-            <option value="{{ loop.index0 }}">{{ g.label }}別</option>
-            {% endfor %}
+          {% if block.groups | length > 1 %}
+          <select data-crosstab-group class="rounded border border-slate-300 px-2 py-1 text-sm">
+            {% for group in block.groups %}<option value="{{ loop.index0 }}">{{ group.label }}別</option>{% endfor %}
           </select>
           {% else %}
-          <span class="text-sm text-slate-500">{{ agg.groups[0].label }}別</span>
+          <span class="text-sm text-slate-500">{{ block.groups[0].label }}別</span>
           {% endif %}
-          <select class="js-group-metric rounded border border-slate-300 px-2 py-1 text-sm">
+          <select data-crosstab-metric class="rounded border border-slate-300 px-2 py-1 text-sm">
             <option value="count">件数</option>
             <option value="sum" selected>合計</option>
             <option value="avg">平均</option>
@@ -163,909 +252,76 @@
             <option value="min">最小</option>
           </select>
           <div class="flex gap-1 text-xs">
-            <button type="button" class="js-group-chart-toggle rounded border border-slate-300 px-2 py-1" data-mode="bar">棒</button>
-            <button type="button" class="js-group-chart-toggle rounded border border-slate-300 px-2 py-1" data-mode="pie">円</button>
+            <button type="button" data-crosstab-type="bar" class="rounded border border-slate-300 bg-slate-900 px-2 py-1 text-white">棒</button>
+            <button type="button" data-crosstab-type="pie" class="rounded border border-slate-300 px-2 py-1">円</button>
           </div>
         </div>
       </div>
-      {% for g in agg.groups %}
-      <div class="js-group-chart-wrap mt-3{% if not loop.first %} hidden{% endif %}">
-        <div class="relative h-64">
-          <canvas class="js-grouped-chart" data-grouped="{{ {'labels': g.labels, 'metrics': g.metrics, 'stats': g.stats} | tojson_attr }}"></canvas>
-        </div>
+      {% for group in block.groups %}
+      <div data-crosstab-wrap class="relative mt-3 h-64{% if not loop.first %} hidden{% endif %}" data-chart-area>
+        <canvas data-crosstab="{{ {'labels': group.labels, 'metrics': group.metrics, 'drills': group.drills} | tojson_attr }}"></canvas>
       </div>
       {% endfor %}
     </div>
     {% endif %}
     {% endfor %}
-
-    <div id="correct-dist-section" class="hidden rounded-lg border border-slate-200 bg-white p-4">
-      <h2 class="text-base font-semibold text-slate-900">正答数の分布</h2>
-      <div class="relative mt-3 h-64">
-        <canvas id="correct-dist-chart"></canvas>
-      </div>
-      <p class="mt-2 text-xs text-slate-400">正解を指定すると表示されます。グラフをクリックすると、その正答数の送信のみ表に表示します。</p>
-    </div>
   </div>
 
-  <div id="data-table-section" class="mt-8">
+  {# ---- 元データ ---- #}
+  <div class="mt-8">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <h2 class="text-lg font-semibold text-slate-900">元データ</h2>
-      <div class="flex flex-wrap items-center gap-2">
-        <div id="drill-banner" class="hidden items-center gap-2 rounded border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm text-sky-800">
-          <span>絞り込み中: <span id="drill-label" class="font-semibold"></span>（<span id="drill-count"></span>件）</span>
-          <button type="button" id="drill-clear" class="rounded border border-sky-300 px-2 py-0.5 text-xs">解除</button>
-        </div>
-        <button type="button" id="open-download-modal" class="rounded border border-slate-300 px-3 py-2 text-sm">ダウンロード</button>
-      </div>
+      {% if preview %}
+      <a href="?{{ build_query(query, view='raw', page=None) }}" class="text-sm text-sky-700 underline">すべて表示（{{ total }}件）</a>
+      {% endif %}
     </div>
 
     <div class="mt-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
       <table class="min-w-full divide-y divide-slate-200 text-sm">
         <thead class="bg-slate-100 text-left">
           <tr>
-            <th class="px-4 py-3">
-              <button type="button" class="js-sort group inline-flex items-center gap-1" data-sort-kind="datetime">送信日時 <span class="js-sort-arrow text-slate-300">↕</span></button>
-            </th>
-            <th class="px-4 py-3">
-              <button type="button" class="js-sort group inline-flex items-center gap-1" data-sort-kind="text">送信ユーザー <span class="js-sort-arrow text-slate-300">↕</span></button>
-            </th>
-            <th class="px-4 py-3">
-              <button type="button" class="js-sort group inline-flex items-center gap-1" data-sort-kind="number">正答数 <span class="js-sort-arrow text-slate-300">↕</span></button>
-            </th>
-            <th class="px-4 py-3">
-              <button type="button" class="js-sort group inline-flex items-center gap-1" data-sort-kind="number">正答率 <span class="js-sort-arrow text-slate-300">↕</span></button>
-            </th>
-            {% for column in display_columns %}
-            {% set col_numeric = (column.kind == 'default' and column.field.type in ['number', 'integer', 'calculated']) or (column.kind == 'master_display' and column.display_type in ['number', 'integer']) %}
-            <th class="px-4 py-3">
-              <button type="button" class="js-sort group inline-flex items-center gap-1" data-sort-kind="{{ 'number' if col_numeric else 'text' }}">{{ column.label }} <span class="js-sort-arrow text-slate-300">↕</span></button>
-            </th>
-            {% endfor %}
+            {{ sort_header(query, sort, order, 'created_at', '送信日時') }}
+            {{ sort_header(query, sort, order, 'username', '送信ユーザー') }}
+            {% if correct_map %}
+            {{ sort_header(query, sort, order, 'score', '正答数') }}
+            <th class="px-4 py-3">正答率</th>
+            {% endif %}
+            {{ column_headers(query, sort, order, display_columns) }}
             <th class="px-4 py-3">操作</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-200">
           {% for row in rows %}
-          <tr data-row="{{ row.drill | tojson_attr }}" data-ts="{{ row.ts }}" data-id="{{ row.id }}">
+          <tr>
             <td class="px-4 py-3 text-slate-600">
               <time class="js-local-dt" data-iso="{{ iso_dt(row.created_at) }}">{{ format_dt(row.created_at) }}</time>
             </td>
             <td class="px-4 py-3 text-slate-600">{{ row.username or '-' }}</td>
-            <td class="px-4 py-3 text-slate-700"><span class="js-row-correct tabular-nums">—</span></td>
-            <td class="px-4 py-3 text-slate-700"><span class="js-row-rate tabular-nums">—</span></td>
-            {% for value in row["values"] %}
-            {% set column = display_columns[loop.index0] %}
-            {% set raw_value = row.raw_values[loop.index0] if row.raw_values is defined else none %}
-            {% if column.kind == "default" and column.field.type == "file" and raw_value %}
-              <td class="px-4 py-3">{{ render_file_value(raw_value, file_infos, "sm") }}</td>
-            {% elif column.kind == "master_display" and column.display_type == "file" and raw_value %}
-              <td class="px-4 py-3">{{ render_file_value(raw_value, file_infos, "sm") }}</td>
-            {% elif column.kind == "default"
-                  and column.field.type == "string"
-                  and (
-                    column.field.format == "url"
-                    or "http://" in value
-                    or "https://" in value
-                    or "www." in value
-                  )
-                  and value %}
-              <td class="px-4 py-3">
-                {% set raw_items = value.split(",") if column.field.is_array else [value] %}
-                {% for raw_item in raw_items %}
-                  {% set trimmed = raw_item | trim %}
-                  {% if trimmed %}
-                    {% if trimmed.startswith("http://") or trimmed.startswith("https://") %}
-                      <a href="{{ trimmed }}" target="_blank" rel="noopener noreferrer" class="break-all text-sky-700 underline">{{ trimmed }}</a>
-                    {% elif trimmed.startswith("www.") %}
-                      <a href="https://{{ trimmed }}" target="_blank" rel="noopener noreferrer" class="break-all text-sky-700 underline">{{ trimmed }}</a>
-                    {% else %}
-                      {{ trimmed }}
-                    {% endif %}
-                    {% if not loop.last %}, {% endif %}
-                  {% endif %}
-                {% endfor %}
-              </td>
-            {% else %}
-            <td class="px-4 py-3">{{ value }}</td>
+            {% if correct_map %}
+            <td class="px-4 py-3 tabular-nums text-slate-700">{{ row.score }}</td>
+            <td class="px-4 py-3 tabular-nums text-slate-700">{{ row.rate }}</td>
             {% endif %}
-            {% endfor %}
+            {{ data_cells(row, display_columns, file_infos) }}
             <td class="px-4 py-3">
               <a href="/forms/{{ form.id }}/submissions/{{ row.id }}/edit" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs text-slate-700">詳細</a>
             </td>
           </tr>
-          {% endfor %}
-          <tr id="drill-empty-row" class="hidden">
-            <td colspan="{{ display_columns | length + 5 }}" class="px-4 py-6 text-center text-slate-500">該当データがありません。</td>
+          {% else %}
+          <tr>
+            <td colspan="{{ display_columns | length + (5 if correct_map else 3) }}" class="px-4 py-6 text-center text-slate-500">該当データがありません。</td>
           </tr>
+          {% endfor %}
         </tbody>
       </table>
     </div>
+
+    {% if not preview %}
+    {{ pager(query, page, page_size, total, total_pages) }}
+    {% endif %}
   </div>
   {% endif %}
 </div>
 
-<script>
-  document.addEventListener("DOMContentLoaded", () => {
-    if (typeof Chart === "undefined") return;
-
-    const root = document.getElementById("aggregate-root");
-    const formId = root ? root.dataset.formId : "";
-    const palette = [
-      "#2563eb", "#16a34a", "#dc2626", "#d97706", "#7c3aed", "#0891b2",
-      "#db2777", "#65a30d", "#ea580c", "#4f46e5", "#0d9488", "#9333ea",
-    ];
-    const charts = {};
-    let drillActive = false;
-
-    const tableRows = Array.from(document.querySelectorAll("tr[data-row]")).map((tr) => {
-      let data = {};
-      try { data = JSON.parse(tr.dataset.row); } catch (e) {}
-      return {
-        tr,
-        data,
-        ts: tr.dataset.ts || "",
-        id: tr.dataset.id || "",
-        rateCell: tr.querySelector(".js-row-rate"),
-        countCell: tr.querySelector(".js-row-correct"),
-      };
-    });
-    const emptyRow = document.getElementById("drill-empty-row");
-    const banner = document.getElementById("drill-banner");
-    const drillLabel = document.getElementById("drill-label");
-    const drillCount = document.getElementById("drill-count");
-
-    function toBool(value) {
-      if (Array.isArray(value)) value = value[0];
-      return value === true || (typeof value === "string" && ["true", "1", "yes", "on"].includes(value.toLowerCase()));
-    }
-
-    // ---- 件数の推移: 送信日時の間隔に応じた粒度バケット ----
-    const TS_UNITS = ["second", "minute", "hour", "day", "week", "month", "year"];
-    // バーが多すぎる粒度は不可。充填率(データの入る区間の割合)がこれ未満なら
-    // 0件区間が多すぎるとみなし、1段階広い粒度を選ぶ。
-    const TS_MAX_BUCKETS = 60;
-    const TS_MIN_FILL = 0.34;
-    const TS_UNIT_SECONDS = { second: 1, minute: 60, hour: 3600, day: 86400, week: 604800 };
-
-    function tsTruncate(date, unit) {
-      const Y = date.getFullYear(), Mo = date.getMonth(), D = date.getDate();
-      const H = date.getHours(), Mi = date.getMinutes(), S = date.getSeconds();
-      if (unit === "second") return new Date(Y, Mo, D, H, Mi, S);
-      if (unit === "minute") return new Date(Y, Mo, D, H, Mi, 0);
-      if (unit === "hour") return new Date(Y, Mo, D, H, 0, 0);
-      if (unit === "day") return new Date(Y, Mo, D, 0, 0, 0);
-      if (unit === "week") {
-        const d = new Date(Y, Mo, D);
-        d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-        return d;
-      }
-      if (unit === "month") return new Date(Y, Mo, 1);
-      return new Date(Y, 0, 1);
-    }
-
-    function tsNext(date, unit) {
-      const d = new Date(date.getTime());
-      if (unit === "second") d.setSeconds(d.getSeconds() + 1);
-      else if (unit === "minute") d.setMinutes(d.getMinutes() + 1);
-      else if (unit === "hour") d.setHours(d.getHours() + 1);
-      else if (unit === "day") d.setDate(d.getDate() + 1);
-      else if (unit === "week") d.setDate(d.getDate() + 7);
-      else if (unit === "month") d.setMonth(d.getMonth() + 1);
-      else d.setFullYear(d.getFullYear() + 1);
-      return d;
-    }
-
-    function tsLabel(date, unit) {
-      const pad = (n) => String(n).padStart(2, "0");
-      const Y = date.getFullYear(), Mo = pad(date.getMonth() + 1), D = pad(date.getDate());
-      const H = pad(date.getHours()), Mi = pad(date.getMinutes()), S = pad(date.getSeconds());
-      if (unit === "second") return Y + "-" + Mo + "-" + D + " " + H + ":" + Mi + ":" + S;
-      if (unit === "minute") return Y + "-" + Mo + "-" + D + " " + H + ":" + Mi;
-      if (unit === "hour") return Y + "-" + Mo + "-" + D + " " + H + ":00";
-      if (unit === "day" || unit === "week") return Y + "-" + Mo + "-" + D;
-      if (unit === "month") return Y + "-" + Mo;
-      return String(Y);
-    }
-
-    function tsBucketCount(minD, maxD, unit) {
-      const lo = tsTruncate(minD, unit), hi = tsTruncate(maxD, unit);
-      if (unit === "year") return hi.getFullYear() - lo.getFullYear() + 1;
-      if (unit === "month") return (hi.getFullYear() - lo.getFullYear()) * 12 + (hi.getMonth() - lo.getMonth()) + 1;
-      return Math.floor((hi - lo) / (TS_UNIT_SECONDS[unit] * 1000)) + 1;
-    }
-
-    function tsFilledCount(dates, unit) {
-      const set = new Set();
-      dates.forEach((d) => set.add(tsLabel(tsTruncate(d, unit), unit)));
-      return set.size;
-    }
-
-    function tsAutoUnit(dates) {
-      // なるべく広い粒度を優先。細→粗に見て、バー数が上限以下で、かつ空区間が
-      // 多すぎない(充填率が十分な)最も細かい粒度を選ぶ。空が多い粒度は飛ばして
-      // 1段階広い粒度へ。
-      const minD = dates[0];
-      const maxD = dates[dates.length - 1];
-      let chosen = "year";
-      for (const unit of TS_UNITS) {
-        const count = tsBucketCount(minD, maxD, unit);
-        if (count > TS_MAX_BUCKETS) continue;
-        chosen = unit;
-        if (count <= 3 || tsFilledCount(dates, unit) / count >= TS_MIN_FILL) {
-          return unit;
-        }
-      }
-      return chosen;
-    }
-
-    function buildTimeseries(dates, requested) {
-      if (!dates.length) return { labels: [], counts: [], unit: "day" };
-      const minD = dates[0], maxD = dates[dates.length - 1];
-      const unit = (requested === "auto" || !TS_UNITS.includes(requested))
-        ? tsAutoUnit(dates) : requested;
-      const counter = {};
-      dates.forEach((d) => {
-        const key = tsLabel(tsTruncate(d, unit), unit);
-        counter[key] = (counter[key] || 0) + 1;
-      });
-      const labels = [], counts = [];
-      let cur = tsTruncate(minD, unit);
-      const end = tsTruncate(maxD, unit);
-      let guard = 0;
-      while (cur <= end && guard < 2000) {
-        const key = tsLabel(cur, unit);
-        labels.push(key);
-        counts.push(counter[key] || 0);
-        cur = tsNext(cur, unit);
-        guard += 1;
-      }
-      return { labels, counts, unit };
-    }
-
-    function buildConfig(spec) {
-      const isLine = spec.type === "line";
-      const isPie = spec.type === "pie";
-      let labels = spec.labels;
-      let counts = spec.counts;
-      // ラベルごとに元の並び順で色を固定し、棒・円で同じ選択肢が同色になるようにする
-      const colorByLabel = {};
-      spec.labels.forEach((label, i) => { colorByLabel[label] = palette[i % palette.length]; });
-      if (isPie) {
-        // 円グラフは割合（件数）の多い順に並べ替える
-        const pairs = labels.map((label, i) => ({ label, count: counts[i] }));
-        pairs.sort((a, b) => b.count - a.count);
-        labels = pairs.map((p) => p.label);
-        counts = pairs.map((p) => p.count);
-      }
-      const colors = labels.map((label, i) => colorByLabel[label] || palette[i % palette.length]);
-      const fill = isLine ? "rgba(37, 99, 235, 0.2)" : (spec.mono ? palette[0] : colors);
-      const stroke = isLine ? "#2563eb" : (spec.mono ? palette[0] : colors);
-      return {
-        type: spec.type,
-        data: {
-          labels: labels,
-          datasets: [{
-            label: spec.label || "",
-            data: counts,
-            backgroundColor: fill,
-            borderColor: stroke,
-            borderWidth: isLine ? 2 : 1,
-            fill: isLine,
-            tension: isLine ? 0.2 : 0,
-          }],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          interaction: isPie ? undefined : { mode: "index", intersect: false },
-          onClick: (evt, elements, chart) => {
-            if (!elements.length) return;
-            applyDrill(spec, elements[0].index, chart);
-          },
-          plugins: {
-            legend: { display: isPie },
-            tooltip: {
-              callbacks: {
-                label: (ctx) => {
-                  const value = typeof ctx.raw === "number" ? ctx.raw : (ctx.parsed.y ?? ctx.parsed);
-                  const data = ctx.dataset.data || [];
-                  const total = data.reduce((sum, v) => sum + (Number(v) || 0), 0);
-                  const pct = total > 0 ? (value / total * 100).toFixed(1) : "0.0";
-                  return value + "件 (" + pct + "%)";
-                },
-              },
-            },
-          },
-          scales: isPie ? {} : { y: { beginAtZero: true, ticks: { precision: 0 } } },
-        },
-      };
-    }
-
-    document.querySelectorAll("canvas.js-chart").forEach((canvas) => {
-      let spec;
-      try { spec = JSON.parse(canvas.dataset.chart); } catch (e) { return; }
-      const chart = new Chart(canvas, buildConfig(spec));
-      if (canvas.id) charts[canvas.id] = { chart, spec };
-    });
-
-    // ---- 項目別集計（数値を項目の値ごとに集計し、指標を切り替えて棒グラフ表示） ----
-    // 表示中のグラフだけを描画する（hidden な canvas は Chart.js のサイズが
-    // 0 になるため、セレクトで選ばれて表示されたタイミングで遅延描画する）。
-    const GROUP_METRIC_LABELS = {
-      count: "件数", sum: "合計", avg: "平均", median: "中央値", max: "最大", min: "最小",
-    };
-
-    function groupedTooltipLabel(ctx) {
-      const arr = ctx.chart.$groupStats || [];
-      const s = arr[ctx.dataIndex] || {};
-      return [
-        "件数: " + (s.count ?? "—"),
-        "合計: " + (s.sum ?? "—"),
-        "平均: " + (s.avg ?? "—"),
-        "中央値: " + (s.median ?? "—"),
-        "最大: " + (s.max ?? "—"),
-        "最小: " + (s.min ?? "—"),
-      ];
-    }
-
-    function renderGroupedCanvas(canvas, metric, type) {
-      if (!canvas) return;
-      let spec;
-      try { spec = JSON.parse(canvas.dataset.grouped); } catch (e) { return; }
-      type = type || "bar";
-      const isPie = type === "pie";
-      const metricLabel = GROUP_METRIC_LABELS[metric] || metric;
-      // ラベルごとに色を固定し、棒・円で同じ項目が同色になるようにする。
-      const colorByLabel = {};
-      spec.labels.forEach((label, i) => { colorByLabel[label] = palette[i % palette.length]; });
-      let rows = spec.labels.map((label, i) => ({
-        label,
-        value: (spec.metrics && spec.metrics[metric] || [])[i],
-        stat: (spec.stats || [])[i],
-      }));
-      if (isPie) rows = rows.slice().sort((a, b) => (b.value || 0) - (a.value || 0));
-      const labels = rows.map((r) => r.label);
-      const data = rows.map((r) => r.value);
-      const stats = rows.map((r) => r.stat);
-      const colors = rows.map((r) => colorByLabel[r.label]);
-
-      const existing = groupedCharts.get(canvas);
-      if (existing && existing.config.type === type) {
-        existing.data.labels = labels;
-        existing.data.datasets[0].label = metricLabel;
-        existing.data.datasets[0].data = data;
-        existing.data.datasets[0].backgroundColor = colors;
-        existing.data.datasets[0].borderColor = colors;
-        existing.$groupStats = stats;
-        existing.update();
-        return;
-      }
-      if (existing) existing.destroy();
-
-      const chart = new Chart(canvas, {
-        type: type,
-        data: {
-          labels: labels,
-          datasets: [{
-            label: metricLabel,
-            data: data,
-            backgroundColor: colors,
-            borderColor: colors,
-            borderWidth: 1,
-          }],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: isPie },
-            tooltip: { callbacks: { label: groupedTooltipLabel } },
-          },
-          scales: isPie ? {} : { y: { beginAtZero: true } },
-        },
-      });
-      chart.$groupStats = stats;
-      groupedCharts.set(canvas, chart);
-    }
-
-    const groupedCharts = new WeakMap();
-    document.querySelectorAll(".js-group-block").forEach((block) => {
-      const wraps = block.querySelectorAll(".js-group-chart-wrap");
-      const itemSelect = block.querySelector(".js-group-select");
-      const metricSelect = block.querySelector(".js-group-metric");
-      const toggles = block.querySelectorAll(".js-group-chart-toggle");
-      let currentType = "bar";
-      const currentMetric = () => (metricSelect ? metricSelect.value : "sum");
-      const visibleCanvas = () => {
-        const wrap = Array.from(wraps).find((w) => !w.classList.contains("hidden"));
-        return wrap ? wrap.querySelector("canvas.js-grouped-chart") : null;
-      };
-      // 初期表示（先頭）のグラフを描画。
-      renderGroupedCanvas(visibleCanvas(), currentMetric(), currentType);
-      if (itemSelect) {
-        itemSelect.addEventListener("change", () => {
-          const idx = parseInt(itemSelect.value, 10);
-          wraps.forEach((w, i) => w.classList.toggle("hidden", i !== idx));
-          const wrap = wraps[idx];
-          if (wrap) renderGroupedCanvas(wrap.querySelector("canvas.js-grouped-chart"), currentMetric(), currentType);
-        });
-      }
-      if (metricSelect) {
-        metricSelect.addEventListener("change", () => {
-          renderGroupedCanvas(visibleCanvas(), currentMetric(), currentType);
-        });
-      }
-      toggles.forEach((button) => {
-        button.addEventListener("click", () => {
-          currentType = button.dataset.mode === "pie" ? "pie" : "bar";
-          renderGroupedCanvas(visibleCanvas(), currentMetric(), currentType);
-        });
-      });
-    });
-
-    // 件数の推移（送信日時の間隔で粒度を自動選択、手動切替も可能）
-    const tsSection = document.getElementById("timeseries-section");
-    if (tsSection) {
-      let timestamps = [];
-      try { timestamps = JSON.parse(tsSection.dataset.timestamps || "[]"); } catch (e) {}
-      const tsDates = timestamps
-        .map((s) => new Date(s))
-        .filter((d) => !Number.isNaN(d.getTime()))
-        .sort((a, b) => a - b);
-      const tsCanvas = document.getElementById("ts-chart");
-      const tsUnitSelect = document.getElementById("ts-unit-select");
-      let tsChart = null;
-
-      const renderTimeseries = () => {
-        if (!tsCanvas || !tsDates.length) return;
-        const requested = tsUnitSelect ? tsUnitSelect.value : "auto";
-        const built = buildTimeseries(tsDates, requested);
-        const spec = {
-          type: "line",
-          labels: built.labels,
-          counts: built.counts,
-          label: "件数",
-          ckind: "date",
-          flabel: "送信日時",
-          unit: built.unit,
-        };
-        if (tsChart) tsChart.destroy();
-        tsChart = new Chart(tsCanvas, buildConfig(spec));
-      };
-
-      if (tsUnitSelect) tsUnitSelect.addEventListener("change", renderTimeseries);
-      renderTimeseries();
-    }
-
-    document.querySelectorAll(".js-chart-toggle").forEach((button) => {
-      button.addEventListener("click", () => {
-        const entry = charts[button.dataset.target];
-        if (!entry) return;
-        entry.chart.destroy();
-        const nextSpec = Object.assign({}, entry.spec, { type: button.dataset.mode });
-        entry.chart = new Chart(document.getElementById(button.dataset.target), buildConfig(nextSpec));
-        entry.spec = nextSpec;
-      });
-    });
-
-    // ---- グラフクリックによる絞り込み（ドリルダウン） ----
-    function buildPredicate(spec, index, chart) {
-      // 円グラフは並べ替えるため、クリックされたラベルはチャート本体から取得する
-      const clickedLabel = chart ? chart.data.labels[index] : spec.labels[index];
-      if (spec.ckind === "date") {
-        const unit = spec.unit || "day";
-        const target = clickedLabel;
-        return {
-          label: spec.flabel + ": " + target,
-          test: (row) => {
-            if (!row.ts) return false;
-            const d = new Date(row.ts);
-            if (Number.isNaN(d.getTime())) return false;
-            return tsLabel(tsTruncate(d, unit), unit) === target;
-          },
-        };
-      }
-      if (spec.ckind === "enum") {
-        const target = clickedLabel;
-        return {
-          label: spec.flabel + ": " + target,
-          test: (row) => {
-            const v = row.data[spec.field];
-            if (Array.isArray(v)) return v.map(String).includes(target);
-            return String(v) === target;
-          },
-        };
-      }
-      if (spec.ckind === "boolean") {
-        const target = clickedLabel === "true";
-        return {
-          label: spec.flabel + ": " + clickedLabel,
-          test: (row) => toBool(row.data[spec.field]) === target,
-        };
-      }
-      if (spec.ckind === "correctcount") {
-        const correctMap = getCorrectMap();
-        const keys = Object.keys(correctMap);
-        const target = parseInt(clickedLabel, 10);
-        return {
-          label: "正答数: " + clickedLabel,
-          test: (row) => {
-            let count = 0;
-            keys.forEach((key) => {
-              if (isRowCorrect(row.data, key, correctMap[key])) count += 1;
-            });
-            return count === target;
-          },
-        };
-      }
-      if (spec.ckind === "numeric") {
-        const range = spec.ranges[index];
-        const isLast = index === spec.ranges.length - 1;
-        const exact = spec.mode === "exact";
-        return {
-          label: spec.flabel + ": " + spec.labels[index],
-          test: (row) => {
-            let v = row.data[spec.field];
-            const arr = Array.isArray(v) ? v : [v];
-            return arr.some((x) => {
-              const n = Number(x);
-              if (Number.isNaN(n)) return false;
-              if (exact) return n === range[0];
-              return n >= range[0] && (isLast ? n <= range[1] : n < range[1]);
-            });
-          },
-        };
-      }
-      return null;
-    }
-
-    function applyDrill(spec, index, chart) {
-      const predicate = buildPredicate(spec, index, chart);
-      if (!predicate) return;
-      drillActive = true;
-      let count = 0;
-      tableRows.forEach((row) => {
-        const ok = predicate.test(row);
-        row.tr.classList.toggle("hidden", !ok);
-        if (ok) count += 1;
-      });
-      if (emptyRow) emptyRow.classList.toggle("hidden", count > 0);
-      if (banner) {
-        banner.classList.remove("hidden");
-        banner.classList.add("flex");
-        drillLabel.textContent = predicate.label;
-        drillCount.textContent = count;
-      }
-      const section = document.getElementById("data-table-section");
-      if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-
-    function clearDrill() {
-      drillActive = false;
-      tableRows.forEach((row) => row.tr.classList.remove("hidden"));
-      if (emptyRow) emptyRow.classList.add("hidden");
-      if (banner) {
-        banner.classList.add("hidden");
-        banner.classList.remove("flex");
-      }
-    }
-
-    document.getElementById("drill-clear")?.addEventListener("click", clearDrill);
-
-    // ---- ダウンロード（送信一覧と同じ形式選択モーダル） ----
-    const downloadModal = document.getElementById("download-modal");
-    const downloadLinks = downloadModal
-      ? Array.from(downloadModal.querySelectorAll("a"))
-      : [];
-    downloadLinks.forEach((a) => { a.dataset.baseHref = a.getAttribute("href"); });
-
-    function updateDownloadLinks() {
-      // 正解が1つ以上設定されている場合だけ、正答数・正答率を含めるよう
-      // correct パラメータを付与する（サーバー側で列を追加）。
-      const correctMap = getCorrectMap();
-      let param = Object.keys(correctMap).length
-        ? "&correct=" + encodeURIComponent(JSON.stringify(correctMap))
-        : "";
-      // グラフクリックで絞り込み中は、表示中の送信のみダウンロードする。
-      if (drillActive) {
-        const ids = tableRows
-          .filter((r) => !r.tr.classList.contains("hidden"))
-          .map((r) => r.id)
-          .filter(Boolean);
-        param += "&ids=" + encodeURIComponent(ids.join(","));
-      }
-      downloadLinks.forEach((a) => { a.setAttribute("href", a.dataset.baseHref + param); });
-    }
-
-    function openDownloadModal() {
-      if (!downloadModal) return;
-      updateDownloadLinks();
-      downloadModal.classList.remove("hidden");
-      downloadModal.classList.add("flex");
-      document.body.classList.add("overflow-hidden");
-    }
-    function closeDownloadModal() {
-      if (!downloadModal) return;
-      downloadModal.classList.add("hidden");
-      downloadModal.classList.remove("flex");
-      document.body.classList.remove("overflow-hidden");
-    }
-    document.getElementById("open-download-modal")?.addEventListener("click", openDownloadModal);
-    document.querySelectorAll('[data-action="close-download-modal"]').forEach((btn) => {
-      btn.addEventListener("click", closeDownloadModal);
-    });
-    downloadModal?.addEventListener("click", (event) => {
-      if (event.target === downloadModal) closeDownloadModal();
-    });
-    downloadModal?.querySelectorAll("a").forEach((link) => {
-      link.addEventListener("click", closeDownloadModal);
-    });
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") closeDownloadModal();
-    });
-
-    // ---- 列ヘッダーによる並べ替え（クライアント側） ----
-    const tableBody = document.querySelector("#data-table-section tbody");
-    const sortState = { index: null, dir: 1 };
-
-    function cellSortValue(tr, cellIndex, kind) {
-      const cell = tr.cells[cellIndex];
-      if (!cell) return null;
-      if (kind === "datetime") {
-        const timeEl = cell.querySelector("time");
-        const ms = Date.parse(timeEl ? timeEl.dataset.iso : "");
-        return Number.isNaN(ms) ? null : ms;
-      }
-      if (kind === "number") {
-        const n = parseFloat((cell.textContent || "").replace(/,/g, "").trim());
-        return Number.isNaN(n) ? null : n;
-      }
-      const text = (cell.textContent || "").trim().toLowerCase();
-      return text === "" ? null : text;
-    }
-
-    document.querySelectorAll(".js-sort").forEach((button) => {
-      button.addEventListener("click", () => {
-        if (!tableBody) return;
-        const th = button.closest("th");
-        const cellIndex = th.cellIndex;
-        const kind = button.dataset.sortKind;
-        if (sortState.index === cellIndex) {
-          sortState.dir = -sortState.dir;
-        } else {
-          sortState.index = cellIndex;
-          sortState.dir = 1;
-        }
-        const sorted = tableRows.slice().sort((a, b) => {
-          const va = cellSortValue(a.tr, cellIndex, kind);
-          const vb = cellSortValue(b.tr, cellIndex, kind);
-          if (va === null && vb === null) return 0;
-          if (va === null) return 1;
-          if (vb === null) return -1;
-          if (va < vb) return -sortState.dir;
-          if (va > vb) return sortState.dir;
-          return 0;
-        });
-        sorted.forEach((row) => tableBody.insertBefore(row.tr, emptyRow));
-        document.querySelectorAll(".js-sort-arrow").forEach((arrow) => {
-          arrow.textContent = "↕";
-          arrow.classList.add("text-slate-300");
-          arrow.classList.remove("text-slate-500");
-        });
-        const arrow = button.querySelector(".js-sort-arrow");
-        if (arrow) {
-          arrow.textContent = sortState.dir === 1 ? "▲" : "▼";
-          arrow.classList.remove("text-slate-300");
-          arrow.classList.add("text-slate-500");
-        }
-      });
-    });
-
-    // ---- 正解の読み取り（選択肢フィールドの入力UIに準拠） ----
-    function readCorrectInfo(container) {
-      const orderedEl = container.querySelector(".js-correct-ordered");
-      if (container.dataset.correctArray === "1") {
-        let list = [];
-        try { list = JSON.parse(container.dataset.correctList || "[]"); } catch (e) {}
-        return { mode: "array", list: list, ordered: !!(orderedEl && orderedEl.checked) };
-      }
-      const single = container.querySelector(".js-correct-single");
-      return { mode: "single", value: single ? single.value : "" };
-    }
-
-    function correctInfoValid(info) {
-      return info.mode === "array" ? info.list.length > 0 : info.value !== "";
-    }
-
-    // ---- 各送信ごとの正答率 ----
-    function getCorrectMap() {
-      const map = {};
-      document.querySelectorAll("[data-correct-field]").forEach((container) => {
-        const info = readCorrectInfo(container);
-        if (correctInfoValid(info)) map[container.dataset.correctField] = info;
-      });
-      return map;
-    }
-
-    function isRowCorrect(rowData, key, info) {
-      const v = rowData[key];
-      if (v === undefined || v === null) return false;
-      if (info.mode === "array") {
-        // 配列(複数選択)は重複・件数も含めた過不足のない完全一致
-        const a = (Array.isArray(v) ? v : [v]).map(String);
-        const b = info.list;
-        if (a.length !== b.length) return false;
-        if (info.ordered) return a.every((x, i) => x === b[i]);
-        const sa = a.slice().sort();
-        const sb = b.slice().sort();
-        return sa.every((x, i) => x === sb[i]);
-      }
-      if (Array.isArray(v)) return false;
-      return String(v) === info.value;
-    }
-
-    function recomputeRowRates() {
-      const correctMap = getCorrectMap();
-      const keys = Object.keys(correctMap);
-      tableRows.forEach((row) => {
-        if (!keys.length) {
-          if (row.rateCell) row.rateCell.textContent = "—";
-          if (row.countCell) row.countCell.textContent = "—";
-          return;
-        }
-        let correct = 0;
-        keys.forEach((key) => {
-          if (isRowCorrect(row.data, key, correctMap[key])) correct += 1;
-        });
-        const rate = (correct / keys.length) * 100;
-        if (row.countCell) row.countCell.textContent = String(correct);
-        if (row.rateCell) row.rateCell.textContent = rate.toFixed(0);
-      });
-      renderCorrectDistribution();
-    }
-
-    // ---- 正答数の分布（正解が1つ以上設定されている場合に表示） ----
-    const correctDistSection = document.getElementById("correct-dist-section");
-    const correctDistCanvas = document.getElementById("correct-dist-chart");
-    let correctDistChart = null;
-
-    function renderCorrectDistribution() {
-      if (!correctDistSection || !correctDistCanvas) return;
-      const correctMap = getCorrectMap();
-      const keys = Object.keys(correctMap);
-      if (!keys.length) {
-        correctDistSection.classList.add("hidden");
-        if (correctDistChart) { correctDistChart.destroy(); correctDistChart = null; }
-        return;
-      }
-      const counts = new Array(keys.length + 1).fill(0);
-      tableRows.forEach((row) => {
-        let correct = 0;
-        keys.forEach((key) => {
-          if (isRowCorrect(row.data, key, correctMap[key])) correct += 1;
-        });
-        counts[correct] += 1;
-      });
-      const labels = counts.map((_, i) => String(i));
-      const spec = { type: "bar", labels, counts, label: "件数", ckind: "correctcount", flabel: "正答数", mono: true };
-      correctDistSection.classList.remove("hidden");
-      if (correctDistChart) correctDistChart.destroy();
-      correctDistChart = new Chart(correctDistCanvas, buildConfig(spec));
-    }
-
-    function recomputeFieldRate(container) {
-      const rateEl = container.querySelector(".js-correct-rate");
-      if (!rateEl) return;
-      const info = readCorrectInfo(container);
-      if (!correctInfoValid(info)) { rateEl.textContent = "—"; return; }
-      const fieldKey = container.dataset.correctField;
-      let answered = 0;
-      let correct = 0;
-      tableRows.forEach((row) => {
-        const v = row.data[fieldKey];
-        const hasAnswer = Array.isArray(v) ? v.length > 0 : (v !== undefined && v !== null && v !== "");
-        if (!hasAnswer) return;
-        answered += 1;
-        if (isRowCorrect(row.data, fieldKey, info)) correct += 1;
-      });
-      if (answered === 0) { rateEl.textContent = "—"; return; }
-      const rate = (correct / answered) * 100;
-      rateEl.textContent = rate.toFixed(1) + "% (" + correct + "/" + answered + ")";
-    }
-
-    // ---- 設問ごとの正解入力 UI と localStorage 復元 ----
-    document.querySelectorAll("[data-correct-field]").forEach((container) => {
-      const storageKey = "sf-correct:" + formId + ":" + container.dataset.correctField;
-      const isArrayField = container.dataset.correctArray === "1";
-      const orderedEl = container.querySelector(".js-correct-ordered");
-
-      function onChange() {
-        recomputeFieldRate(container);
-        recomputeRowRates();
-        try {
-          localStorage.setItem(storageKey, JSON.stringify(readCorrectInfo(container)));
-        } catch (e) {}
-      }
-
-      let saved = null;
-      try { saved = JSON.parse(localStorage.getItem(storageKey) || "null"); } catch (e) {}
-
-      if (isArrayField) {
-        // 入力ページと同じバッジ式UI（セレクトで選んで追加し、選択値はチップ表示）
-        const addSelect = container.querySelector(".js-correct-add-select");
-        const addBtn = container.querySelector(".js-correct-add");
-        const badgesEl = container.querySelector(".js-correct-badges");
-        const isUnique = container.dataset.correctUnique === "1";
-        const validValues = Array.from(addSelect.options).map((o) => o.value);
-        let selected = [];
-
-        function labelFor(value) {
-          const opt = Array.from(addSelect.options).find((o) => o.value === value);
-          return opt ? opt.textContent : value;
-        }
-
-        function syncDataset() {
-          container.dataset.correctList = JSON.stringify(selected);
-        }
-
-        function renderBadges() {
-          badgesEl.replaceChildren();
-          selected.forEach((value, index) => {
-            const chip = document.createElement("button");
-            chip.type = "button";
-            chip.className = "inline-flex max-w-full items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700 hover:border-rose-300 hover:text-rose-700";
-            chip.title = "クリックして削除";
-            chip.textContent = labelFor(value) + " ×";
-            chip.addEventListener("click", () => {
-              selected.splice(index, 1);
-              syncDataset();
-              renderBadges();
-              onChange();
-            });
-            badgesEl.appendChild(chip);
-          });
-        }
-
-        function addValue(value) {
-          if (!value) return;
-          if (isUnique && selected.includes(value)) return;
-          selected.push(value);
-          syncDataset();
-          renderBadges();
-        }
-
-        addBtn.addEventListener("click", () => {
-          addValue(addSelect.value);
-          addSelect.value = "";
-          onChange();
-        });
-        if (orderedEl) orderedEl.addEventListener("change", onChange);
-
-        // 復元（新旧フォーマット対応）
-        let list = [];
-        let ordered = false;
-        if (Array.isArray(saved)) { list = saved; }
-        else if (saved && saved.mode === "array") { list = saved.list || []; ordered = !!saved.ordered; }
-        else if (saved && Array.isArray(saved.options)) { list = saved.options; ordered = !!saved.ordered; }
-        selected = list.filter((v) => validValues.includes(v));
-        syncDataset();
-        renderBadges();
-        if (orderedEl) orderedEl.checked = ordered;
-      } else {
-        const single = container.querySelector(".js-correct-single");
-        single.addEventListener("change", onChange);
-        let value = "";
-        if (saved && saved.mode === "single") value = saved.value || "";
-        else if (saved && Array.isArray(saved.options) && saved.options.length) value = saved.options[0];
-        else if (Array.isArray(saved) && saved.length) value = saved[0];
-        if (value && Array.from(single.options).some((o) => o.value === value)) single.value = value;
-      }
-
-      recomputeFieldRate(container);
-    });
-
-    recomputeRowRates();
-  });
-</script>
+<script src="/static/modals.js" defer></script>
+<script src="/static/aggregate.js" defer></script>
 {% endblock %}

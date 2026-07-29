@@ -1,5 +1,6 @@
 {% extends "base.html" %}
-{% from "_file_preview.html" import file_value as render_file_value %}
+{% from "_submission_table.html" import sort_header, column_headers, data_cells, pager %}
+{% from "_filter_modal.html" import filter_modal, download_modal %}
 {% block content %}
 <div class="flex flex-wrap items-center justify-between gap-3">
   <div>
@@ -18,170 +19,20 @@
   </div>
 </div>
 
-<div id="filter-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 px-4 py-6">
-  <div class="w-full max-w-5xl rounded-lg border border-slate-200 bg-white shadow-xl">
-    <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-      <h2 class="text-base font-semibold text-slate-900">フィルター条件</h2>
-      <button type="button" data-action="close-filter-modal" class="rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700">閉じる</button>
-    </div>
-    <form id="filter-form" method="get" class="max-h-[80vh] overflow-y-auto p-4">
-      <input type="hidden" name="sort" value="{{ sort }}" />
-      <input type="hidden" name="order" value="{{ order }}" />
-      <div class="grid gap-3 md:grid-cols-3">
-        <div>
-          <label class="text-xs text-slate-500">フリーワード</label>
-          <input name="q" value="{{ query.get('q', '') }}" class="mt-1 w-full rounded border border-slate-300 px-2 py-2 text-sm" placeholder="検索ワード" />
-        </div>
-        <div>
-          <label class="text-xs text-slate-500">送信日時 (From)</label>
-          <input name="submitted_from" value="{{ query.get('submitted_from', '') }}" data-picker="datetime-local" class="mt-1 w-full rounded border border-slate-300 px-2 py-2 text-sm" placeholder="開始日時" />
-        </div>
-        <div>
-          <label class="text-xs text-slate-500">送信日時 (To)</label>
-          <input name="submitted_to" value="{{ query.get('submitted_to', '') }}" data-picker="datetime-local" class="mt-1 w-full rounded border border-slate-300 px-2 py-2 text-sm" placeholder="終了日時" />
-        </div>
-      </div>
+{{ filter_modal(form, query, filter_fields, sort, order, page_size,
+                '/forms/' ~ form.id ~ '/submissions') }}
 
-      <div class="mt-3 grid gap-3 md:grid-cols-3">
-        <div>
-          <label class="text-xs text-slate-500">ページサイズ</label>
-          <select name="page_size" class="mt-1 w-full rounded border border-slate-300 px-2 py-2 text-sm">
-            {% for size in [20, 50, 100] %}
-            <option value="{{ size }}" {% if page_size == size %}selected{% endif %}>{{ size }}</option>
-            {% endfor %}
-          </select>
-        </div>
-      </div>
-
-      <div class="mt-4 grid gap-3 md:grid-cols-3">
-        {% for field in filter_fields %}
-        {% set param_key = 'f_' ~ field.flat_key | replace('.', '__') %}
-        <div class="rounded border border-slate-100 bg-slate-50 p-3">
-          <div class="text-xs font-semibold text-slate-500">{{ field.flat_label }}</div>
-          {% if field.type == 'group' and field.is_array %}
-            <input name="{{ param_key }}" value="{{ query.get(param_key, '') }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-1 text-sm" placeholder="含む値" />
-          {% elif field.is_array %}
-            {% if field.type == 'enum' %}
-            <select name="{{ param_key }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-1 text-sm">
-              <option value="">指定なし</option>
-              {% for option in field.enum %}
-              <option value="{{ option }}" {% if query.get(param_key) == option %}selected{% endif %}>{{ option }}</option>
-              {% endfor %}
-            </select>
-            {% else %}
-            <input name="{{ param_key }}" value="{{ query.get(param_key, '') }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-1 text-sm" placeholder="含む値" />
-            {% endif %}
-          {% elif field.type in ['number', 'integer'] %}
-            <div class="mt-2 grid gap-2">
-              <input name="{{ param_key }}_min" value="{{ query.get(param_key ~ '_min', '') }}" class="w-full rounded border border-slate-300 px-2 py-1 text-sm" placeholder="min" />
-              <input name="{{ param_key }}_max" value="{{ query.get(param_key ~ '_max', '') }}" class="w-full rounded border border-slate-300 px-2 py-1 text-sm" placeholder="max" />
-            </div>
-          {% elif field.type == 'boolean' %}
-            <select name="{{ param_key }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-1 text-sm">
-              <option value="" {% if query.get(param_key, '') == '' %}selected{% endif %}>指定なし</option>
-              <option value="true" {% if query.get(param_key) == 'true' %}selected{% endif %}>true</option>
-              <option value="false" {% if query.get(param_key) == 'false' %}selected{% endif %}>false</option>
-            </select>
-          {% elif field.type == 'enum' %}
-            <select name="{{ param_key }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-1 text-sm">
-              <option value="">指定なし</option>
-              {% for option in field.enum %}
-              <option value="{{ option }}" {% if query.get(param_key) == option %}selected{% endif %}>{{ option }}</option>
-              {% endfor %}
-            </select>
-          {% else %}
-            <input name="{{ param_key }}" value="{{ query.get(param_key, '') }}" class="mt-2 w-full rounded border border-slate-300 px-2 py-1 text-sm" placeholder="含む値" />
-          {% endif %}
-        </div>
-        {% endfor %}
-      </div>
-
-      <div class="mt-4 flex gap-2 border-t border-slate-200 pt-4">
-        <button type="submit" class="rounded bg-slate-900 px-3 py-2 text-sm font-semibold text-white">検索</button>
-        <a href="/forms/{{ form.id }}/submissions" class="rounded border border-slate-300 px-3 py-2 text-sm">リセット</a>
-        <button type="button" data-action="close-filter-modal" class="ml-auto rounded border border-slate-300 px-3 py-2 text-sm">閉じる</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<div id="download-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 px-4 py-6">
-  <div class="w-full max-w-md rounded-lg border border-slate-200 bg-white shadow-xl">
-    <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-      <h2 class="text-base font-semibold text-slate-900">ダウンロード形式を選択</h2>
-      <button type="button" data-action="close-download-modal" class="rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700">閉じる</button>
-    </div>
-    <div class="p-4">
-      <p class="text-xs text-slate-500">現在の検索・フィルター条件に一致する送信内容をダウンロードします。</p>
-      <div class="mt-3 grid gap-2">
-        <a href="/forms/{{ form.id }}/export?{{ build_query(query, format='xlsx', page=None) }}" class="flex items-center justify-between rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
-          <span class="font-medium text-slate-900">Excel</span>
-          <span class="text-xs text-slate-500">.xlsx</span>
-        </a>
-        <a href="/forms/{{ form.id }}/export?{{ build_query(query, format='csv', page=None) }}" class="flex items-center justify-between rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
-          <span class="font-medium text-slate-900">CSV</span>
-          <span class="text-xs text-slate-500">.csv</span>
-        </a>
-        <a href="/forms/{{ form.id }}/export?{{ build_query(query, format='parquet', page=None) }}" class="flex items-center justify-between rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
-          <span class="font-medium text-slate-900">Parquet</span>
-          <span class="text-xs text-slate-500">.parquet</span>
-        </a>
-        <a href="/forms/{{ form.id }}/export?{{ build_query(query, format='json', page=None) }}" class="flex items-center justify-between rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
-          <span class="font-medium text-slate-900">JSON</span>
-          <span class="text-xs text-slate-500">.json</span>
-        </a>
-      </div>
-    </div>
-  </div>
-</div>
+{{ download_modal(form, query, '現在の検索・フィルター条件に一致する送信内容をダウンロードします。') }}
 
 
 <div class="mt-6 overflow-x-auto rounded-lg border border-slate-200 bg-white">
   <table class="min-w-full divide-y divide-slate-200 text-sm">
     <thead class="bg-slate-100 text-left">
       <tr>
-        <th class="px-4 py-3">
-          <a href="?{{ build_query(query, sort='created_at', order=('desc' if sort == 'created_at' and order == 'asc' else 'asc'), page=1) }}" class="group inline-flex items-center gap-1">
-            送信日時
-            {% if sort == 'created_at' %}
-            <span class="text-slate-400">{{ '▲' if order == 'asc' else '▼' }}</span>
-            {% else %}
-            <span class="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity">▲</span>
-            {% endif %}
-          </a>
-        </th>
-        <th class="px-4 py-3">
-          <a href="?{{ build_query(query, sort='updated_at', order=('desc' if sort == 'updated_at' and order == 'asc' else 'asc'), page=1) }}" class="group inline-flex items-center gap-1">
-            更新日時
-            {% if sort == 'updated_at' %}
-            <span class="text-slate-400">{{ '▲' if order == 'asc' else '▼' }}</span>
-            {% else %}
-            <span class="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity">▲</span>
-            {% endif %}
-          </a>
-        </th>
-        <th class="px-4 py-3">
-          <a href="?{{ build_query(query, sort='username', order=('desc' if sort == 'username' and order == 'asc' else 'asc'), page=1) }}" class="group inline-flex items-center gap-1">
-            送信ユーザー
-            {% if sort == 'username' %}
-            <span class="text-slate-400">{{ '▲' if order == 'asc' else '▼' }}</span>
-            {% else %}
-            <span class="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity">▲</span>
-            {% endif %}
-          </a>
-        </th>
-        {% for column in display_columns %}
-        <th class="px-4 py-3">
-          <a href="?{{ build_query(query, sort=loop.index0|string, order=('desc' if sort == loop.index0|string and order == 'asc' else 'asc'), page=1) }}" class="group inline-flex items-center gap-1">
-            {{ column.label }}
-            {% if sort == loop.index0|string %}
-            <span class="text-slate-400">{{ '▲' if order == 'asc' else '▼' }}</span>
-            {% else %}
-            <span class="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity">▲</span>
-            {% endif %}
-          </a>
-        </th>
-        {% endfor %}
+        {{ sort_header(query, sort, order, 'created_at', '送信日時') }}
+        {{ sort_header(query, sort, order, 'updated_at', '更新日時') }}
+        {{ sort_header(query, sort, order, 'username', '送信ユーザー') }}
+        {{ column_headers(query, sort, order, display_columns) }}
         <th class="px-4 py-3">操作</th>
       </tr>
     </thead>
@@ -199,46 +50,7 @@
           {% endif %}
         </td>
         <td class="px-4 py-3 text-slate-600">{{ row.username or '-' }}</td>
-        {% for value in row["values"] %}
-        {% set column = display_columns[loop.index0] %}
-        {% set raw_value = row.raw_values[loop.index0] if row.raw_values is defined else none %}
-        {% if column.kind == "default" and column.field.type == "file" and raw_value %}
-          <td class="px-4 py-3">
-            {{ render_file_value(raw_value, file_infos, "sm") }}
-          </td>
-        {% elif column.kind == "master_display" and column.display_type == "file" and raw_value %}
-          <td class="px-4 py-3">
-            {{ render_file_value(raw_value, file_infos, "sm") }}
-          </td>
-        {% elif column.kind == "default"
-              and column.field.type == "string"
-              and (
-                column.field.format == "url"
-                or "http://" in value
-                or "https://" in value
-                or "www." in value
-              )
-              and value %}
-          <td class="px-4 py-3">
-            {% set raw_items = value.split(",") if column.field.is_array else [value] %}
-            {% for raw_item in raw_items %}
-              {% set trimmed = raw_item | trim %}
-              {% if trimmed %}
-                {% if trimmed.startswith("http://") or trimmed.startswith("https://") %}
-                  <a href="{{ trimmed }}" target="_blank" rel="noopener noreferrer" class="break-all text-sky-700 underline">{{ trimmed }}</a>
-                {% elif trimmed.startswith("www.") %}
-                  <a href="https://{{ trimmed }}" target="_blank" rel="noopener noreferrer" class="break-all text-sky-700 underline">{{ trimmed }}</a>
-                {% else %}
-                  {{ trimmed }}
-                {% endif %}
-                {% if not loop.last %}, {% endif %}
-              {% endif %}
-            {% endfor %}
-          </td>
-        {% else %}
-        <td class="px-4 py-3">{{ value }}</td>
-        {% endif %}
-        {% endfor %}
+        {{ data_cells(row, display_columns, file_infos) }}
         <td class="px-4 py-3">
           <div class="flex gap-1">
             <a href="/forms/{{ form.id }}/submissions/{{ row.id }}/edit" class="whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs text-slate-700">編集</a>
@@ -257,140 +69,20 @@
   </table>
 </div>
 
-<div class="mt-4 flex items-center justify-between text-sm">
-  <div class="text-slate-500">{{ total }}件中 {{ (page - 1) * page_size + 1 if total > 0 else 0 }}-{{ [page * page_size, total] | min }}件</div>
-  <div class="flex gap-2">
-    {% if page > 1 %}
-    <a href="?{{ build_query(query, page=page-1) }}" class="rounded border border-slate-300 px-3 py-1">前へ</a>
-    {% endif %}
-    <span class="rounded border border-slate-300 px-3 py-1">{{ page }} / {{ total_pages }}</span>
-    {% if page < total_pages %}
-    <a href="?{{ build_query(query, page=page+1) }}" class="rounded border border-slate-300 px-3 py-1">次へ</a>
-    {% endif %}
-  </div>
-</div>
+{{ pager(query, page, page_size, total, total_pages) }}
 
+<script src="/static/modals.js" defer></script>
 <script>
+  // 取り込みはこのページ固有の操作。ファイルを選んだらそのまま送信する。
   document.addEventListener("DOMContentLoaded", () => {
-    const openFilterButton = document.getElementById("open-filter-modal");
-    const filterModal = document.getElementById("filter-modal");
-    const closeFilterButtons = Array.from(
-      document.querySelectorAll('[data-action="close-filter-modal"]')
-    );
-
-    function openFilterModal() {
-      if (!filterModal) return;
-      filterModal.classList.remove("hidden");
-      filterModal.classList.add("flex");
-      document.body.classList.add("overflow-hidden");
-    }
-
-    function closeFilterModal() {
-      if (!filterModal) return;
-      filterModal.classList.add("hidden");
-      filterModal.classList.remove("flex");
-      document.body.classList.remove("overflow-hidden");
-    }
-
-    openFilterButton?.addEventListener("click", openFilterModal);
-    closeFilterButtons.forEach((button) => {
-      button.addEventListener("click", closeFilterModal);
-    });
-    filterModal?.addEventListener("click", (event) => {
-      if (event.target === filterModal) {
-        closeFilterModal();
-      }
-    });
-
-    const openDownloadButton = document.getElementById("open-download-modal");
-    const downloadModal = document.getElementById("download-modal");
-    const closeDownloadButtons = Array.from(
-      document.querySelectorAll('[data-action="close-download-modal"]')
-    );
-
-    function openDownloadModal() {
-      if (!downloadModal) return;
-      downloadModal.classList.remove("hidden");
-      downloadModal.classList.add("flex");
-      document.body.classList.add("overflow-hidden");
-    }
-
-    function closeDownloadModal() {
-      if (!downloadModal) return;
-      downloadModal.classList.add("hidden");
-      downloadModal.classList.remove("flex");
-      document.body.classList.remove("overflow-hidden");
-    }
-
-    openDownloadButton?.addEventListener("click", openDownloadModal);
-    closeDownloadButtons.forEach((button) => {
-      button.addEventListener("click", closeDownloadModal);
-    });
-    downloadModal?.addEventListener("click", (event) => {
-      if (event.target === downloadModal) {
-        closeDownloadModal();
-      }
-    });
-    downloadModal?.querySelectorAll("a").forEach((link) => {
-      link.addEventListener("click", closeDownloadModal);
-    });
-
-    const openImportButton = document.getElementById("open-import-modal");
-    const importFileInput = document.getElementById("import-file-input");
+    const fileInput = document.getElementById("import-file-input");
     const importForm = document.getElementById("import-form");
-
-    openImportButton?.addEventListener("click", () => {
-      importFileInput?.click();
+    document.getElementById("open-import-modal")?.addEventListener("click", () => {
+      fileInput?.click();
     });
-    importFileInput?.addEventListener("change", () => {
-      if (importFileInput.files.length > 0) {
-        importForm?.submit();
-      }
+    fileInput?.addEventListener("change", () => {
+      if (fileInput.files.length > 0) importForm?.submit();
     });
-
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") {
-        closeFilterModal();
-        closeDownloadModal();
-      }
-    });
-
-    if (typeof flatpickr === "undefined") return;
-    const form = document.getElementById("filter-form");
-    const pickerInputs = document.querySelectorAll("input[data-picker=\"datetime-local\"]");
-
-    pickerInputs.forEach((input) => {
-      const raw = input.value;
-      const options = {
-        enableTime: true,
-        dateFormat: "Y-m-d\\TH:i",
-        altInput: true,
-        altFormat: "Y/m/d H:i",
-        time_24hr: true,
-        locale: "ja",
-      };
-      const parsed = raw ? new Date(raw) : null;
-      if (parsed && !Number.isNaN(parsed.getTime())) {
-        options.defaultDate = parsed;
-      } else {
-        input.value = "";
-      }
-      flatpickr(input, options);
-    });
-
-    if (form) {
-      form.addEventListener("submit", () => {
-        pickerInputs.forEach((input) => {
-          if (!input.value) return;
-          const date = new Date(input.value);
-          if (Number.isNaN(date.getTime())) {
-            input.value = "";
-            return;
-          }
-          input.value = date.toISOString().replace("Z", "+00:00");
-        });
-      });
-    }
   });
 </script>
 {% endblock %}

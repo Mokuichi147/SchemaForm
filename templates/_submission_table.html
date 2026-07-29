@@ -1,0 +1,79 @@
+{# 送信一覧と集計ページで共通の表パーツ。列の並び順・値の描画を1か所に集約する。 #}
+{% from "_file_preview.html" import file_value as render_file_value %}
+
+{# 並べ替えリンク付きのヘッダーセル。key は created_at / updated_at / username / 列番号。 #}
+{% macro sort_header(query, sort, order, key, label) %}
+<th class="px-4 py-3">
+  <a href="?{{ build_query(query, sort=key, order=('desc' if sort == key and order == 'asc' else 'asc'), page=1) }}" class="group inline-flex items-center gap-1">
+    {{ label }}
+    {% if sort == key %}
+    <span class="text-slate-400">{{ '▲' if order == 'asc' else '▼' }}</span>
+    {% else %}
+    <span class="text-slate-300 opacity-0 transition-opacity group-hover:opacity-100">▲</span>
+    {% endif %}
+  </a>
+</th>
+{% endmacro %}
+
+{# 表示列ぶんのヘッダーセル。 #}
+{% macro column_headers(query, sort, order, display_columns) %}
+{% for column in display_columns %}
+{{ sort_header(query, sort, order, loop.index0 | string, column.label) }}
+{% endfor %}
+{% endmacro %}
+
+{# 1行ぶんの値セル。ファイルはプレビュー、URLはリンクにする。 #}
+{% macro data_cells(row, display_columns, file_infos) %}
+{% for value in row["values"] %}
+{% set column = display_columns[loop.index0] %}
+{% set raw_value = row.raw_values[loop.index0] if row.raw_values is defined else none %}
+{% if column.kind == "default" and column.field.type == "file" and raw_value %}
+  <td class="px-4 py-3">{{ render_file_value(raw_value, file_infos, "sm") }}</td>
+{% elif column.kind == "master_display" and column.display_type == "file" and raw_value %}
+  <td class="px-4 py-3">{{ render_file_value(raw_value, file_infos, "sm") }}</td>
+{% elif column.kind == "default"
+      and column.field.type == "string"
+      and (
+        column.field.format == "url"
+        or "http://" in value
+        or "https://" in value
+        or "www." in value
+      )
+      and value %}
+  <td class="px-4 py-3">
+    {% set raw_items = value.split(",") if column.field.is_array else [value] %}
+    {% for raw_item in raw_items %}
+      {% set trimmed = raw_item | trim %}
+      {% if trimmed %}
+        {% if trimmed.startswith("http://") or trimmed.startswith("https://") %}
+          <a href="{{ trimmed }}" target="_blank" rel="noopener noreferrer" class="break-all text-sky-700 underline">{{ trimmed }}</a>
+        {% elif trimmed.startswith("www.") %}
+          <a href="https://{{ trimmed }}" target="_blank" rel="noopener noreferrer" class="break-all text-sky-700 underline">{{ trimmed }}</a>
+        {% else %}
+          {{ trimmed }}
+        {% endif %}
+        {% if not loop.last %}, {% endif %}
+      {% endif %}
+    {% endfor %}
+  </td>
+{% else %}
+<td class="px-4 py-3">{{ value }}</td>
+{% endif %}
+{% endfor %}
+{% endmacro %}
+
+{# ページ送り。 #}
+{% macro pager(query, page, page_size, total, total_pages) %}
+<div class="mt-4 flex items-center justify-between text-sm">
+  <div class="text-slate-500">{{ total }}件中 {{ (page - 1) * page_size + 1 if total > 0 else 0 }}-{{ [page * page_size, total] | min }}件</div>
+  <div class="flex gap-2">
+    {% if page > 1 %}
+    <a href="?{{ build_query(query, page=page-1) }}" class="rounded border border-slate-300 px-3 py-1">前へ</a>
+    {% endif %}
+    <span class="rounded border border-slate-300 px-3 py-1">{{ page }} / {{ total_pages }}</span>
+    {% if page < total_pages %}
+    <a href="?{{ build_query(query, page=page+1) }}" class="rounded border border-slate-300 px-3 py-1">次へ</a>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
