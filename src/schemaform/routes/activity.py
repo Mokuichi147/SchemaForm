@@ -76,6 +76,7 @@ async def activity_log(
     total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
 
     return templates.TemplateResponse(
+        request,
         "admin_activity.html",
         {
             "request": request,

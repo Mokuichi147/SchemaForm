@@ -43,7 +43,7 @@ uv run schemaform
 uv run schemaform --host 127.0.0.1 --port 9000
 ```
 
-依存関係を更新したい場合は `uv lock` を実行してください。
+依存関係を更新したい場合は `uv lock --upgrade` を実行してください。
 
 ブラウザで `http://localhost:8000/admin/forms` を開いてください。
 

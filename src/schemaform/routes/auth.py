@@ -28,6 +28,7 @@ async def login_page(request: Request) -> HTMLResponse:
     templates = request.app.state.templates
     next_path = _safe_next(request.query_params.get("next"))
     return templates.TemplateResponse(
+        request,
         "login.html",
         {
             "request": request,
@@ -52,6 +53,7 @@ async def login(
     username = username.strip()
     if not username or not password:
         return templates.TemplateResponse(
+            request,
             "login.html",
             {
                 "request": request,
@@ -70,6 +72,7 @@ async def login(
         token = None
     if not token:
         return templates.TemplateResponse(
+            request,
             "login.html",
             {
                 "request": request,
@@ -107,6 +110,7 @@ async def signup_page(request: Request) -> HTMLResponse | RedirectResponse:
     templates = request.app.state.templates
     next_path = _safe_next(request.query_params.get("next"))
     return templates.TemplateResponse(
+        request,
         "signup.html",
         {
             "request": request,
@@ -150,6 +154,7 @@ async def signup(
 
     if errors:
         return templates.TemplateResponse(
+            request,
             "signup.html",
             {
                 "request": request,
@@ -164,6 +169,7 @@ async def signup(
     ok, payload = await auth.signup(username, password, display_name=display_name)
     if not ok:
         return templates.TemplateResponse(
+            request,
             "signup.html",
             {
                 "request": request,
@@ -202,6 +208,7 @@ async def account_page(request: Request) -> HTMLResponse:
     user = await auth.require_login(request)
     templates = request.app.state.templates
     return templates.TemplateResponse(
+        request,
         "account.html",
         {"request": request, "user": user, "errors": [], "notice": None},
     )
@@ -220,6 +227,7 @@ async def account_update(
     update = getattr(auth, "update_display_name", None)
     if update is None:
         return templates.TemplateResponse(
+            request,
             "account.html",
             {
                 "request": request,
@@ -234,6 +242,7 @@ async def account_update(
     ok = await update(user["id"], user.get("token", ""), display_name)
     if not ok:
         return templates.TemplateResponse(
+            request,
             "account.html",
             {
                 "request": request,
@@ -254,6 +263,7 @@ async def account_update(
 
     user = {**user, "display_name": display_name}
     return templates.TemplateResponse(
+        request,
         "account.html",
         {
             "request": request,
@@ -298,6 +308,7 @@ async def password_update(
 
     if errors:
         return templates.TemplateResponse(
+            request,
             "account.html",
             {"request": request, "user": user, "errors": errors, "notice": None},
             status_code=400,
@@ -312,6 +323,7 @@ async def password_update(
     )
     if not ok:
         return templates.TemplateResponse(
+            request,
             "account.html",
             {
                 "request": request,
@@ -327,6 +339,7 @@ async def password_update(
     log_activity(request, USER_PASSWORD)
 
     return templates.TemplateResponse(
+        request,
         "account.html",
         {
             "request": request,

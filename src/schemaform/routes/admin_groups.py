@@ -74,6 +74,7 @@ async def list_groups(
         g["can_create_form"] = g["id"] in form_creator_ids
     templates = request.app.state.templates
     return templates.TemplateResponse(
+        request,
         "admin_groups.html",
         {
             "request": request,
@@ -144,6 +145,7 @@ async def group_detail(
 
     templates = request.app.state.templates
     return templates.TemplateResponse(
+        request,
         "admin_group_detail.html",
         {
             "request": request,

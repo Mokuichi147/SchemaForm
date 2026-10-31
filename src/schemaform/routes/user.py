@@ -92,6 +92,7 @@ async def list_forms(request: Request) -> HTMLResponse:
 
     template_name = "admin_forms.html" if is_admin else "forms.html"
     return templates.TemplateResponse(
+        request,
         template_name,
         {
             "request": request,
@@ -153,6 +154,7 @@ async def list_submissions(request: Request, form_id: str) -> HTMLResponse:
                 )
 
     return templates.TemplateResponse(
+        request,
         template_name,
         {"request": request, **context},
     )
@@ -187,6 +189,7 @@ async def edit_submission(
     file_ids = collect_file_ids([submission], fields)
     file_infos = resolve_file_infos(storage.files, file_ids, file_url_builder(request))
     return templates.TemplateResponse(
+        request,
         "submission_edit.html",
         {
             "request": request,

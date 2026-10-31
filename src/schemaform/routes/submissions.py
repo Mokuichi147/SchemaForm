@@ -755,6 +755,7 @@ async def perform_update_submission(
             storage.files, file_ids, file_url_builder(request)
         )
         return templates.TemplateResponse(
+            request,
             "submission_edit.html",
             {
                 "request": request,
