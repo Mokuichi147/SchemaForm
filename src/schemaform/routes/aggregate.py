@@ -136,6 +136,7 @@ async def aggregate_view(
     query = dict(request.query_params)
 
     return templates.TemplateResponse(
+        request,
         "aggregate.html",
         {
             "request": request,

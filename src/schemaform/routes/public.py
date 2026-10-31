@@ -90,6 +90,7 @@ async def public_form(request: Request, public_id: str) -> HTMLResponse:
     inactive = form.get("status") != "active"
     errors = ["このフォームは停止中です"] if inactive else []
     return templates.TemplateResponse(
+        request,
         "form_public.html",
         {
             "request": request,
@@ -125,6 +126,7 @@ async def submit_form(request: Request, public_id: str) -> HTMLResponse:
             storage.files, collect_master_display_file_ids(fields)
         )
         return templates.TemplateResponse(
+            request,
             "form_public.html",
             {
                 "request": request,
@@ -260,6 +262,7 @@ async def submit_form(request: Request, public_id: str) -> HTMLResponse:
             storage.files, collect_master_display_file_ids(fields)
         )
         return templates.TemplateResponse(
+            request,
             "form_public.html",
             {
                 "request": request,
@@ -304,6 +307,7 @@ async def submit_form(request: Request, public_id: str) -> HTMLResponse:
         await send_webhook(form["webhook_url"], "submit", form, submission_record)
 
     return templates.TemplateResponse(
+        request,
         "submission_done.html",
         {"request": request, "form": form},
     )

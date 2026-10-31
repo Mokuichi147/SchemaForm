@@ -337,6 +337,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             status_code, "エラーが発生しました"
         )
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
                 "request": request,

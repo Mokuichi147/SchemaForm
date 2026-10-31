@@ -219,6 +219,7 @@ async def new_form(request: Request, _: Any = Depends(form_creator_guard)) -> HT
     available_groups = await _available_creator_groups(request)
     all_groups = await _list_all_groups(request)
     return templates.TemplateResponse(
+        request,
         "admin_form_builder.html",
         {
             "request": request,
@@ -277,6 +278,7 @@ async def create_form(request: Request, _: Any = Depends(form_creator_guard)) ->
         base["publish_group_ids"] = publish_group_ids
         base["allow_anonymous"] = allow_anonymous
         return templates.TemplateResponse(
+            request,
             "admin_form_builder.html",
             {
                 "request": request,
@@ -356,6 +358,7 @@ async def edit_form(
     available_groups = await _available_creator_groups(request)
     all_groups = await _list_all_groups(request)
     return templates.TemplateResponse(
+        request,
         "admin_form_builder.html",
         {
             "request": request,
@@ -425,6 +428,7 @@ async def update_form(
         if form_extra:
             base.update(form_extra)
         return templates.TemplateResponse(
+            request,
             "admin_form_builder.html",
             {
                 "request": request,
